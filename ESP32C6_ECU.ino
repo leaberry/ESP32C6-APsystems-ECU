@@ -5,6 +5,8 @@
 void setup() {
   Serial.begin(115200);
   Serial.println(F("ESP32-C6 integrated Zigbee build (no CC2530/CC2531)"));
+  Serial.println(apsCryptoSelfTest() ? F("APsystems AES self-test: PASS")
+                                     : F("APsystems AES self-test: FAILED"));
 
 
   pinMode(knop, INPUT_PULLUP); // de knop
@@ -41,6 +43,7 @@ void setup() {
   preferences.end();
 
   start_wifi(); // start wifi and server
+  sunspecBegin();
 
 // we set inverterCount to the number of inverterfiles we find
   inverterCount = readInverterfiles();

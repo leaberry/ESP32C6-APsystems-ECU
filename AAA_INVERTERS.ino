@@ -149,6 +149,7 @@ void handleInverterconfig(AsyncWebServerRequest *request)
   // collect the serverarguments
    strcpy(Inv_Prop[iKeuze].invLocation, request->arg("il").c_str());
    strcpy(Inv_Prop[iKeuze].invSerial, request->arg("iv").c_str());
+   Inv_Prop[iKeuze].encrypted = apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial);
    Inv_Prop[iKeuze].invType = request->arg("invt").toInt(); //values are 0 1 2  
    Inv_Prop[iKeuze].invIdx = request->arg("mqidx").toInt(); //values are 0 1  
    Inv_Prop[iKeuze].calib = request->arg("cal").toInt(); //
@@ -443,5 +444,6 @@ void structCopy(int a, int b) {
    Inv_Prop[a].conPanels[1] = Inv_Prop[b].conPanels[1];
    Inv_Prop[a].conPanels[2] = Inv_Prop[b].conPanels[2];
    Inv_Prop[a].conPanels[3] = Inv_Prop[b].conPanels[3];
+   Inv_Prop[a].encrypted    = Inv_Prop[b].encrypted;
    // now write file a and remove file b
 }

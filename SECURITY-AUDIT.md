@@ -2,7 +2,7 @@
 
 ## Conclusion
 
-The custom binary was compiled with TI Z-Stack security *capability*, but the APsystems exchange used by this project is not protected by an application link key and the captured frames are marked unsecured. No APsystems-specific secret, install code, or compile-time network key was found. The DS3-specific firmware change documented by its author was an enlarged CC2530 UART receive buffer so long DS3 frames were not truncated.
+The custom binary was compiled with TI Z-Stack security *capability*, but the APsystems exchange used by this project is not protected by a Zigbee application link key and the captured ZNP frames are marked unsecured. No APsystems-specific install code or compile-time Zigbee network key was found. This does **not** mean every inverter payload is plaintext: newer inverter families can use a separate APsystems L1 AES envelope above Zigbee. That proprietary layer is implemented in `APS_CRYPTO.ino`.
 
 Accordingly, the C6 port explicitly disables Zigbee network security and does not set the APS security transmit option. This matches the observed legacy behavior; enabling standard Zigbee 3.0 encryption would change the on-air frames and prevent these inverters from responding.
 
@@ -18,6 +18,31 @@ Accordingly, the C6 port explicitly disables Zigbee network security and does no
 ## Why `SECURE 1` is not contradictory
 
 TI's stack can contain trust-center and cryptographic code while individual networks or APS requests run unsecured. The ZNP `AF_INCOMING_MSG` security field describes the received application data's security status. Here it is zero in successful captures, and the application's `AF_DATA_REQUEST` options do not request APS encryption.
+
+## Proprietary APsystems L1 AES
+
+[`patience4711/ESP32-read-APS-inverters` issue 55](https://github.com/patience4711/ESP32-read-APS-inverters/issues/55)
+and the linked [`bolkedebruin/openaps`](https://github.com/bolkedebruin/openaps)
+reverse engineering identify a second,
+independent security mechanism used by inverter IDs whose second character is
+`2`. It uses AES-128-ECB with a fresh six-byte nonce per frame. The key is:
+
+`nonce[6] || inverter UID in six-byte BCD || 18 28 45 90`
+
+The encrypted plaintext is `one-byte length || complete FB FB...FE FE frame ||
+zero padding to a 16-byte boundary`. The inverter/sender UID remains clear so
+the receiver can derive the key. The modem's `FC FC` receive header and
+`AA AA AA AA ... A0/A1` transmit header are UART envelopes and are not emitted
+through the ESP32-C6 raw APS API.
+
+The implementation accepts plaintext and encrypted replies per inverter,
+supports the modem-gate variant defensively, uses the serial-number rule for
+outbound selection, and runs a fixed AES known-answer self-test at boot.
+
+The algorithm and framing come from static reverse engineering; the upstream
+authors explicitly note that they did not have a real encrypted-inverter golden
+capture. Physical testing with a `?2??????????` inverter therefore remains
+required before the encrypted transmit path can be called field-validated.
 
 ## Residual uncertainty
 

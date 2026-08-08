@@ -9,6 +9,11 @@ The included 4 MB custom partition leaves about 488 KB for SPIFFS. That is ample
 1. **Pairing broadcast mapping.** TI ZNP's special `AF_DATA_REQUEST_EXT` address mode `0x0F` with an all-ones destination is mapped to Zigbee short broadcast `0xFFFF`. This is the standards-equivalent all-device broadcast, but it is the largest remaining interoperability question.
 2. **Unsecured network formation.** Captures support security level zero. Confirm on a sniffer, if available, that the C6 NWK frame-control security bit remains clear.
 3. **Extended PAN ID byte order.** The code reproduces the bytes sent to `ZCD_NV_EXT_PAN_ID`: `FF FF` followed by the reversed six-byte ECU ID. Verify the formed network beacon against a known-working CC2530 setup.
+4. **Encrypted-inverter transmit validation.** The AES algorithm, key derivation,
+   padding and raw-APS conversion match the open-source static reverse
+   engineering linked from issue 55, but no public golden capture from a real
+   AES-enabled inverter was available. Test pairing and polling with an inverter
+   whose serial number has `2` as its second character.
 4. **Receive filtering.** Confirm cluster `0x0106`, profile `0x0F05`, endpoint `0x14` indications reach the raw APS callback on Arduino-ESP32 3.3.8.
 5. **Wi-Fi coexistence/range.** Run repeated polls while serving the web UI and publishing MQTT.
 

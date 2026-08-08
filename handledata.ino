@@ -10,6 +10,7 @@ void handleDataRequests(AsyncWebServerRequest *request)
      int i = atoi(request->arg("inv").c_str()) ;
      AsyncResponseStream *response = request->beginResponseStream("application/json");
      JsonDocument root;
+     root["encrypted"] = apsInverterUsesEncryption(i);
      if(Inv_Data[i].en_total > 0) { // only possible when was polled this day
         root["eN"] = round2(Inv_Data[i].en_total/(float)1000); // rounded
      } else {
@@ -74,6 +75,7 @@ void handleDataRequests(AsyncWebServerRequest *request)
       root["type"] = Inv_Prop[i].invType;
       root["serial"] = Inv_Prop[i].invSerial;
       root["sid"] = Inv_Prop[i].invID;
+      root["encrypted"] = apsInverterUsesEncryption(i);
       root["freq"] = round1(Inv_Data[i].freq);
       root["temp"] = round1(Inv_Data[i].heath);
       root["acv"] = round1(Inv_Data[i].acv);

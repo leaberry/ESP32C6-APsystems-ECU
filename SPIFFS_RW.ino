@@ -59,6 +59,9 @@ bool leesStruct(String whichfile) {
       Serial.print(F("reading ")); Serial.println(whichfile);
       configFile.read( (unsigned char *)&Inv_Prop[ivn], sizeof(Inv_Prop[ivn]) );
       configFile.close();
+      // The new flag occupies what may have been struct padding in an old file;
+      // never trust that byte during migration. Runtime RX detection can set it.
+      Inv_Prop[ivn].encrypted = apsSerialDefaultsToEncrypted(Inv_Prop[ivn].invSerial);
       return true;
  }
 

@@ -51,9 +51,12 @@
 #include "esp_zigbee_core.h"
 #include "esp_zigbee_secur.h"
 #include "aps/esp_zigbee_aps.h"
+#include <mbedtls/aes.h>
 
 #include <Preferences.h>
 Preferences preferences;
+// Forward declaration required by Arduino's generated .ino prototypes.
+struct SunSpecValues;
 //#include "Async_TCP.h" //we include the customized one
 
 //#include <ESPAsyncWebServer.h>
@@ -148,7 +151,10 @@ typedef struct{
   bool conPanels[4]    = {true,true,true,true};
   //int  maxPower        = 500;
   bool throttled       = false;
-} inverters; 
+  // APsystems' proprietary L1 transport encryption (not Zigbee NWK security).
+  // In auto mode this is selected by serial[1] == '2' and confirmed on RX.
+  bool encrypted       = false;
+} inverters;
 inverters Inv_Prop[9]; 
 
 typedef struct{ 

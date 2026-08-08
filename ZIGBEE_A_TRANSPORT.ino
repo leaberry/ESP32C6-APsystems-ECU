@@ -85,6 +85,24 @@ static bool submitAps(uint8_t mode, uint16_t destination, uint8_t dstEp,
   return err == ESP_OK;
 }
 
+static void submitApplicationAps(uint16_t dst, uint8_t dstEp, uint8_t srcEp,
+                                 uint16_t cluster, const uint8_t *payload,
+                                 uint16_t len, uint8_t radius, uint8_t opts) {
+  uint8_t encrypted[300];
+  size_t encryptedLen = 0;
+  int which = apsFindInverter(dst, nullptr);
+  bool broadcast = dst == 0xFFFF;
+  bool useEncryption = broadcast ? apsAllInvertersEncrypted() : apsInverterUsesEncryption(which);
+  if (useEncryption && apsEncryptOutgoing(which, payload, len, encrypted,
+                                           sizeof(encrypted), &encryptedLen, broadcast)) {
+    submitAps(ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT, dst, dstEp, srcEp, cluster,
+              encrypted, encryptedLen, radius, opts);
+  } else {
+    submitAps(ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT, dst, dstEp, srcEp, cluster,
+              payload, len, radius, opts);
+  }
+}
+
 void sendZB(char command[]) {
   size_t chars = strlen(command);
   if (chars < 4 || (chars & 1)) return;
@@ -105,7 +123,7 @@ void sendZB(char command[]) {
     len = min((size_t)len, min(sizeof(payload), strlen(p) / 2));
     for (uint16_t i = 0; i < len; ++i) payload[i] = hexByte(p + 2 * i);
     uint8_t opts = (znpOptions & 0x10) ? ESP_ZB_APSDE_TX_OPT_ACK_TX : 0;
-    submitAps(ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT, dst, dstEp, srcEp, cluster, payload, len, radius, opts);
+    submitApplicationAps(dst, dstEp, srcEp, cluster, payload, len, radius, opts);
     return;
   }
 
@@ -138,6 +156,16 @@ char *readZB(char out[]) {
   if (!apsRxQueue || xQueueReceive(apsRxQueue, &f, pdMS_TO_TICKS(2500)) != pdTRUE) {
     readCounter = 0;
     return out;
+  }
+
+  uint8_t decoded[300];
+  size_t decodedLen = 0;
+  int which = -1;
+  if (apsDecryptIncoming(f.source, f.data, f.len, decoded, sizeof(decoded), &decodedLen, &which)) {
+    memcpy(f.data, decoded, decodedLen);
+    f.len = decodedLen;
+  } else if (f.len >= 8 && !(f.data[6] == 0xFB && f.data[7] == 0xFB)) {
+    consoleOut("encrypted APS frame could not be decrypted");
   }
 
   // Synthetic ZNP acknowledgements keep the original validation paths intact.
