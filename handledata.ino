@@ -11,6 +11,9 @@ void handleDataRequests(AsyncWebServerRequest *request)
      AsyncResponseStream *response = request->beginResponseStream("application/json");
      JsonDocument root;
      root["encrypted"] = apsInverterUsesEncryption(i);
+     root["firmware"] = Inv_Data[i].firmwareVersion;
+     root["today_wh"] = energyTodayWhFor(i);
+     root["lifetime_wh"] = energyLifetimeWhFor(i);
      if(Inv_Data[i].en_total > 0) { // only possible when was polled this day
         root["eN"] = round2(Inv_Data[i].en_total/(float)1000); // rounded
      } else {
@@ -76,6 +79,10 @@ void handleDataRequests(AsyncWebServerRequest *request)
       root["serial"] = Inv_Prop[i].invSerial;
       root["sid"] = Inv_Prop[i].invID;
       root["encrypted"] = apsInverterUsesEncryption(i);
+      root["firmware"] = Inv_Data[i].firmwareVersion;
+      root["model_code"] = Inv_Data[i].modelCode;
+      root["today_wh"] = energyTodayWhFor(i);
+      root["lifetime_wh"] = energyLifetimeWhFor(i);
       root["freq"] = round1(Inv_Data[i].freq);
       root["temp"] = round1(Inv_Data[i].heath);
       root["acv"] = round1(Inv_Data[i].acv);
@@ -107,6 +114,23 @@ void handleDataRequests(AsyncWebServerRequest *request)
        request->send(200, "text/plain", term);
      }
     return;
+    }
+    else if (request->hasArg("Energy")) {
+      int i = request->arg("Energy").toInt();
+      if (i < 0 || i >= inverterCount) {
+        request->send(404, "text/plain", "unknown inverter");
+        return;
+      }
+      AsyncResponseStream *response = request->beginResponseStream("application/json");
+      JsonDocument root;
+      root["inverter"] = i;
+      root["date"] = energyDateKey;
+      root["today_wh"] = energyTodayWhFor(i);
+      root["lifetime_wh"] = energyLifetimeWhFor(i);
+      for (uint8_t h = 0; h < 24; ++h) root["hourly_wh"][h] = energyHourWhFor(i, h);
+      serializeJson(root, *response);
+      request->send(response);
+      return;
     }
     // if we are here no maching request was found
        String term = "invalid request";

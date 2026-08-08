@@ -1,5 +1,4 @@
-# Default 4 MB USB-only layout: one 3.375 MB application, 488 KB SPIFFS,
-# Zigbee storage and coredump. There is intentionally no OTA slot.
+# 4 MB USB-only layout. Copy this file to partitions.csv before building.
 # Name,     Type, SubType, Offset,  Size, Flags
 nvs,        data, nvs,     0x9000,  0x5000,
 app0,       app,  factory, 0x10000, 0x360000,

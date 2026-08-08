@@ -28,9 +28,10 @@
 
 #include "OTA.h"
 #include <Update.h>
+#include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32-ECU_v1_1"
+#define VERSION  "ESP32C6-ECU_v1_2"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -57,6 +58,13 @@
 Preferences preferences;
 // Forward declaration required by Arduino's generated .ino prototypes.
 struct SunSpecValues;
+struct EnergyDayRecord;
+struct GridProtectionSnapshot;
+enum GridScale : uint8_t;
+extern const char GRID_PROFILE_FILE[];
+extern File gridProfileUploadFile;
+extern uint8_t gridProfileTarget;
+bool gridProfileValidateFile();
 //#include "Async_TCP.h" //we include the customized one
 
 //#include <ESPAsyncWebServer.h>
@@ -132,6 +140,7 @@ int readCounter = 0;
 //char messageHead[5];
 int diagNose = 0; // initial true but after a successful healthcheck false
 bool Polling = false; // when true we have automatic polling
+uint32_t pollIntervalSeconds = 300; // complete fleet round cadence; web configurable
 int errorCode=10;
 //int recovered = 0;
   char txBuffer[90];
@@ -167,6 +176,8 @@ float dcv[4] = {0.0, 0.0, 0.0, 0.0};              // volt <100
 float power[4] = {0.0, 0.0, 0.0, 0.0};       //watt < 1000
 float pw_total = 0.0;
 float en_total = 0;
+char firmwareVersion[20] = "unknown";
+uint8_t modelCode = 0;
 } inverterdata;
 inverterdata Inv_Data[9];
   

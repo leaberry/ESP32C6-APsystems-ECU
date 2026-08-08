@@ -254,11 +254,65 @@ server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 // ***************************************************************************************
 //                           Simple Firmware Update
-// ***************************************************************************************                                      
+// ***************************************************************************************
+  server.on("/GRIDPROFILE", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+    gridProfilePage(request);
+  });
+
+  server.on("/GRIDPROFILE_ACTION", HTTP_POST, [](AsyncWebServerRequest *request){
+    if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+    if (!request->hasParam("inv", true) || !request->hasParam("op", true)) {
+      request->send(400, "text/plain", "missing inverter or operation"); return;
+    }
+    int target = request->getParam("inv", true)->value().toInt();
+    if (target < 0 || target >= inverterCount) {
+      request->send(400, "text/plain", "invalid inverter"); return;
+    }
+    gridProfileTarget = target;
+    String op = request->getParam("op", true)->value();
+    if (op == "apply") actionFlag = 70;
+    else if (op == "read") actionFlag = 71;
+    else if (op == "restore") actionFlag = 72;
+    else { request->send(400, "text/plain", "invalid operation"); return; }
+    request->redirect("/GRIDPROFILE");
+  });
+
+  server.on("/GRIDPROFILE_UPLOAD", HTTP_POST,
+    [](AsyncWebServerRequest *request){
+      if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+      if (gridProfileUploadFile) gridProfileUploadFile.close();
+      if (!gridProfileValidateFile()) {
+        if (SPIFFS.exists(GRID_PROFILE_FILE)) SPIFFS.remove(GRID_PROFILE_FILE);
+        request->send(400, "text/plain", "profile must use invdriver.gridprofile/v1 and contain points"); return;
+      }
+      gridSetStatus(F("Profile uploaded. Read the current settings before applying."));
+      request->redirect("/GRIDPROFILE");
+    },
+    [](AsyncWebServerRequest *request, String filename, size_t index,
+       uint8_t *data, size_t len, bool final){
+      if (!request->authenticate("admin", pswd)) return;
+      if (index == 0) {
+        if (SPIFFS.exists(GRID_PROFILE_FILE)) SPIFFS.remove(GRID_PROFILE_FILE);
+        gridProfileUploadFile = SPIFFS.open(GRID_PROFILE_FILE, "w");
+      }
+      if (index + len > 32768) {
+        if (gridProfileUploadFile) gridProfileUploadFile.close();
+        SPIFFS.remove(GRID_PROFILE_FILE);
+        return;
+      }
+      if (gridProfileUploadFile && len) gridProfileUploadFile.write(data, len);
+      if (final && gridProfileUploadFile) gridProfileUploadFile.close();
+    });
+
   server.on("/FWUPDATE", HTTP_GET, [](AsyncWebServerRequest *request){
     if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
     strcpy(requestUrl, "/");
     if (!request->authenticate("admin", pswd) ) return request->requestAuthentication();
+    if (esp_ota_get_next_update_partition(nullptr) == nullptr) {
+      request->send(409, "text/html", "<h2>OTA is disabled in the 4 MB USB-only build.</h2><p>Connect USB to install new firmware.</p><a href='/MENU'>Back</a>");
+      return;
+    }
     request->send_P(200, "text/html", otaIndex); 
     });
   server.on("/handleFwupdate", HTTP_POST, [](AsyncWebServerRequest *request){
@@ -276,6 +330,7 @@ server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(response);
   
   },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+    if (esp_ota_get_next_update_partition(nullptr) == nullptr) return;
     //Serial.println("filename = " + filename);
     if(filename != "") {
     if(!index){

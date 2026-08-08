@@ -297,6 +297,7 @@ We keep stacking the increases so we have also en_inc_total
      // now we extracted all values per panel and added the increased energy
      // we have invData[which].power[x] and invData[which].en_total
     Inv_Data[which].en_total += en_incr_total; // stack the increase
+    energyRecordDelta(which, en_incr_total);
     //dtostrf( total_pwr, 0, 1, Inv_Data[which].power[4]); // write the total value in the struct   
     Inv_Data[which].pw_total = total_pwr;
      yield();

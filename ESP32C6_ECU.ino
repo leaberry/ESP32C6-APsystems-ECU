@@ -48,9 +48,11 @@ void setup() {
 // we set inverterCount to the number of inverterfiles we find
   inverterCount = readInverterfiles();
   Serial.println("\ninverterCount = " + String(inverterCount));
+  pollSchedulerBegin();
   printInverters(); // show all the inverter files
 
   getTijd(); // retrieve time from the timeserver
+  energyHistoryBegin();
   Update_Log(1, "boot up");
 
   // ****************** mqtt init *********************
@@ -84,7 +86,7 @@ void setup() {
           // we poll our inverters immediatly
           if(Polling)
           {
-            poll_all();
+            pollSchedulerRequest(false);
           }
      }
 
@@ -122,6 +124,9 @@ void loop() {
     } else {
          if(dayTime)
          {
+            // The inverters have stopped producing; finalize exactly one flash
+            // record for the day before clearing live power values.
+            energyFinalizeDay();
             dayTime = false;
             //String term= "nightmode";
             Update_Log(1, "nightmode");
@@ -139,27 +144,10 @@ void loop() {
     }
 
 // ******************************************************************
-//              polling every 300 seconds
-// ******************************************************************
-#ifndef TEST
-  unsigned long nu = millis();  // the time the program is running
-
-   if (nu - laatsteMeting >= 1000UL * 300) // 300 sec
-   {
-     consoleOut("300 secs passed, polling" + String(millis()) ); //
-        laatsteMeting += 1000UL * 300 ; // increases each time with (300/inverterCount * miliseconds);
-        if(dayTime && Polling) // we only poll at day and when Polling = true
-           {
-              ledblink(1,100);
-              poll_all(); //if inverterCount = 9 than we have inverters 0-8
-           }
- }
-
-// ******************************************************************
 //              healthcheck every 10 minutes
 // ******************************************************************
-
-   nu = millis() + 1000UL*120; // 2 minutes later //
+#ifndef TEST
+   unsigned long nu = millis() + 1000UL*120; // 2 minutes later //
    if (nu - lastCheck >= 1000UL * 600) // =10min
    {
    Serial.println("600 secs passed, healthcheck" + String(millis()) );
@@ -200,7 +188,12 @@ void loop() {
        }
   }
 
+  energyHistoryLoop();
+
+  // Operator work runs before the polite automatic poller. At most one
+  // inverter transaction (2.5-second bounded wait) can delay an operator op.
   test_actionFlag();
+  pollSchedulerLoop();
 
    ws.cleanupClients();
    yield(); // to avoid wdt resets

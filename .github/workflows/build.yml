@@ -7,6 +7,15 @@ on:
 jobs:
   compile:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: 4mb-noota
+            flash: 4M
+            partitions: partitions-4mb-noota.csv
+          - name: 8mb-ota
+            flash: 8M
+            partitions: partitions-8mb-ota.csv
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2
@@ -23,8 +32,10 @@ jobs:
           git clone --depth 1 https://github.com/ESP32Async/ESPAsyncWebServer.git "$HOME/Arduino/libraries/ESPAsyncWebServer"
           git clone --depth 1 https://github.com/ESP32Async/AsyncTCP.git "$HOME/Arduino/libraries/AsyncTCP"
           git clone --depth 1 https://github.com/sfrwmaker/sunMoon.git "$HOME/Arduino/libraries/sunMoon"
-      - name: Compile
+      - name: Select ${{ matrix.name }} layout
+        run: cp "${{ matrix.partitions }}" partitions.csv
+      - name: Compile ${{ matrix.name }}
         run: >-
           arduino-cli compile
-          --fqbn esp32:esp32:esp32c6:ZigbeeMode=zczr,PartitionScheme=custom,CDCOnBoot=cdc
+          --fqbn esp32:esp32:esp32c6:FlashSize=${{ matrix.flash }},ZigbeeMode=zczr,PartitionScheme=custom,CDCOnBoot=cdc
           --export-binaries .

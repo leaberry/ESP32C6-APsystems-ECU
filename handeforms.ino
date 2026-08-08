@@ -9,7 +9,8 @@ void handleForms(AsyncWebServerRequest *request)
          // received form basisconfig
          strcpy(ECU_ID, request->arg("ecuid").c_str());
          strcpy(userPwd, request->arg("pw1").c_str());
-         pollOffset = request->arg("offs").toInt();  
+         pollOffset = request->arg("offs").toInt();
+         pollIntervalSeconds = pollingClampSeconds(request->arg("pollsec").toInt());
   
 //BEWARE CHECKBOX
          if(request->hasParam("pL")) { Polling = true; } else { Polling = false;}

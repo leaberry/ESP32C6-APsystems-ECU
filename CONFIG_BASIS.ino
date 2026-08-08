@@ -16,6 +16,8 @@ const char BASISCONFIG[] PROGMEM = R"=====(
   </td></tr>
   <tr><td style='width:140px;'>offset sun-set/rise<td><input class='inp2' type='number' min='-15' max='15' name='offs' value='{of}' size='4' ><td>
   <tr><td>auto polling<td><input type='checkbox' style='width:30px; height:30px;' name='pL' #check></input></td><tr>
+  <tr><td>poll interval<td><input class='inp2' type='number' min='5' max='86400' name='pollsec' value='{pi}' required> seconds</td></tr>
+  <tr><td colspan='2'><small>The firmware raises values below the safe fleet minimum (3 seconds per configured inverter, never below 5 seconds). Default: 300 seconds.</small></td></tr>
   
   </td></tr></table></form>
   </table>
@@ -33,7 +35,8 @@ void zendPageBasis(AsyncWebServerRequest *request) {
     // replace data
     webPage.replace("'{id}'" , "'" + String(ECU_ID) + "'") ;
     webPage.replace( "'{pw1}'" , "'" + String(userPwd) + "'") ;
-    webPage.replace( "'{of}'" , "'" + String(pollOffset) + "'") ; 
+    webPage.replace( "'{of}'" , "'" + String(pollOffset) + "'") ;
+    webPage.replace( "'{pi}'" , "'" + String(pollIntervalSeconds) + "'") ;
     if (Polling) { 
       webPage.replace("#check", "checked");
     }
@@ -48,7 +51,8 @@ void handleBasisconfig(AsyncWebServerRequest *request) { // form action = handle
    strcpy(userPwd, request->arg("pw1").c_str());
 //   pollRes = request->arg("pr").toInt();
 //   hc_IDX = request->arg("hcidx").toInt();
-   pollOffset = request->arg("offs").toInt();  
+   pollOffset = request->arg("offs").toInt();
+   pollIntervalSeconds = pollingClampSeconds(request->arg("pollsec").toInt());
 // this value gets currupted when it is negative, we get 256 -/- the number
 // so -2 becomes 254
 //   if (po > 200) { pollOffset = po - 256; } else { pollOffset = po; } 

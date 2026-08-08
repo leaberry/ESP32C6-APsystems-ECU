@@ -61,18 +61,20 @@ struct SunSpecValues {
   uint64_t energyWh;
   bool online;
   const char *serial;
+  const char *firmware;
 };
 
 static bool ssValuesForUnit(uint8_t unit, SunSpecValues &v) {
   memset(&v, 0, sizeof(v));
   v.serial = ECU_ID;
+  v.firmware = VERSION;
   v.temperature = NAN;
   if (unit == 1) {
     float volts = 0, hz = 0, temp = -1000, dcVolts = 0;
     int online = 0, dcVoltageSamples = 0;
     for (int i = 0; i < inverterCount; ++i) {
       v.watts += Inv_Data[i].pw_total;
-      if (Inv_Data[i].en_total > 0) v.energyWh += (uint64_t)llroundf(Inv_Data[i].en_total);
+      v.energyWh += energyLifetimeWhFor(i);
       if (polled[i]) {
         ++online;
         volts += Inv_Data[i].acv;
@@ -93,8 +95,9 @@ static bool ssValuesForUnit(uint8_t unit, SunSpecValues &v) {
   int i = (int)unit - 2;
   if (i < 0 || i >= inverterCount) return false;
   v.serial = Inv_Prop[i].invSerial;
+  v.firmware = Inv_Data[i].firmwareVersion;
   v.watts = Inv_Data[i].pw_total;
-  v.energyWh = Inv_Data[i].en_total > 0 ? (uint64_t)llroundf(Inv_Data[i].en_total) : 0;
+  v.energyWh = energyLifetimeWhFor(i);
   v.voltage = Inv_Data[i].acv;
   v.frequency = Inv_Data[i].freq;
   v.temperature = Inv_Data[i].heath;
@@ -120,7 +123,9 @@ static bool ssBuildBank(uint8_t unit, uint16_t *bank) {
   ssPutString(bank, p, "APsystems", 16);
   ssPutString(bank, p, unit == 1 ? "ESP32-C6 ECU" : "Microinverter", 16);
   ssPutString(bank, p, "Integrated Zigbee", 8);
-  ssPutString(bank, p, VERSION, 8);
+  // Unit 1 identifies the ESP32 bridge. Per-inverter unit IDs expose the
+  // inverter's software version returned by APsystems command 0xDC.
+  ssPutString(bank, p, v.firmware, 8);
   ssPutString(bank, p, v.serial, 16);
   ssPut16(bank, p, unit); ssPut16(bank, p, 0);
 
@@ -139,8 +144,8 @@ static bool ssBuildBank(uint8_t unit, uint16_t *bank) {
   ssPut16(bank, p, 0x8000); ssPut16(bank, p, 0);      // VA
   ssPut16(bank, p, 0x8000); ssPut16(bank, p, 0);      // VAr
   ssPut16(bank, p, 0x8000); ssPut16(bank, p, 0);      // PF
-  // The inherited decoder accumulates today's Wh and resets it daily. SunSpec
-  // clients see that reset as a new metering cycle rather than lifetime energy.
+  // Persistent finalized days plus the current RAM-only day form a monotonic
+  // lifetime counter for SunSpec clients.
   ssPut32(bank, p, v.energyWh > UINT32_MAX ? UINT32_MAX : (uint32_t)v.energyWh);
   ssPut16(bank, p, 0);                                // WH_SF
   ssPut16(bank, p, ssU16(v.dcCurrent, 10)); ssPut16(bank, p, (uint16_t)(int16_t)-1);

@@ -103,6 +103,11 @@ int readInverterfiles() {
       actionFlag = 0; //reset the actionflag
       pairOnActionflag();
     }
+    if (actionFlag >= 70 && actionFlag <= 72) {
+      uint8_t gridAction = actionFlag;
+      actionFlag = 0;
+      gridProfileHandleAction(gridAction);
+    }
      //Serial.println("test_actionFlag 4 val = " + String(actionFlag));
     if (actionFlag == 21) {
       actionFlag = 0; //reset the actionflag
@@ -187,6 +192,7 @@ int readInverterfiles() {
     if (actionFlag == 47) { //triggered by the webpage zbtest and mqtt
         actionFlag = 0; //reset the actionflag
         polling(iKeuze);
+        if (polled[iKeuze]) inverterInfoMaybeQuery(iKeuze);
         //events.send( "getall", "message");
         eventSend(2); 
     }
@@ -200,8 +206,8 @@ int readInverterfiles() {
     //polling all inverters
     if (actionFlag == 48) { //triggered by the webpage zbtest and mqtt
         actionFlag = 0; //reset the actionflag
-            ledblink(1,100);
-             poll_all(); 
+        ledblink(1,100);
+        pollSchedulerRequest(true);
     }
 
     if (actionFlag == 49) { //triggered by console testmqtt
@@ -236,20 +242,11 @@ int readInverterfiles() {
 } // end test actionflag
 
 
-void poll_all() { 
- // poll all inverters, inbetweeen empty serial and feed wdt 
-     for(int i=0; i<inverterCount; i++)
-     {     
-          if(String(Inv_Prop[i].invID) != "0000") {
-                polling(i);
-                delay(2000);
-                empty_serial2();
-                //ESP.wdtFeed();
-          }
-       }
-     //events.send( "getall", "message");
-     eventSend(2);
- } 
+void poll_all() {
+ // Compatibility entry point: schedule rather than blocking the application
+ // for an entire fleet round.
+ pollSchedulerRequest(true);
+ }
 
 String getChipId(bool sec) {
     uint32_t chipId = 0;

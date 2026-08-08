@@ -2,7 +2,7 @@
 
 This is a concrete, buildable port, but no inverter or ESP32-C6 was attached during development. Do not treat compile success as RF interoperability proof.
 
-The included 4 MB custom partition leaves about 488 KB for SPIFFS. That is ample for the application's small configuration files, but less than the upstream classic-ESP32 layout.
+The default 4 MB custom partition leaves about 488 KB for SPIFFS and deliberately has no OTA slot. The 8 MB layout has dual OTA slots and about 1.85 MB SPIFFS.
 
 ## Items needing physical validation
 
@@ -14,8 +14,11 @@ The included 4 MB custom partition leaves about 488 KB for SPIFFS. That is ample
    engineering linked from issue 55, but no public golden capture from a real
    AES-enabled inverter was available. Test pairing and polling with an inverter
    whose serial number has `2` as its second character.
-4. **Receive filtering.** Confirm cluster `0x0106`, profile `0x0F05`, endpoint `0x14` indications reach the raw APS callback on Arduino-ESP32 3.3.8.
-5. **Wi-Fi coexistence/range.** Run repeated polls while serving the web UI and publishing MQTT.
+5. **Receive filtering.** Confirm cluster `0x0106`, profile `0x0F05`, endpoint `0x14` indications reach the raw APS callback on Arduino-ESP32 3.3.8.
+6. **Firmware information.** Verify command `0xDC` and all reply variants on YC600, QS1 and DS3 firmware generations.
+7. **Grid-protection writes.** First perform read-only profile inspection, then test one utility-approved value on a service bench. Confirm the backup and value-by-value read-back before enabling production use. YC600 writes are intentionally unsupported.
+8. **Energy rollover.** Run across sunset and local midnight, reboot, and confirm exactly one daily journal record plus intact current-day hourly RAM values.
+9. **Wi-Fi coexistence/range.** Run repeated polls while serving the web UI, publishing MQTT and holding a persistent Modbus/TCP connection.
 
 ## Suggested first test
 

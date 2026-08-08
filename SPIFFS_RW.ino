@@ -107,6 +107,7 @@ void basisConfigsave() {
     json["inverterCount"] = inverterCount;
     json["Polling"] = Polling;
     json["pollOffset"] = pollOffset;
+    json["pollIntervalSeconds"] = pollIntervalSeconds;
         
     File configFile = SPIFFS.open("/basisconfig.json", "w");
     if (!configFile) {
@@ -189,6 +190,7 @@ bool file_open_for_read(const char* bestand)
                     strcpy (ECU_ID, doc["ECU_ID"] | "D8A3011B9780");
                     strcpy (userPwd, doc["userPwd"] | "1111" );
                     pollOffset = doc["pollOffset"].as<int>() | 0;
+                    pollIntervalSeconds = doc["pollIntervalSeconds"].as<uint32_t>() | 300U;
                     Polling = doc["Polling"].as<bool>() | false;
               }            
 
