@@ -1,0 +1,8 @@
+.vscode/
+.idea/
+build/
+*.bin
+!firmware/*.bin
+*.elf
+*.map
+sdkconfig*

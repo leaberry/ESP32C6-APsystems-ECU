@@ -1,6 +1,6 @@
 #include <ArduinoJson.h>
 
-#include <ESPAsyncWebSrv.h>
+#include <ESPAsyncWebServer.h>
 #include <AsyncTCP.h>
 #include <AsyncEventSource.h>
 //#include "esp_heap_caps.h"
@@ -36,8 +36,7 @@
 #include <time.h>
 #include <sunMoon.h>
 
-#include "soc/soc.h" // ha for brownout
-#include "soc/rtc_cntl_reg.h" // ha for brownout
+// Classic ESP32 brownout-register workaround removed: not valid on ESP32-C6.
 #include <esp_task_wdt.h> // ha
 #include <rtc_wdt.h>
            
@@ -47,6 +46,11 @@
 #include <ArduinoJson.h>
 //#include "AsyncJson.h"
 #include <Arduino.h>
+
+// Internal ESP32-C6 802.15.4/Zigbee stack; replaces CC2530/CC2531 + ZNP UART.
+#include "esp_zigbee_core.h"
+#include "esp_zigbee_secur.h"
+#include "aps/esp_zigbee_aps.h"
 
 #include <Preferences.h>
 Preferences preferences;
@@ -110,7 +114,7 @@ int testCounter = 0;
   float lati = 0;
   char gmtOffset[5] = "";  //+5.30 GMT
   bool zomerTijd = true;
-  //char static_ip[16] = "";
+  char static_ip[16] = "";
   uint8_t securityLevel = 6;
 
 
@@ -196,9 +200,19 @@ long  mqtt_lastConnect = 0;
 
 #define LED_AAN    HIGH   //sinc
 #define LED_UIT    LOW
-#define knop              0  //
-#define led_onb           2  // onboard led was 2
-#define ZB_RESET          5 // D5
+#ifndef APS_BUTTON_PIN
+#define APS_BUTTON_PIN    0
+#endif
+#ifndef APS_LED_PIN
+  #ifdef LED_BUILTIN
+    #define APS_LED_PIN LED_BUILTIN
+  #else
+    #define APS_LED_PIN 2
+  #endif
+#endif
+#define knop              APS_BUTTON_PIN
+#define led_onb           APS_LED_PIN
+// No external Zigbee reset pin: the radio is integrated in the ESP32-C6.
 //#define ZB_TX             17 // D8
 
 // we use this string only to send webpages

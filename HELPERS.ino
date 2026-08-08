@@ -14,12 +14,6 @@ void empty_serial() { // remove any remaining data in serial buffer
     Serial.read();
   }
 }
-void empty_serial2() { // remove any remaining data in serial buffer
-  while(Serial2.available()) {
-    Serial2.read();
-  }
-}
-
 void delayedReset() {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);

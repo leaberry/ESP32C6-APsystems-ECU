@@ -146,20 +146,13 @@ input, .sb1 { font-size:16px; }
 //</body></html>
 //)=====";
 
-// const char CONFIRM_IP[] PROGMEM = R"=====(
-// <!DOCTYPE html><html><head><meta charset='utf-8'>
-// <title>ESP-ECU</title>
-// <meta name="viewport" content="width=device-width, initial-scale=1">
-// <link rel="stylesheet" type="text/css" href="/STYLESHEET">
-// </head>
-// <body style='font-size:16px;'>
-// <script type='text/javascript'>setTimeout(function(){ window.location.href='http://{adres0}/'; }, 6000 ); </script>
-// <center>
-// <h1>SAVE IP SETTINGS</h1><div class='lijnstijl'></div><br><br><div class='divstijl'>
-// The IP settings are saved. <br><br>
-// Your Esp device is going to reboot. <strong>Wait util the led has blinked 3 times!</strong><br><br>
-// </body></html>
-// )=====";
+const char CONFIRM_IP[] PROGMEM = R"=====(
+<!DOCTYPE html><html><head><meta charset='utf-8'><title>ESP-ECU</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body><script>setTimeout(function(){window.location.href='http://{adres0}/';},6000);</script>
+<center><h1>SAVE IP SETTINGS</h1><p>#zin#</p><p>The settings are saved and the ECU will restart.</p></center>
+</body></html>
+)=====";
 
 //const char CONFIRM_INV[] PROGMEM = R"=====(
 //<!DOCTYPE html><html><head><meta charset='utf-8'>

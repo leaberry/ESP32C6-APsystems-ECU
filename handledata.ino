@@ -2,7 +2,7 @@ void handleDataRequests(AsyncWebServerRequest *request)
 
   {
   //consoleOut"handleDataRequest");
-  consoleOut("handleDataRequest the request is";
+  consoleOut("handleDataRequest the request is");
   consoleOut(String(requestUrl));
   if( request->hasArg("Power") )
     {

@@ -1,112 +1,108 @@
-# ESP32 read APS inverters
-This project is intended to read out APS micro inverters, (YC600, DS3, QS1). 
-Tt is a continuation of the project [ESP-ECU](https://github.com/patience4711/read-APSystems-YC600-QS1-DS3). The reason to run this on a more powerfull platform is that the ESP8266 has not enough program space for necessary program extensions.
-<br>
-The ESP32 has another big advantage over the ESP8266, the presence of a second uart. We can use one uart for the zigbee moduele and we have the other UART available for debugging on the serial monitor via usb. This way it is easyer to debug in the development stage. 
-There is also much more heap. Where the ESP8266 software can't be extended because there is not enough space for OTA, there is no limitation for the ESP32 so far.
+# ESP32-C6 read APsystems inverters
 
-See it in action on [YouTube](https://youtu.be/WKFVQ6d8KhQ)
+An ESP32-C6 port of [patience4711/ESP32-read-APS-inverters](https://github.com/patience4711/ESP32-read-APS-inverters). It runs the coordinator on the C6's integrated 802.15.4 radio, so a CC2530/CC2531, ZNP firmware, UART wiring, and reset wire are no longer required.
 
-## status ##
-The system has been tested in practice with a YC600, QS1 and DS3 inverters and it works fine. 
+The existing application is retained: YC600/QS1/DS3 pairing and polling, inverter decoding, web UI, Wi-Fi setup portal, HTTP endpoints, MQTT formats, scheduling, OTA, logging, reboot and output throttling. The original repository does **not** contain a Modbus server; this port therefore does not claim one.
 
-## purpose ##
-The system is intended for reading APS Systems inverters. The program can pair and poll YC600 QS1 and DS3 inverters, up to 9 pieces. The read values are displayed on a web page and sent via mosquitto in a Json format.
+> Hardware status: the project compiles for ESP32-C6 and its transport is mapped to Espressif's raw APS API. Actual pairing/polling still needs testing against physical APsystems inverters. See [LIMITATIONS.md](LIMITATIONS.md).
 
-Please see the <a href='https://github.com/patience4711/ESP32-read-APS-inverters/wiki'>WIKI</a> for information on building it, the working, etc. 
+## Hardware
 
-## downloads
-Sept 10 2025  : There is a new version [esp32-ecu_V1-4b](https://github.com/patience4711/ESP32-read-APS-inverters/blob/main/ESP32_ECU_v1_4b.bin)<br>
-Please pay attention: Due to a new value (calibration) you should check all settings, especially the inverter settings, calibration. Some values may get corrupted because the different spiffs usage.
-Aug 14 2025 : There is a new version [esp32-ecu_v1_3_expb](https://github.com/patience4711/ESP32-read-APS-inverters/blob/main/ESP32_ECU_v1_3_expb.bin)
-Please see changelog.
+- ESP32-C6 board with at least 4 MB flash (for example Seeed XIAO ESP32-C6 or Espressif ESP32-C6-DevKitC-1)
+- USB cable and a suitable 5 V supply
+- No external Zigbee module
 
-<br><br>
-The frontpage:<br>
-![frontpage](https://user-images.githubusercontent.com/12282915/229239150-05f6d29d-7620-4363-94fc-787b09d11fad.jpg)
-<br><br>The details page:<br>
-![details](https://github.com/user-attachments/assets/db17c692-f8a6-420a-94f1-a9f16b8cd3de)
+Wi-Fi and Zigbee share the 2.4 GHz radio resources. The ESP32-C6 coexistence layer schedules them; place the board where both Wi-Fi and inverter signal are good.
 
+## Arduino IDE build and flash
 
-## features
-- Simply to connect to your wifi
-- Easy add, delete and pair inverters
-- automatic polling or on demand via mqtt or http
-- data can be requested via http and mosquitto
-- There are 5 different mqtt json formats
-- Fast asyc webserver
-- a serial- and a web console to send commands and debugging
-- Smart timekeeping
-- A lot of system info on the webpage
-- Easy firmware update "Over The Air"
-- We can set a max output for inverters (throttling)
+1. Install Arduino IDE 2.x.
+2. In **Preferences → Additional boards manager URLs**, add:
+   `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
+3. In **Boards Manager**, install **esp32 by Espressif Systems 3.3.8**.
+4. In **Library Manager**, install:
+   - ArduinoJson
+   - ESP Async WebServer (maintained by ESP32Async)
+   - Async TCP (maintained by ESP32Async)
+   - PubSubClient
+   - NTPClient
+   - Time
+   - sunMoon
+   - PSACrypto
+5. Open `ESP32C6_ECU.ino`.
+6. Select your ESP32-C6 board. For XIAO, select **XIAO_ESP32C6**; otherwise **ESP32C6 Dev Module** is a safe generic choice.
+7. Set **Tools → Zigbee Mode → Zigbee ZCZR (coordinator/router)**.
+8. Choose **Tools → Partition Scheme → Custom**. The included `partitions.csv` fits the full application, OTA slots, SPIFFS, and Zigbee state into a 4 MB C6. Espressif's stock 4 MB ZCZR layout has only a 1.25 MB application slot and is too small for the inherited web application.
+9. Enable **USB CDC On Boot** if your board uses native USB, select its port, then click **Upload**.
+10. Open Serial Monitor at 115200 baud. On first boot, use the same Wi-Fi/configuration portal workflow documented by the upstream project.
 
-## the hardware
-It is nothing more than an esp32 (simple ESP32Dev WROOM32 not a C3 C6 S2 S3 H6) device and a prepared cc2530, cc2531 zigbee module. And a powersupply.
-The zigbeemodule should be flashed with a firmware that is developped by kadsol : [CC25xx_firmware](https://github.com/Koenkk/zigbee2mqtt/files/10193677/discord-09-12-2022.zip). The firmware is also available [here](https://github.com/patience4711/read-APSystems-YC600-QS1-DS3/blob/main/cc25xx_firmware.zip). Much more info as to the development of this software can be found here https://github.com/Koenkk/zigbee2mqtt/issues/4221.
+If upload does not start, hold **BOOT**, tap **RESET**, release **BOOT**, and upload again. Board-specific button behavior can differ.
 
-For info on how to build and use it, please see the [wiki](https://github.com/patience4711/ESP32-read-APS-inverters/wiki)
+### Flash the supplied build directly
 
-## how does it work
-APS works with their own zigbee implementation. The ESP-ECU sends zigbee commands (wireless) to the inverters and analyzes the answers, extracting the values. 
-The ESP communicates with the zigbee module through the alternative serial port (wired).
-The ESP-ECU starts a coordinator (an entity that can start a zigbee network). The coordinator binds the inverters and sends the poll requests to them.
-The interesting values are send via mqtt and displayed on the main page. The ecu sends a message that there is new data and the webpage reacts by requesting
-the new data.
-<br><br> example of a sensor in Domoticz:<br>
-![graph2](https://user-images.githubusercontent.com/12282915/139062602-71e92216-9703-4fc4-acc6-fabf544c4ffd.jpg)
+`firmware/ESP32C6_ECU.ino.merged.bin` is the verified generic ESP32-C6 4 MB image. With `esptool` installed, put the board in download mode and run:
 
+```text
+esptool --chip esp32c6 --port COM7 erase-flash
+esptool --chip esp32c6 --port COM7 write-flash 0x0 firmware/ESP32C6_ECU.ino.merged.bin
+```
 
-## changelog ##
-version ESP32-ECU_V1_4 :
-* improved inverter throttling (works for YC600 and DS3)
-* added an inverter query command via console
-* added a mosquitto intopic based on chipId
-* Throttling is possible via ui, http request or mosquitto
-* API's can have a debug argument to show debug info.
-  
-version ESP32-ECU_V1_2:
-* added options to throttle inverter (tested on YC600 and DS3)
+Replace `COM7` with your port. This erases existing settings. SHA-256: `250601f2a7846ca1611279cb2c648ca889e2a095abf3790c6b2963e3a4ec11f5`.
 
-version ESP32-ECU_V1_1:
-* adapted to a modern ArduinoIDE(2.3.4) and board definitions(2.0.18 arduino5)
-* changed the SPIFFS save functions
-* changed the wifi connection Portal
+The default button input is GPIO 0; the LED uses the board's `LED_BUILTIN` definition. Override `APS_BUTTON_PIN` or `APS_LED_PIN` at compile time for other wiring.
 
-version ESP32-ECU_V0_9:
-* fixed a bug in the html of the inverterspage
-* introduced an improved debugging method
+## What changed
 
-version ESP32-ECU_V0_8:
-* fixed a bug related to the working of the button
-  
-version ESP32-ECU_V0_7:
-* more efficient communication browser/server (events driven)
-* minimized all webpages and javascripts
-* improved menu and browsing on the ecu website
-  
-version ESP32-ECU_V0_5:
-* more efficient use of the memory
-* Use of arduinoJson
-  
-version ESP32-ECU_V0_4:
-* Banned all string operations in main processes
-* Some webpages improved.
+The old design was:
 
-version ESP32-ECU_V0_3b:
-* some security updates (maintenance from outside the own network)
-* fine-tuned the pairing process
-* redesigned the important processes to gain more free heap.
-* some cosmetics and small bugs
+`application → ZNP byte commands → UART → CC2530/CC2531 → Zigbee APS`
 
-version ESP32-ECU_V0_1d:
-* replaced elegantOta with my own implentation
-* fixed a bug in the pairing proces
-* solved system crashed due to string operations
-* fixed a bug in the pairing proces
+This port is:
 
-version ESP32-ECU_V0_1a:
-Relative to the esp8266:
-* new frontpage with buttons to inverter details 
-* removed the websocket console to relieve the webserver
-* added a serial console to issue commands
+`application → ZNP-compatible adapter → Espressif raw APS API → integrated C6 radio`
+
+`ZIGBEE_A_TRANSPORT.ino` parses the two ZNP calls the application actually uses (`AF_DATA_REQUEST` and `AF_DATA_REQUEST_EXT`) and submits the exact same APsystems ASDU bytes. Received raw APS frames are rendered into the legacy `AF_INCOMING_MSG` layout in memory, allowing the tested upstream pairing and inverter decoders to remain unchanged.
+
+Network parameters are also preserved:
+
+| Setting | Value |
+|---|---:|
+| Role | coordinator |
+| Channel | 16 |
+| PAN ID | derived from ECU ID (normally `0xA3D8`) |
+| Extended PAN ID | `FF:FF` plus reversed ECU ID |
+| Endpoint | `0x14` |
+| Profile | `0x0F05` |
+| Device ID | `0x0100` |
+| Request cluster | `0x0006` |
+| Response cluster | `0x0106` |
+| Security | none for APsystems APS traffic |
+
+## Fresh network state
+
+The port deliberately erases Zigbee NVRAM at boot and reforms the fixed APsystems network. This prevents an old PAN/channel/security configuration from silently overriding the ECU-derived settings. Wi-Fi and application configuration in Preferences/SPIFFS is unaffected.
+
+## Repository layout
+
+- `ESP32C6_ECU.ino` — original application entry point, with UART setup removed
+- `ZIGBEE_A_TRANSPORT.ino` — C6 raw-APS transport and legacy receive adapter
+- `ZIGBEE_COORDINATOR.ino` — integrated coordinator setup
+- `ZIGBEE_PAIR.ino`, `ZIGBEE_POLLING.ino`, `ZIGBEE_QUERYING.ino`, `SETPOWER.ino` — preserved APsystems protocol logic
+- `SECURITY-AUDIT.md` — CC2530 firmware/security findings and evidence
+- `LIMITATIONS.md` — remaining hardware-validation points
+- `firmware/` — compile-verified generic ESP32-C6 binaries
+
+## Publish as your GitHub repository
+
+The included Git repository preserves upstream history and names the original remote `upstream`. After creating an empty repository on GitHub:
+
+```text
+git remote add origin https://github.com/YOUR-NAME/YOUR-REPOSITORY.git
+git push -u origin main
+```
+
+Do not rename `upstream` to `origin`; keeping both names makes future comparison with patience4711's project straightforward.
+
+## License and attribution
+
+The application is derived from patience4711's GPL-3.0 project; see [LICENSE](LICENSE). Espressif's Zigbee stack is supplied through the ESP32 Arduino core under its own licenses.
