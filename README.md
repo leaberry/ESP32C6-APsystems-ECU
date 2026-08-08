@@ -59,6 +59,33 @@ and the Arduino core supports its flash and pin configuration.
 If upload does not start, hold BOOT, tap RESET, release BOOT and retry. Exact
 button behavior depends on the board.
 
+### Windows quick start with ESP-IDF tools
+
+On a Windows system with Espressif's ESP-IDF 5.5 tools installed under
+`C:\Espressif`, open the **ESP-IDF 5.5 PowerShell** desktop shortcut, change to
+this repository, and use:
+
+```powershell
+.\tools\Flash-Firmware.ps1 -Variant 8MB -Port COM7
+.\tools\Serial-Monitor.ps1 -Port COM7
+```
+
+Omit `-Port` when the C6 is the only COM device. The flash helper erases the
+board by default, which is appropriate for its first installation. Add
+`-SkipErase` only for a same-layout replacement when retaining settings is
+intentional. The monitor exits with `Ctrl+]`.
+
+For source-level debugging through the C6's built-in USB-JTAG interface, connect
+the board's native USB/JTAG port and run:
+
+```powershell
+.\tools\Debug-ESP32C6.ps1
+```
+
+This starts OpenOCD with `board/esp32c6-builtin.cfg` and opens the C6 RISC-V
+GDB using the packaged 8 MB ELF symbols. Boards with separate UART and native
+USB connectors must use the native USB connector for JTAG debugging.
+
 ### Flash a supplied merged image
 
 Put the C6 into download mode and use the merged image matching its flash size:

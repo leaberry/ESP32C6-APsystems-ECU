@@ -4,5 +4,6 @@ build/
 *.bin
 !firmware/*.bin
 *.elf
+!firmware/*.elf
 *.map
 sdkconfig*
