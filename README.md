@@ -202,5 +202,5 @@ git push -u origin main
 
 ## License
 
-The application is derived from patience4711's GPL-3.0 project; see [LICENSE](LICENSE).
+The application is derived from patience4711's MIT-licensed project; see [LICENSE](LICENSE).
 Espressif's Zigbee stack and installed libraries retain their own licenses.

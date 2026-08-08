@@ -4,7 +4,7 @@ This repository was ported from:
 
 - Repository: https://github.com/patience4711/ESP32-read-APS-inverters
 - Source commit: `7b0ff63`
-- License: GPL-3.0 (retained as `LICENSE`)
+- License: MIT (retained as `LICENSE`)
 
 The APsystems payload builders, pairing sequence, inverter decoders, web application, MQTT formats and configuration behavior are upstream code. The principal port files are `ZIGBEE_A_TRANSPORT.ino`, `ZIGBEE_COORDINATOR.ino`, the simplified integrated-radio health check, `partitions.csv`, and the C6-related compatibility fixes documented in the initial commit.
 
