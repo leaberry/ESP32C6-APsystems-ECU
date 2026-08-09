@@ -13,9 +13,11 @@ jobs:
           - name: 4mb-noota
             flash: 4M
             partitions: partitions-4mb-noota.csv
+            artifact_base: ESP32C6_ECU-4MB-noOTA
           - name: 8mb-ota
             flash: 8M
             partitions: partitions-8mb-ota.csv
+            artifact_base: ESP32C6_ECU-8MB-OTA
     steps:
       - uses: actions/checkout@v4
       - uses: arduino/setup-arduino-cli@v2
@@ -38,4 +40,28 @@ jobs:
         run: >-
           arduino-cli compile
           --fqbn esp32:esp32:esp32c6:FlashSize=${{ matrix.flash }},ZigbeeMode=zczr,PartitionScheme=custom,CDCOnBoot=cdc
-          --export-binaries .
+          --output-dir dist/${{ matrix.name }}
+          .
+      - name: Package ${{ matrix.name }} artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="dist/${{ matrix.name }}/ESP32C6-APsystems-ECU.ino"
+          output="artifacts/${{ matrix.name }}"
+          base="${{ matrix.artifact_base }}"
+          mkdir -p "$output"
+          cp "${source}.bin" "$output/${base}.bin"
+          cp "${source}.merged.bin" "$output/${base}.merged.bin"
+          cp "${source}.bootloader.bin" "$output/${base}.bootloader.bin"
+          cp "${source}.partitions.bin" "$output/${base}.partitions.bin"
+          if [[ "${{ matrix.name }}" == "8mb-ota" ]]; then
+            cp "${source}.elf" "$output/${base}.elf"
+          fi
+          (cd "$output" && sha256sum * > SHA256SUMS.txt)
+      - name: Upload ${{ matrix.name }} artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ESP32C6-APsystems-ECU-${{ matrix.name }}
+          path: artifacts/${{ matrix.name }}/
+          if-no-files-found: error
+          retention-days: 30

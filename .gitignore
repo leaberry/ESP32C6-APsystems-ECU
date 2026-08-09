@@ -1,9 +1,10 @@
 .vscode/
 .idea/
 build/
+dist/
+artifacts/
+firmware/
 *.bin
-!firmware/*.bin
 *.elf
-!firmware/*.elf
 *.map
 sdkconfig*

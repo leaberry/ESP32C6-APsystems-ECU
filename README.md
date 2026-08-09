@@ -63,7 +63,8 @@ button behavior depends on the board.
 
 On a Windows system with Espressif's ESP-IDF 5.5 tools installed under
 `C:\Espressif`, open the **ESP-IDF 5.5 PowerShell** desktop shortcut, change to
-this repository, and use:
+this repository, download the matching GitHub Actions artifact, extract it
+under `artifacts`, and use:
 
 ```powershell
 .\tools\Flash-Firmware.ps1 -Variant 8MB -Port COM7
@@ -83,16 +84,19 @@ the board's native USB/JTAG port and run:
 ```
 
 This starts OpenOCD with `board/esp32c6-builtin.cfg` and opens the C6 RISC-V
-GDB using the packaged 8 MB ELF symbols. Boards with separate UART and native
+GDB using the ELF symbols from the 8 MB CI artifact. Boards with separate UART and native
 USB connectors must use the native USB connector for JTAG debugging.
 
-### Flash a supplied merged image
+### Flash a CI or release artifact
 
-Put the C6 into download mode and use the merged image matching its flash size:
+Generated binaries are not committed to Git. Every GitHub Actions build uploads
+separate `4mb-noota` and `8mb-ota` archives containing the application, merged
+image, bootloader, partition image, checksums, and 8 MB debugging ELF. Download
+the archive for the board, then put the C6 into download mode:
 
 ```text
 esptool --chip esp32c6 --port COM7 erase-flash
-esptool --chip esp32c6 --port COM7 write-flash 0x0 firmware/ESP32C6_ECU-4MB-noOTA.merged.bin
+esptool --chip esp32c6 --port COM7 write-flash 0x0 artifacts/ESP32C6_ECU-4MB-noOTA.merged.bin
 ```
 
 Use `ESP32C6_ECU-8MB-OTA.merged.bin` for an 8 MB board. Replace `COM7` with the

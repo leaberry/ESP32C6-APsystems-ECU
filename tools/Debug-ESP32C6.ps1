@@ -1,11 +1,22 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [string]$Elf = (Join-Path (Split-Path $PSScriptRoot -Parent) 'firmware\ESP32C6_ECU-8MB-OTA.elf')
+    [string]$Elf
 )
 
 $ErrorActionPreference = 'Stop'
-if (!(Test-Path $Elf)) { throw "Debug symbols not found: $Elf" }
+$repo = Split-Path $PSScriptRoot -Parent
+if (!$Elf) {
+    $artifactRoot = Join-Path $repo 'artifacts'
+    $matches = if (Test-Path $artifactRoot) {
+        @(Get-ChildItem $artifactRoot -Recurse -File -Filter 'ESP32C6_ECU-8MB-OTA.elf')
+    } else { @() }
+    if ($matches.Count -ne 1) {
+        throw 'Download and extract the 8 MB CI artifact under artifacts, or pass -Elf with its ELF path.'
+    }
+    $Elf = $matches[0].FullName
+}
+$Elf = (Resolve-Path -LiteralPath $Elf).Path
 $openocdRoot = Get-ChildItem 'C:\Espressif\tools\openocd-esp32' -Directory |
     Sort-Object Name -Descending | Select-Object -First 1
 $openocd = Get-ChildItem $openocdRoot.FullName -Recurse -Filter openocd.exe |

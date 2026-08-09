@@ -4,6 +4,7 @@ param(
     [ValidateSet('8MB', '4MB')]
     [string]$Variant = '8MB',
     [string]$Port,
+    [string]$Image,
     [switch]$SkipErase
 )
 
@@ -24,11 +25,20 @@ $imageName = if ($Variant -eq '8MB') {
 } else {
     'ESP32C6_ECU-4MB-noOTA.merged.bin'
 }
-$image = Join-Path $repo "firmware\$imageName"
-if (!(Test-Path $image)) { throw "Firmware image not found: $image" }
+if (!$Image) {
+    $artifactRoot = Join-Path $repo 'artifacts'
+    $matches = if (Test-Path $artifactRoot) {
+        @(Get-ChildItem $artifactRoot -Recurse -File -Filter $imageName)
+    } else { @() }
+    if ($matches.Count -ne 1) {
+        throw "Download the $Variant CI artifact, extract it under artifacts, or pass -Image with the merged-image path."
+    }
+    $Image = $matches[0].FullName
+}
+$Image = (Resolve-Path -LiteralPath $Image).Path
 
 Write-Host "Board: ESP32-C6 $Variant on $Port"
-Write-Host "Image: $image"
+Write-Host "Image: $Image"
 if (!$SkipErase) {
     Write-Host 'Erasing flash (configuration and history will be cleared)...'
     & $python -m esptool --chip esp32c6 --port $Port erase-flash
@@ -37,6 +47,6 @@ if (!$SkipErase) {
 
 $flashSize = if ($Variant -eq '8MB') { '8MB' } else { '4MB' }
 & $python -m esptool --chip esp32c6 --port $Port --baud 460800 `
-    --before default-reset --after hard-reset write-flash --flash-size $flashSize 0x0 $image
+    --before default-reset --after hard-reset write-flash --flash-size $flashSize 0x0 $Image
 if ($LASTEXITCODE) { throw "Firmware flash failed with exit code $LASTEXITCODE." }
 Write-Host 'Flash complete. The first boot may take several seconds.' -ForegroundColor Green

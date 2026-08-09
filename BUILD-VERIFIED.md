@@ -3,7 +3,7 @@
 Verified on 2026-08-08 with:
 
 - Arduino CLI 1.5.1
-- Espressif Arduino core 3.3.8 (ESP-IDF 5.5.4)
+- Espressif Arduino core 3.3.8
 - target `esp32:esp32:esp32c6`
 - Zigbee mode `zczr`
 - included custom 4 MB partition table
@@ -12,16 +12,19 @@ Verified on 2026-08-08 with:
 Result:
 
 ```text
-Sketch: 1,680,398 bytes
-Application binary: 1,680,496 bytes
-Global variables: 69,488 bytes
-Application slot: 1,769,472 bytes
-Application-slot margin: 88,976 bytes
-Merged flash image: 4,194,304 bytes
+Sketch: 1,708,230 bytes
+Application binary: 1,708,336 bytes
+Global variables: 71,032 bytes
+4 MB application slot: 3,538,944 bytes
+4 MB application-slot margin: 1,830,608 bytes
+8 MB OTA application slot: 3,145,728 bytes
+8 MB OTA application-slot margin: 1,437,392 bytes
 ```
 
 The boot-time APsystems AES known-answer test uses the published reverse-
 engineered vector. The final build includes the mixed plaintext/AES transport,
 multi-client SunSpec Modbus/TCP server, and web transport-status fields.
 
-The generated partition binary was decoded and verified as two 1,728 KiB OTA slots, 488 KiB SPIFFS, plus `zb_storage`, `zb_fct`, `rcp_fw`, and coredump partitions.
+The 4 MB partition image was decoded as one 3,456 KiB factory application and
+488 KiB SPIFFS. The 8 MB image contains two 3 MiB OTA applications and 1,896
+KiB SPIFFS. Both retain `zb_storage`, `zb_fct`, `rcp_fw`, and coredump partitions.
