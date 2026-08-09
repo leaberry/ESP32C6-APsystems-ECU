@@ -15,5 +15,12 @@ if (!$Port) {
     $Port = $ports[0]
 }
 
-Write-Host "Opening $Port at $Baud baud. Press Ctrl+] to exit."
-& $python -m serial.tools.miniterm $Port $Baud --raw
+Write-Host "Opening $Port at $Baud baud with automatic USB reconnect. Press Ctrl+] to exit."
+& $python -m esp_idf_monitor `
+    --port $Port `
+    --baud $Baud `
+    --target esp32c6 `
+    --disable-address-decoding `
+    --decode-coredumps disable `
+    --decode-panic disable `
+    --open-port-attempts 0
