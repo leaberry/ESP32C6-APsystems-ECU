@@ -11,7 +11,7 @@ Verified on 2026-08-09 with:
 The native-radio build result was:
 
 ```text
-Sketch: 1,387,554 bytes
+Sketch: 1,387,776 bytes
 Global variables: 87,552 bytes
 8 MB OTA application slot: 3,145,728 bytes
 8 MB OTA application-slot margin: about 1.76 MB
@@ -24,6 +24,7 @@ in range. It verified:
 - proprietary APsystems pairing reply parsing;
 - persistence of inverter PAN and short radio address;
 - transient Wi-Fi/802.15.4 coexistence retry;
+- one jittered retry when RF contention interrupts a fragmented poll reply;
 - APS fragment acknowledgements for blocks zero and one;
 - reassembly and decoding of a 105-byte telemetry response; and
 - firmware-version query and decode (`5.456` on the tested inverter).

@@ -16,6 +16,18 @@ void polling(int which) {
   sendZB(pollCommand);
 
   errorCode = decodePollAnswer(which);
+  if (errorCode != 0) {
+    // Same-PAN inverters answer the APsystems broadcast together. A collision
+    // can occasionally interrupt one inverter between APS fragments; retry
+    // once with jitter instead of waiting for the next configured poll cycle.
+    uint16_t backoffMs = 300 + (esp_random() % 301);
+    diagnosticsAppend("poll retry inverter=" + String(which) +
+                      " after=" + String(backoffMs) + "ms");
+    delay(backoffMs);
+    empty_serial2();
+    sendZB(pollCommand);
+    errorCode = decodePollAnswer(which);
+  }
   if (errorCode == 0) {
     polled[which] = true;
     yield();

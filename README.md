@@ -169,8 +169,10 @@ selected safely.
 The polling interval is configured in seconds on the Basic configuration page.
 Its default is 300 seconds. The firmware enforces a dynamic minimum of three
 seconds per configured inverter and never less than five seconds. One inverter
-is polled at a time, operator actions run between transactions, stale Zigbee
-receive data is cleared, and consecutive sends are separated by 250 ms.
+is polled at a time, operator actions run between transactions, stale radio
+receive data is cleared, and consecutive sends are separated by 250 ms. If
+same-PAN reply contention interrupts a fragmented response, the poll receives
+one jittered retry rather than waiting for the next full polling interval.
 
 The Modbus server is independent and only reads the last completed telemetry
 snapshot. A persistent Home Assistant TCP session therefore does not issue
