@@ -122,7 +122,7 @@ static bool ssBuildBank(uint8_t unit, uint16_t *bank) {
   ssPut16(bank, p, 1); ssPut16(bank, p, 66);          // Common Model 1
   ssPutString(bank, p, "APsystems", 16);
   ssPutString(bank, p, unit == 1 ? "ESP32-C6 ECU" : "Microinverter", 16);
-  ssPutString(bank, p, "Integrated Zigbee", 8);
+  ssPutString(bank, p, "Native 802.15.4", 8);
   // Unit 1 identifies the ESP32 bridge. Per-inverter unit IDs expose the
   // inverter's software version returned by APsystems command 0xDC.
   ssPutString(bank, p, v.firmware, 8);

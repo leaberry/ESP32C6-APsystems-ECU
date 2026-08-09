@@ -50,10 +50,11 @@
 //#include "AsyncJson.h"
 #include <Arduino.h>
 
-// Internal ESP32-C6 802.15.4/Zigbee stack; replaces CC2530/CC2531 + ZNP UART.
-#include "esp_zigbee_core.h"
-#include "esp_zigbee_secur.h"
-#include "aps/esp_zigbee_aps.h"
+// ESP32-C6 native 802.15.4 radio. APsystems uses proprietary cross-network
+// Zigbee framing that a standards-enforcing coordinator stack rejects, so the
+// ECU owns the MAC directly and implements only the required NWK/APS subset.
+#include "esp_ieee802154.h"
+#include "esp_coexist.h"
 #include <mbedtls/aes.h>
 
 #include <Preferences.h>

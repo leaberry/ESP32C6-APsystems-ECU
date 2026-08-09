@@ -1,126 +1,64 @@
+/*
+ * Native ESP32-C6 802.15.4 coordinator for the proprietary APsystems link.
+ *
+ * This intentionally does not form or join a standards-managed Zigbee
+ * network. APsystems inverters retain their existing PAN and use several
+ * non-standard NWK commands during pairing. The transport switches PANs for
+ * each transaction while the Wi-Fi/802.15.4 coexistence arbiter remains on.
+ */
+
 static volatile bool zbStarted = false;
 static volatile bool zbStartFailed = false;
-static bool zbTaskCreated = false;
-static volatile uint32_t zbLastSignal = 0;
-static volatile esp_err_t zbLastStatus = ESP_OK;
+uint16_t zbOperationalPan = 0xFFFF;
 
-static void startCommissioning(uint8_t mode) {
-  esp_zb_bdb_start_top_level_commissioning(mode);
-}
-
-extern "C" void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal) {
-  uint32_t *raw = signal->p_app_signal;
-  esp_zb_app_signal_type_t type = (esp_zb_app_signal_type_t)*raw;
-  zbLastSignal = (uint32_t)type;
-  zbLastStatus = signal->esp_err_status;
-  Serial.printf("Zigbee signal %lu: %s\n", (unsigned long)zbLastSignal,
-                esp_err_to_name(zbLastStatus));
-  switch (type) {
-    case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
-      startCommissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
-      break;
-    case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
-    case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
-      if (signal->esp_err_status == ESP_OK) {
-        if (esp_zb_bdb_is_factory_new()) startCommissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
-        else zbStarted = true;
-      } else zbStartFailed = true;
-      break;
-    case ESP_ZB_BDB_SIGNAL_FORMATION:
-      if (signal->esp_err_status == ESP_OK) {
-        zbStarted = true;
-        // Pairing is APsystems' application broadcast, not Zigbee BDB joining,
-        // nevertheless allowing joins matches the permissive legacy coordinator.
-        esp_zb_bdb_open_network(0xFF);
-      } else {
-        esp_zb_scheduler_alarm((esp_zb_callback_t)startCommissioning,
-                               ESP_ZB_BDB_MODE_NETWORK_FORMATION, 1000);
-      }
-      break;
-    default:
-      break;
-  }
-}
-
-static void zigbeeTask(void *) {
-  Serial.printf("Starting integrated Zigbee coordinator for ECU %s on channel 16\n",
-                ECU_ID);
-  esp_zb_platform_config_t platform = {};
-  platform.radio_config.radio_mode = ZB_RADIO_MODE_NATIVE;
-  platform.host_config.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE;
-  ESP_ERROR_CHECK(esp_zb_platform_config(&platform));
-
-  esp_zb_cfg_t cfg = {};
-  cfg.esp_zb_role = ESP_ZB_DEVICE_TYPE_COORDINATOR;
-  cfg.install_code_policy = false;
-  cfg.nwk_cfg.zczr_cfg.max_children = 10;
-  esp_zb_init(&cfg);
-
-  uint16_t pan = hexLe16(ECU_ID); // ECU begins D8A3 -> PAN 0xA3D8
-  esp_zb_set_pan_id(pan);
-  esp_zb_ieee_addr_t extPan = {0xFF, 0xFF, 0, 0, 0, 0, 0, 0};
-  String reversed = ECU_REVERSE();
-  for (uint8_t i = 0; i < 6; ++i) extPan[i + 2] = hexByte(reversed.c_str() + i * 2);
-  esp_zb_set_extended_pan_id(extPan);
-  ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(1UL << 16));
-
-  // Packet captures from the original firmware show unsecured APsystems APS
-  // traffic; do not add Zigbee NWK or APS encryption to these proprietary frames.
-  ESP_ERROR_CHECK(esp_zb_secur_network_security_enable(false));
-
-  esp_zb_cluster_list_t *clusters = esp_zb_zcl_cluster_list_create();
-  esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(nullptr);
-  ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(clusters, basic, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE));
-  esp_zb_ep_list_t *endpoints = esp_zb_ep_list_create();
-  esp_zb_endpoint_config_t ep = {
-    .endpoint = 0x14,
-    .app_profile_id = 0x0F05,
-    .app_device_id = 0x0100,
-    .app_device_version = 0,
-  };
-  ESP_ERROR_CHECK(esp_zb_ep_list_add_ep(endpoints, clusters, ep));
-  ESP_ERROR_CHECK(esp_zb_device_register(endpoints));
-
-  apsRxQueue = xQueueCreate(8, sizeof(ApsRxFrame));
-  esp_zb_aps_data_indication_handler_register(apsDataIndication);
-  esp_zb_aps_data_confirm_handler_register(apsDataConfirm);
-  esp_zb_nvram_erase_at_start(true);
-  esp_err_t startResult = esp_zb_start(false);
-  if (startResult != ESP_OK) {
-    zbLastStatus = startResult;
-    zbStartFailed = true;
-    Serial.printf("Zigbee stack start failed: %s\n", esp_err_to_name(startResult));
-    vTaskDelete(nullptr);
-    return;
-  }
-  esp_zb_stack_main_loop();
-}
+bool rawRadioStart();
+bool rawRadioSetPan(uint16_t pan);
+bool rawRadioSetPromiscuous(bool enabled);
 
 bool coordinator(bool normal) {
   (void)normal;
-  if (!zbTaskCreated) {
-    zbTaskCreated = xTaskCreate(zigbeeTask, "aps_zigbee", 8192, nullptr, 5, nullptr) == pdPASS;
-    if (!zbTaskCreated) {
-      Serial.println(F("Could not create integrated Zigbee task"));
-      return false;
-    }
-  }
-  unsigned long began = millis();
-  while (!zbStarted && !zbStartFailed && millis() - began < 15000) delay(25);
-  zigbeeUp = zbStarted ? 1 : 0;
   if (zbStarted) {
-    Serial.println(F("Integrated Zigbee coordinator is ready"));
-  } else if (zbStartFailed) {
-    Serial.printf("Integrated Zigbee coordinator failed (signal %lu, %s)\n",
-                  (unsigned long)zbLastSignal, esp_err_to_name(zbLastStatus));
-  } else {
-    Serial.printf("Integrated Zigbee coordinator timed out (last signal %lu, %s)\n",
-                  (unsigned long)zbLastSignal, esp_err_to_name(zbLastStatus));
+    zigbeeUp = 1;
+    return true;
   }
-  return zbStarted;
+  if (zbStartFailed) {
+    zigbeeUp = 0;
+    return false;
+  }
+
+  // ECU begins D8A3, therefore the legacy operational PAN is 0xA3D8.
+  zbOperationalPan = hexLe16(ECU_ID);
+  if (!rawRadioStart()) {
+    zbStartFailed = true;
+    zigbeeUp = 0;
+    consoleOut(F("native APsystems 802.15.4 transport failed to start"));
+    return false;
+  }
+
+  zbStarted = true;
+  zigbeeUp = 1;
+  consoleOut(F("native APsystems 802.15.4 transport is ready"));
+  return true;
 }
 
 void coordinator_init() { coordinator(false); }
+
+bool apsUseSpecificPan(uint16_t requested, const char *reason) {
+  if (!zbStarted && !coordinator(false)) return false;
+  bool changed = rawRadioSetPan(requested);
+  char trace[96];
+  snprintf(trace, sizeof(trace),
+           "APS %s PAN requested=0x%04X result=%s",
+           reason ? reason : "radio", requested, changed ? "OK" : "FAILED");
+  diagnosticsAppend(String(trace));
+  return changed;
+}
+
+bool apsUsePairingPan(bool pairing) {
+  return apsUseSpecificPan(pairing ? 0xFFFF : zbOperationalPan,
+                           pairing ? "pairing" : "operational");
+}
+
 void sendNO() {
   char ecuRev[13], cmd[100];
   ECU_REVERSE().toCharArray(ecuRev, sizeof(ecuRev));
@@ -129,7 +67,5 @@ void sendNO() {
 }
 
 void ZBhardReset() {
-  // Integrated radio cannot be GPIO-reset separately. A whole-chip restart is
-  // deliberately not performed here; coordinator() is idempotent.
-  consoleOut("integrated Zigbee radio already managed by ESP32-C6");
+  consoleOut(F("native 802.15.4 radio is managed by the ESP32-C6"));
 }

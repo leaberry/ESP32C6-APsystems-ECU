@@ -13,6 +13,8 @@ void pairOnActionflag() {
     }
 
    consoleOut("trying pair inv " + String(iKeuze));
+   char previousId[5] = {};
+   strlcpy(previousId, Inv_Prop[iKeuze].invID, sizeof(previousId));
   // now that we know that the radio is up, we don't need to test this in the pairing routine
 
   if( pairing(iKeuze) ) {
@@ -23,7 +25,13 @@ void pairOnActionflag() {
     //} else if(diagNose==2){ws.textAll(term);}  
 
   } else {
-    strncpy(Inv_Prop[iKeuze].invID, "0000", 5);
+    // A failed retry must not destroy a previously working pairing.
+    if (strcmp(previousId, "0000") && strcmp(previousId, "1111"))
+      strlcpy(Inv_Prop[iKeuze].invID, previousId,
+              sizeof(Inv_Prop[iKeuze].invID));
+    else
+      strlcpy(Inv_Prop[iKeuze].invID, "0000",
+              sizeof(Inv_Prop[iKeuze].invID));
     String term = "failed, inverter got id " + String(Inv_Prop[iKeuze].invID);
     Update_Log(4, "failed");
     consoleOut(term);
@@ -61,6 +69,16 @@ bool pairing(int which) {
   //ecu_short[5]='\0'; no need for as strncat terminates with \0
   String term = "";
   bool success=false;
+  // Factory/unpaired APsystems inverters rendezvous on PAN 0xFFFF. The old
+  // CC253x ZNP accepted a destination-PAN override in AF_DATA_REQUEST_EXT;
+  // Espressif's public APS request has no equivalent field, so temporarily
+  // move the integrated radio's PAN and restore it after the sequence.
+  radioTraceBegin();
+  if (!apsUsePairingPan(true)) {
+    consoleOut("could not enter APsystems pairing PAN 0xFFFF");
+    radioTraceEnd();
+    return false;
+  }
   for ( int y = 0; y < 4; y++) {
     switch (y) {
         case 0:// command 0
@@ -88,6 +106,14 @@ bool pairing(int which) {
 
     sendZB(pairCmd);
     delay(1500); // give the inverter the chance to answer
+    char rawInverterId[5] = {};
+    if (radioTraceFindPairReply(Inv_Prop[which].invSerial, rawInverterId)) {
+      strlcpy(Inv_Prop[which].invID, rawInverterId,
+              sizeof(Inv_Prop[which].invID));
+      success = true;
+      consoleOut("accepted cross-PAN pairing reply, inverter ID " +
+                 String(Inv_Prop[which].invID));
+    }
       //check if anything was received
       // after sending cmd 1 or 2 we can expect an answer to decode
       // we let decodePairMessage retrieve the answer then.
@@ -104,8 +130,12 @@ bool pairing(int which) {
     }
   }
   //now all 4 commands have been sent
+  radioTraceEnd();
+  if (!apsUsePairingPan(false)) {
+    consoleOut("warning: could not restore operational Zigbee PAN");
+  }
   if(success) {return true; } else { return false;}  // when paired 0x103A
-}   
+}
 
 
 bool decodePairMessage(int which)
