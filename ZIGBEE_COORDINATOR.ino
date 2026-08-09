@@ -1,6 +1,8 @@
 static volatile bool zbStarted = false;
 static volatile bool zbStartFailed = false;
 static bool zbTaskCreated = false;
+static volatile uint32_t zbLastSignal = 0;
+static volatile esp_err_t zbLastStatus = ESP_OK;
 
 static void startCommissioning(uint8_t mode) {
   esp_zb_bdb_start_top_level_commissioning(mode);
@@ -9,6 +11,10 @@ static void startCommissioning(uint8_t mode) {
 extern "C" void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal) {
   uint32_t *raw = signal->p_app_signal;
   esp_zb_app_signal_type_t type = (esp_zb_app_signal_type_t)*raw;
+  zbLastSignal = (uint32_t)type;
+  zbLastStatus = signal->esp_err_status;
+  Serial.printf("Zigbee signal %lu: %s\n", (unsigned long)zbLastSignal,
+                esp_err_to_name(zbLastStatus));
   switch (type) {
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
       startCommissioning(ESP_ZB_BDB_MODE_INITIALIZATION);
@@ -37,6 +43,8 @@ extern "C" void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal) {
 }
 
 static void zigbeeTask(void *) {
+  Serial.printf("Starting integrated Zigbee coordinator for ECU %s on channel 16\n",
+                ECU_ID);
   esp_zb_platform_config_t platform = {};
   platform.radio_config.radio_mode = ZB_RADIO_MODE_NATIVE;
   platform.host_config.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE;
@@ -77,7 +85,14 @@ static void zigbeeTask(void *) {
   esp_zb_aps_data_indication_handler_register(apsDataIndication);
   esp_zb_aps_data_confirm_handler_register(apsDataConfirm);
   esp_zb_nvram_erase_at_start(true);
-  ESP_ERROR_CHECK(esp_zb_start(false));
+  esp_err_t startResult = esp_zb_start(false);
+  if (startResult != ESP_OK) {
+    zbLastStatus = startResult;
+    zbStartFailed = true;
+    Serial.printf("Zigbee stack start failed: %s\n", esp_err_to_name(startResult));
+    vTaskDelete(nullptr);
+    return;
+  }
   esp_zb_stack_main_loop();
 }
 
@@ -85,11 +100,23 @@ bool coordinator(bool normal) {
   (void)normal;
   if (!zbTaskCreated) {
     zbTaskCreated = xTaskCreate(zigbeeTask, "aps_zigbee", 8192, nullptr, 5, nullptr) == pdPASS;
-    if (!zbTaskCreated) return false;
+    if (!zbTaskCreated) {
+      Serial.println(F("Could not create integrated Zigbee task"));
+      return false;
+    }
   }
   unsigned long began = millis();
   while (!zbStarted && !zbStartFailed && millis() - began < 15000) delay(25);
   zigbeeUp = zbStarted ? 1 : 0;
+  if (zbStarted) {
+    Serial.println(F("Integrated Zigbee coordinator is ready"));
+  } else if (zbStartFailed) {
+    Serial.printf("Integrated Zigbee coordinator failed (signal %lu, %s)\n",
+                  (unsigned long)zbLastSignal, esp_err_to_name(zbLastStatus));
+  } else {
+    Serial.printf("Integrated Zigbee coordinator timed out (last signal %lu, %s)\n",
+                  (unsigned long)zbLastSignal, esp_err_to_name(zbLastStatus));
+  }
   return zbStarted;
 }
 

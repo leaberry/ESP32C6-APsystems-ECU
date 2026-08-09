@@ -8,6 +8,12 @@ void setup() {
   Serial.println(apsCryptoSelfTest() ? F("APsystems AES self-test: PASS")
                                      : F("APsystems AES self-test: FAILED"));
 
+  // ESP32-C6 has one shared 2.4 GHz RF path. The Zigbee-enabled build must
+  // enable Wi-Fi/802.15.4 arbitration before either radio stack is used.
+  esp_err_t coexistResult = esp_coex_wifi_i154_enable();
+  Serial.println("Wi-Fi/802.15.4 coexistence: " +
+                 String(esp_err_to_name(coexistResult)));
+
 
   pinMode(knop, INPUT_PULLUP); // de knop
   pinMode(led_onb, OUTPUT); // onboard led
