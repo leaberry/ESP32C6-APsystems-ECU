@@ -1,35 +1,37 @@
-# ZNP-to-ESP32-C6 operation map
+# ZNP-to-native-ESP32-C6 operation map
 
-| Legacy TI operation | Purpose | ESP32-C6 implementation |
+| Legacy TI operation | Purpose | Native ESP32-C6 implementation |
 |---|---|---|
-| `SYS_RESET_REQ` / GPIO reset | Reset CC25xx | Removed; integrated stack is started once in its own FreeRTOS task |
-| `ZB_WRITE_CONFIGURATION: ZCD_NV_LOGICAL_TYPE=0` | Coordinator role | `esp_zb_init()` with `ESP_ZB_DEVICE_TYPE_COORDINATOR` |
-| `ZCD_NV_CHANLIST = channel 16` | Fixed RF channel | `esp_zb_set_primary_network_channel_set(1UL << 16)` |
-| `ZCD_NV_PANID` | ECU PAN | `esp_zb_set_pan_id()` |
-| `ZCD_NV_EXT_PAN_ID` | ECU extended PAN | `esp_zb_set_extended_pan_id()` |
-| `AF_REGISTER` endpoint `0x14` | APsystems application endpoint | `esp_zb_ep_list_add_ep()` with profile `0x0F05`, device `0x0100` |
-| `ZB_START_REQUEST` | Form network | BDB initialization and network formation signals |
-| `AF_DATA_REQUEST` | Poll/query/reboot/throttle | `esp_zb_aps_data_request()` to the inverter short address |
-| `AF_DATA_REQUEST_EXT`, mode `0x0F` | Four pairing broadcasts | `esp_zb_aps_data_request()` to short broadcast `0xFFFF` |
-| `AF_DATA_CONFIRM` | Transmit result | raw APS confirm callback |
-| `AF_INCOMING_MSG` | Inverter response | raw APS indication callback; adapted to the legacy decoder layout in RAM |
-| `UTIL_GET_DEVICE_INFO` | Health check | internal stack formation state (`zbStarted`) |
+| `SYS_RESET_REQ` / GPIO reset | Reset CC25xx | Removed; the integrated radio is initialized once |
+| `ZCD_NV_CHANLIST = channel 16` | Fixed RF channel | `esp_ieee802154_set_channel(16)` |
+| `ZCD_NV_PANID` | ECU or inverter PAN | `esp_ieee802154_set_panid()`; learned per inverter |
+| Coordinator short address | Receive destination | `esp_ieee802154_set_short_address(0x0000)` |
+| `AF_REGISTER` endpoint `0x14` | APsystems endpoint | Encoded directly in APS headers |
+| `AF_DATA_REQUEST` | Poll/query/reboot/throttle | Raw MAC + NWK + APS data frame |
+| `AF_DATA_REQUEST_EXT`, mode `0x0F` | Pairing broadcasts | Raw broadcast on PAN `0xFFFF` |
+| `AF_DATA_CONFIRM` | Transmit result | IEEE 802.15.4 transmit callbacks with coexistence retry |
+| `AF_INCOMING_MSG` | Inverter response | Raw receive callback, APS parsing and legacy queue adapter |
+| ZBOSS fragmentation | Multi-frame responses | Native APS fragment ACK and bounded reassembly |
+| `UTIL_GET_DEVICE_INFO` | Health check | Integrated-radio start state |
 
-## Preserved wire protocol
+## Why ZBOSS was removed
 
-The adapter strips only the ZNP transport fields. It does not create or reinterpret APsystems application data. Existing command builders still produce:
+APsystems uses a proprietary NWK pairing command (`0x1009`) and inverters do
+not join the coordinator as ordinary Zigbee neighbors. ZBOSS receives those RF
+frames but rejects them before the application APS callback. It also owns the
+ESP32-C6 transmit buffer, making a second raw transmitter unsafe in the same
+image. Building with Arduino `ZigbeeMode=default` avoids both restrictions and
+gives this transport exclusive ownership of the IEEE 802.15.4 callbacks.
 
-- pairing clusters `0x020D`, `0x020C`, `0x010F`, `0x0101`
-- operational request cluster `0x0006`
-- response cluster `0x0106`
-- all `FB FB ... FE FE` APsystems payload bytes for polling, query, reboot, and throttle
+## Preserved application protocol
 
-The receive adapter reconstructs the subset of TI's `AF_INCOMING_MSG` structure consumed by the original decoder: group, cluster, source address, endpoints, broadcast flag, LQI, security byte, timestamp, sequence, payload length, and payload. This intentionally avoids rewriting the extensively tested inverter parsers.
+The adapter strips only the ZNP serial envelope. Existing command builders still
+produce the pairing clusters `0x020D`, `0x020C`, `0x010F`, `0x0101`, operational
+request cluster `0x0006`, response cluster `0x0106`, and all APsystems
+`FB FB ... FE FE` payload bytes. Plaintext and APsystems application-layer AES
+remain above this transport.
 
-## Concurrency
-
-The Zigbee stack runs in its own FreeRTOS task. APS callbacks copy frames into a bounded queue; the Arduino application task consumes them synchronously through the original `readZB()` interface. This avoids calling web, MQTT, SPIFFS, or decoder code from the Zigbee callback context. Wi-Fi, web serving and MQTT continue to run through their existing Arduino/FreeRTOS tasks; a second symmetric application core is not required.
-
-## Remaining blocker
-
-There is no API blocker: Espressif exposes all required APS request, confirm and indication primitives. The remaining blocker is empirical RF testing of TI address mode `0x0F` versus the standard `0xFFFF` broadcast mapping. See `LIMITATIONS.md`.
+The receive adapter reconstructs the subset of TI `AF_INCOMING_MSG` consumed by
+the original decoders. A dedicated worker owns parsing and fragment ACKs; the
+main application consumes completed messages through the original synchronous
+`readZB()` interface. Wi-Fi, web, MQTT and Modbus continue independently.

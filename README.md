@@ -3,8 +3,9 @@
 This is a standalone ESP32-C6 port of
 [patience4711/ESP32-read-APS-inverters](https://github.com/patience4711/ESP32-read-APS-inverters).
 It replaces the external CC2530/CC2531 and TI ZNP firmware with the C6's
-integrated IEEE 802.15.4 radio and Espressif Zigbee stack. No Zigbee UART or
-reset wiring is needed.
+integrated IEEE 802.15.4 radio and a native APsystems transport. ZBOSS is not
+linked: APsystems' nonstandard pairing, addressing and APS fragmentation are
+handled directly. No Zigbee UART or reset wiring is needed.
 
 The project includes:
 
@@ -18,10 +19,10 @@ The project includes:
 - cautious OpenAPS-compatible grid-protection profile apply and restore
 - one source tree for 4 MB USB-only and 8 MB OTA-capable boards
 
-> Hardware status: both flash variants compile successfully. Wi-Fi and the
-> integrated Zigbee coordinator have been validated together on an 8 MB
-> ESP32-C6 board. Pairing, encrypted transport, firmware information and
-> protection writes still require validation with a nearby APsystems inverter.
+> Hardware status: plaintext DS3 pairing, two-block telemetry reassembly,
+> firmware-version reads and simultaneous Wi-Fi/802.15.4 operation have been
+> validated on an 8 MB ESP32-C6 with three inverters in range. Encrypted models
+> and protection writes still require physical validation.
 > See [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Flash-size choices
@@ -111,8 +112,9 @@ program may be named `esptool.exe`; invoke that name if necessary.
    AsyncTCP by ESP32Async, PubSubClient, NTPClient, Time, sunMoon and PSACrypto.
 5. Open `ESP32C6-APsystems-ECU.ino` and select the specific C6 board, or **ESP32C6 Dev
    Module** for a generic module.
-6. Select **Zigbee Mode: ZCZR (coordinator/router)**, **Partition Scheme:
-   Custom**, and the actual 4 MB or 8 MB flash size.
+6. Leave **Zigbee Mode: Disabled** (the default), select **Partition Scheme:
+   Custom**, and select the actual 4 MB or 8 MB flash size. Enabling ZCZR links
+   ZBOSS and conflicts with the native APsystems radio callbacks.
 7. For 8 MB OTA, first replace `partitions.csv` with
    `partitions-8mb-ota.csv`. Keep the default file for a 4 MB build.
 8. Enable **USB CDC On Boot** when using native USB, select the port and Upload.
@@ -236,11 +238,14 @@ The original path was:
 
 This port is:
 
-`application -> compatibility adapter -> Espressif raw APS -> C6 radio`
+`application -> compatibility adapter -> native APsystems MAC/NWK/APS -> C6 radio`
 
-`ZIGBEE_A_TRANSPORT.ino` parses the legacy `AF_DATA_REQUEST` calls and renders
-received raw APS frames in the legacy in-memory format, preserving the upstream
-APsystems protocol and decoders. Key additions are:
+`ZIGBEE_A_TRANSPORT.ino` parses the legacy `AF_DATA_REQUEST` calls, creates raw
+802.15.4/NWK/APS frames, acknowledges and reassembles fragmented replies, and
+renders the result in the legacy in-memory format. Pairing learns and persists
+each inverter's PAN and short radio address. This preserves the upstream
+APsystems commands and decoders while bypassing ZBOSS's standards-only receive
+path. Key additions are:
 
 - `APS_CRYPTO.ino` - plaintext/AES application transport
 - `POLL_SCHEDULER.ino` - configurable cooperative polling
@@ -275,4 +280,4 @@ debugging symbols, SHA-256 checksums and automatically generated release notes.
 ## License
 
 The application is derived from patience4711's MIT-licensed project; see [LICENSE](LICENSE).
-Espressif's Zigbee stack and installed libraries retain their own licenses.
+Espressif's IEEE 802.15.4 driver and installed libraries retain their own licenses.

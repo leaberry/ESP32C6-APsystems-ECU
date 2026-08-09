@@ -39,7 +39,7 @@ jobs:
       - name: Compile ${{ matrix.name }}
         run: >-
           arduino-cli compile
-          --fqbn esp32:esp32:esp32c6:FlashSize=${{ matrix.flash }},ZigbeeMode=zczr,PartitionScheme=custom,CDCOnBoot=cdc
+          --fqbn esp32:esp32:esp32c6:FlashSize=${{ matrix.flash }},ZigbeeMode=default,PartitionScheme=custom,CDCOnBoot=cdc
           --output-dir dist/${{ matrix.name }}
           .
       - name: Package ${{ matrix.name }} artifacts

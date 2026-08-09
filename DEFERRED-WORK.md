@@ -34,6 +34,21 @@ bring-up. Items here are observations, not completed changes.
   usable inverter response. Repeat close to the inverter before treating this
   as a protocol failure.
 
+## Inverter discovery
+
+- Consider a read-only **Scan for inverters** action that lists inverter serial
+  numbers detected nearby and lets the operator select one instead of typing
+  its serial number manually.
+- Keep this separate from pairing: scanning should not automatically modify an
+  inverter, assign a short address, or migrate it to the ECU's operational PAN.
+- Investigate a fast scan on the current channel first. A complete scan may
+  need to park temporarily on the APsystems rendezvous PAN `0xFFFF`, listen for
+  inverter identity announcements, and optionally sweep Zigbee channels 11-26.
+- Restore the operational PAN and channel on every success, failure, timeout,
+  or cancellation path so normal polling cannot be stranded by a scan.
+- Defer implementation until basic pairing and polling are proven on hardware;
+  discovery must not expand the current bring-up scope.
+
 ## Remote diagnostics
 
 - The existing journal at `/LOGPAGE` retains coarse pairing success/failure

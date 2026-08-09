@@ -1,30 +1,33 @@
-# Build verification
+# Build and hardware verification
 
-Verified on 2026-08-08 with:
+Verified on 2026-08-09 with:
 
-- Arduino CLI 1.5.1
-- Espressif Arduino core 3.3.8
+- Arduino CLI and Espressif Arduino core 3.3.8
 - target `esp32:esp32:esp32c6`
-- Zigbee mode `zczr`
-- included custom 4 MB partition table
+- Zigbee mode `default` (ZBOSS disabled)
+- the included custom 8 MB OTA partition table
 - ESP Async WebServer 3.12.0 and Async TCP 3.5.0
 
-Result:
+The native-radio build result was:
 
 ```text
-Sketch: 1,708,230 bytes
-Application binary: 1,708,336 bytes
-Global variables: 71,032 bytes
-4 MB application slot: 3,538,944 bytes
-4 MB application-slot margin: 1,830,608 bytes
+Sketch: 1,387,554 bytes
+Global variables: 87,552 bytes
 8 MB OTA application slot: 3,145,728 bytes
-8 MB OTA application-slot margin: 1,437,392 bytes
+8 MB OTA application-slot margin: about 1.76 MB
 ```
 
-The boot-time APsystems AES known-answer test uses the published reverse-
-engineered vector. The final build includes the mixed plaintext/AES transport,
-multi-client SunSpec Modbus/TCP server, and web transport-status fields.
+Live testing used an 8 MB ESP32-C6 with Wi-Fi active and three DS3 inverters
+in range. It verified:
 
-The 4 MB partition image was decoded as one 3,456 KiB factory application and
-488 KiB SPIFFS. The 8 MB image contains two 3 MiB OTA applications and 1,896
-KiB SPIFFS. Both retain `zb_storage`, `zb_fct`, `rcp_fw`, and coredump partitions.
+- raw channel-16 receive while serving the web UI;
+- proprietary APsystems pairing reply parsing;
+- persistence of inverter PAN and short radio address;
+- transient Wi-Fi/802.15.4 coexistence retry;
+- APS fragment acknowledgements for blocks zero and one;
+- reassembly and decoding of a 105-byte telemetry response; and
+- firmware-version query and decode (`5.456` on the tested inverter).
+
+The boot-time APsystems AES known-answer test uses the published reverse-
+engineered vector. Hardware validation of an encrypted inverter remains open.
+The 4 MB source variant is built by CI with the same transport and no OTA slot.
