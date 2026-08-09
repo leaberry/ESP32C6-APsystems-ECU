@@ -32,8 +32,9 @@ const char MENUPAGE[] PROGMEM = R"=====(
   <td><a href='/FWUPDATE'>fw update</a></td></tr>
   
   <tr><td><a href='/CONSOLE'>console</a></td><td></td>
+  <td><a href='/DIAGNOSTICS'>diagnostics</a></td></tr>
+  <tr><td><a href='/GRIDPROFILE'>grid profiles</a></td><td></td>
   <td><a onclick="return confirm('are you sure?')" href='/REBOOT'>reboot</a></td></tr>
-  <tr><td><a href='/GRIDPROFILE'>grid profiles</a></td></tr>
 
    <tr><td><a href='/BASISCONFIG'>settings</a></td><td></td>
   <td><a onclick="return confirm('are you sure?')" href='/STARTAP'>start AP</a></td></tr> 

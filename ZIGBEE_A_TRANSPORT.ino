@@ -46,7 +46,15 @@ static void appendHex(char *out, size_t cap, const uint8_t *data, size_t len) {
 }
 
 bool apsDataIndication(esp_zb_apsde_data_ind_t ind) {
-  if (ind.status != 0 || ind.profile_id != 0x0F05 || ind.dst_endpoint != 0x14 || !apsRxQueue) return false;
+  char trace[144];
+  snprintf(trace, sizeof(trace),
+           "APS RX status=0x%02X src=0x%04X ep=%u->%u profile=0x%04X cluster=0x%04X len=%u lqi=%d",
+           ind.status, ind.src_short_addr, ind.src_endpoint, ind.dst_endpoint,
+           ind.profile_id, ind.cluster_id, (unsigned)ind.asdu_length,
+           ind.lqi);
+  diagnosticsAppend(String(trace));
+  if (ind.status != 0 || ind.profile_id != 0x0F05 ||
+      ind.dst_endpoint != 0x14 || !apsRxQueue) return false;
   ApsRxFrame f = {};
   f.cluster = ind.cluster_id;
   f.source = ind.src_short_addr;
@@ -62,6 +70,12 @@ bool apsDataIndication(esp_zb_apsde_data_ind_t ind) {
 void apsDataConfirm(esp_zb_apsde_data_confirm_t confirm) {
   apsTxStatus = confirm.status;
   apsTxConfirmed = true;
+  char trace[128];
+  snprintf(trace, sizeof(trace),
+           "APS TX confirm status=0x%02X dst=0x%04X ep=%u->%u len=%u tx_time=%d",
+           confirm.status, confirm.dst_addr.addr_short, confirm.src_endpoint,
+           confirm.dst_endpoint, (unsigned)confirm.asdu_length, confirm.tx_time);
+  diagnosticsAppend(String(trace));
 }
 
 static bool submitAps(uint8_t mode, uint16_t destination, uint8_t dstEp,
@@ -82,6 +96,12 @@ static bool submitAps(uint8_t mode, uint16_t destination, uint8_t dstEp,
   esp_zb_lock_acquire(portMAX_DELAY);
   esp_err_t err = esp_zb_aps_data_request(&req);
   esp_zb_lock_release();
+  char trace[128];
+  snprintf(trace, sizeof(trace),
+           "APS TX request %s mode=0x%02X dst=0x%04X ep=%u->%u cluster=0x%04X len=%u opts=0x%02X",
+           esp_err_to_name(err), mode, destination, srcEp, dstEp, cluster,
+           (unsigned)asduLen, options);
+  diagnosticsAppend(String(trace));
   return err == ESP_OK;
 }
 

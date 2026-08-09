@@ -44,7 +44,8 @@ bring-up. Items here are observations, not completed changes.
 - Add authentication/authorization directly to `/CONSOLE` and `/ws`. The HTTP
   console route currently relies only on the legacy source-address check, and
   the WebSocket handler accepts powerful commands without its own login check.
-- Add a bounded in-memory diagnostic ring buffer and a read-only authenticated
-  download endpoint so traces that occur before a browser connects are not lost.
+- A bounded in-memory diagnostic ring buffer and authenticated read-only
+  `/DIAGNOSTICS` endpoint were added during basement pairing tests. Retain and
+  refine these while modernizing the web interface.
 - Avoid a raw unauthenticated Telnet server. A secured WebSocket/log endpoint
   can provide TCP-based remote debugging without exposing an interactive shell.

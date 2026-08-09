@@ -256,8 +256,8 @@ void showDir() {
 
   // function to 
 void consoleOut(String toLog) {
- 
-  if( diagNose == 0 ) return; 
+  diagnosticsAppend(toLog);
+  if( diagNose == 0 ) return;
   if (diagNose == 2 )
   {
       Serial.println(toLog);

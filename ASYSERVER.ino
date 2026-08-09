@@ -77,6 +77,21 @@ server.on("/CONSOLE", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", CONSOLE_HTML);
   });
 
+server.on("/DIAGNOSTICS", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) {
+    request->redirect("/DENIED");
+    return;
+  }
+  if (!request->authenticate("admin", pswd)) {
+    request->requestAuthentication();
+    return;
+  }
+  AsyncWebServerResponse *response =
+      request->beginResponse(200, "text/plain; charset=utf-8", diagnosticsText());
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+});
+
 // ***********************************************************************************
 //                                   basisconfig
 // ***********************************************************************************

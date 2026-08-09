@@ -31,8 +31,9 @@ void handle_Serial () {
               Serial.println(F("10;QUERY=x; (query inverter nr x (9=all))"));                           
               Serial.println(F("10;ZBT=; (send zigbee message, e.g. 10;zbt=2101 (ping))"));
               Serial.println(F("10;SENDRAW=; (send raw zbmessage, no FE checksum etc)"));
-              Serial.println(F("10;DELETE=<file>; (delete a file)"));              
-              Serial.println(F("10;HEALTH; (perform healthcheck zigbee)"));             
+              Serial.println(F("10;DELETE=<file>; (delete a file)"));
+              Serial.println(F("10;DUMPLOG; (print the in-memory diagnostic trace)"));
+              Serial.println(F("10;HEALTH; (perform healthcheck zigbee)"));
               Serial.println(F("10;INV_REBOOT=x; (reboot an unresponsive inverter)"));
               Serial.println(F("10;ZB_reset; (reset the cc2530 via its resetpin)"));
               Serial.println(F("10;EDIT=x-AABB; (edit the id of an inverter)"));
@@ -224,7 +225,12 @@ void handle_Serial () {
 //          
 //          } else
 
-           if (strncasecmp(InputBuffer_Serial+3,"FILES",5) == 0) {  
+           if (strncasecmp(InputBuffer_Serial+3,"DUMPLOG",7) == 0) {
+              diagnosticsDumpToSerial();
+              return;
+          } else
+
+           if (strncasecmp(InputBuffer_Serial+3,"FILES",5) == 0) {
               showDir();
               return;  
           } else
