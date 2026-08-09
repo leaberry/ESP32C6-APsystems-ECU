@@ -47,7 +47,7 @@ and the Arduino core supports its flash and pin configuration.
 3. Install **esp32 by Espressif Systems 3.3.8**.
 4. Install these libraries: ArduinoJson, ESP Async WebServer by ESP32Async,
    AsyncTCP by ESP32Async, PubSubClient, NTPClient, Time, sunMoon and PSACrypto.
-5. Open `ESP32-read-APS-inverters.ino` and select the specific C6 board, or **ESP32C6 Dev
+5. Open `ESP32C6-APsystems-ECU.ino` and select the specific C6 board, or **ESP32C6 Dev
    Module** for a generic module.
 6. Select **Zigbee Mode: ZCZR (coordinator/router)**, **Partition Scheme:
    Custom**, and the actual 4 MB or 8 MB flash size.
