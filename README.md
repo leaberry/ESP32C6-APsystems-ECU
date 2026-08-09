@@ -18,10 +18,11 @@ The project includes:
 - cautious OpenAPS-compatible grid-protection profile apply and restore
 - one source tree for 4 MB USB-only and 8 MB OTA-capable boards
 
-> Hardware status: both flash variants compile successfully. Development did
-> not have a physical APsystems inverter, so pairing, encrypted transport,
-> firmware information and protection writes still require real-hardware
-> validation. Start with one nearby inverter and see [LIMITATIONS.md](LIMITATIONS.md).
+> Hardware status: both flash variants compile successfully. Wi-Fi and the
+> integrated Zigbee coordinator have been validated together on an 8 MB
+> ESP32-C6 board. Pairing, encrypted transport, firmware information and
+> protection writes still require validation with a nearby APsystems inverter.
+> See [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Flash-size choices
 
@@ -38,6 +39,21 @@ flash size in the board menu. The application code is otherwise identical.
 Do not flash the 8 MB merged image onto a 4 MB module. A generic ESP32-C6 board
 is suitable when it has enough flash, exposes a usable USB/programming path,
 and the Arduino core supports its flash and pin configuration.
+
+## First-boot Wi-Fi setup
+
+When no network is configured—or after the Wi-Fi settings are erased—the
+device starts an open setup access point named `aps-ecu-xxxxxx` and serves a
+captive setup page at `http://192.168.4.1/`. The page accepts:
+
+- a 2.4 GHz Wi-Fi SSID and password (hidden SSIDs may be typed manually)
+- a DHCP hostname containing letters, numbers and hyphens
+- DHCP addressing, which is the default
+- or a static IPv4 address, netmask and gateway; the gateway is also used for DNS
+
+Saving restarts the device. The selected hostname is applied before the DHCP
+request. Wi-Fi settings are stored separately from the legacy application
+configuration, and the hardware MAC address is shown on the setup page.
 
 ## Install a prebuilt release (easiest)
 

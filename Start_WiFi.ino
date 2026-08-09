@@ -1,78 +1,83 @@
 // ************************************************************************************
-// *                        START wifi
+// *                        START Wi-Fi
 // ************************************************************************************
+static volatile uint8_t lastWifiDisconnectReason = 0;
+
 void start_wifi() {
- WiFi.softAPdisconnect(true);
- WiFi.mode(WIFI_STA);
- Serial.println("starting wifi ");
- delay(1000);
-//Serial.println("start wifi 3");
-   WiFi.setHostname(getChipId(false).c_str()); 
+  String storedSsid;
+  String storedPassword;
+  String hostname;
+  bool useDhcp = true;
+  String staticIpText;
+  String netmaskText;
+  String gatewayText;
+  loadStoredWifiCredentials(storedSsid, storedPassword, hostname);
+  loadStoredWifiAddressing(useDhcp, staticIpText, netmaskText, gatewayText);
 
-//Serial.println("start wifi 4");
-
-// WiFi.mode(WIFI_STA); // geen ap op dit moment 
-
-// we gaan 10 pogingen doen om te verbinden
-// met de laatst gebruikte credentials
-  while (WiFi.status() != WL_CONNECTED) {
-     delay(500);
-     Serial.print("*");
-     WiFi.begin();
-     event+=1;
-     if (event==10) {break;}
+  if (storedSsid.isEmpty()) {
+    Serial.println(F("No saved Wi-Fi configuration"));
+    start_portal();
+    return;
   }
-// als het verbinden is mislukt gaan we naar het configportal  
-  if (event>9) {
-     event=0;
-     Serial.println("\nWARNING connection failed");
-     start_portal();
-      } else {
-     Serial.print("\nconnection success, ip = ");
-     Serial.println(WiFi.localIP());
-     }
-   Serial.print("# connection attempts = ");  //Serial.println(event);
-   event=0; // we kunnen door naar de rest
-   //checkFixed();
 
-   start_server();
+  Serial.println("Connecting to " + storedSsid + " as " + hostname);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(hostname.c_str());
+  if (!useDhcp) {
+    IPAddress staticIp;
+    IPAddress netmask;
+    IPAddress gateway;
+    if (!staticIp.fromString(staticIpText) ||
+        !netmask.fromString(netmaskText) ||
+        !gateway.fromString(gatewayText) ||
+        !WiFi.config(staticIp, gateway, netmask, gateway)) {
+      Serial.println(F("Invalid stored static IP configuration; opening setup portal"));
+      start_portal();
+      return;
+    }
+    Serial.println("Static IP: " + staticIp.toString());
+  }
+  WiFi.onEvent(
+      [](WiFiEvent_t, WiFiEventInfo_t info) {
+        lastWifiDisconnectReason = info.wifi_sta_disconnected.reason;
+      },
+      WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
+  WiFi.begin(storedSsid.c_str(), storedPassword.c_str());
+  uint32_t startedAt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < 20000UL) {
+    delay(250);
+    Serial.print('.');
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println();
+    Serial.println("Wi-Fi connection failed, reason " +
+                   String(lastWifiDisconnectReason) + " (" +
+                   WiFi.STA.disconnectReasonName(
+                       (wifi_err_reason_t)lastWifiDisconnectReason) +
+                   ")");
+    start_portal();
+    return;
+  }
+
+  WiFi.setAutoReconnect(true);
+  Serial.println();
+  Serial.println("Wi-Fi connected: " + WiFi.localIP().toString());
+  Serial.println("DHCP hostname: " + hostname);
+  start_server();
 }
-//// *************************************************************************
-////                      START THE SERVER 
-
-
-//  // ********************************************************************
-// //             check if there must come a static ip
-// // ********************************************************************
-// void checkFixed() {
-//   // we come here only when wifi connected
-//     char GATE_WAY[16]="";
-//     IPAddress gat=WiFi.gatewayIP();
-//     sprintf(GATE_WAY, "%d.%d.%d.%d", gat[0], gat[1], gat[2], gat[3]);
-//     //DebugPrint("GATE_WAY in checkFixed = nu: "); //DebugPrintln(String(GATE_WAY));
-//     //DebugPrint("static_ip in checkFixed = nu: "); //DebugPrintln(String(static_ip));
-
-//     if (static_ip[0] != '\0' && static_ip[0] != '0') {
-//       //DebugPrintln("we need s static ip  Custom STA IP/GW/Subnet");
-//       IPAddress _ip,_gw,_sn(255,255,255,0); // declare 
-//       _ip.fromString(static_ip);
-//       _gw.fromString(GATE_WAY);//  if (ssid != "") {
-//       WiFi.config(_ip, _gw, _sn);
-//       //DebugPrintln(WiFi.localIP());
-//   } else {
-//       //DebugPrintln("trying to get rid of wificonfig");
-//       WiFi.config(0u, 0u, 0u);     
-//   }
-// }
 
 void loginBoth(AsyncWebServerRequest *request, String who) {
-  String authFailResponse = "<h2>login failed <a href='/'>click here</a></h2>";
-  if (who == "admin" ){
-  const char* www_realm = "login as administrator."; 
+  if (who == "admin") {
     if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
   }
-  if (who == "both" ){
-  const char* www_realm = "login as administrator or user."; 
-    if (!request->authenticate("admin", pswd) && !request->authenticate("user", userPwd)) return request->requestAuthentication();
+  if (who == "both") {
+    if (!request->authenticate("admin", pswd) &&
+        !request->authenticate("user", userPwd)) {
+      return request->requestAuthentication();
+    }
   }
 }

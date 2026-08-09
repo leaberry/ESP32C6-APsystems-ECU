@@ -23,7 +23,9 @@
  */ 
 
 #include <WiFi.h>
-#include <esp_wifi.h> 
+#include <esp_wifi.h>
+#include <esp_mac.h>
+#include <esp_coexist.h>
 #include <DNSServer.h> 
 
 #include "OTA.h"
@@ -83,7 +85,6 @@ DNSServer dnsServer;
 #include "HTML.h"
 //#include "AAA_CONFIG_INVERTERS.H"
 #include "AAA_MENUPAGE.h"
-#include "PORTAL_HTML.h"
 #include "DETAILSPAGE.h"
 #include "eventSource.h"
 /*

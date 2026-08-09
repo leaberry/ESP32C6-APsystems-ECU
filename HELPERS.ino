@@ -15,6 +15,7 @@ void empty_serial() { // remove any remaining data in serial buffer
   }
 }
 void delayedReset() {
+  clearStoredWifiCredentials();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   SPIFFS.end();       // Recommended before formatting
@@ -61,27 +62,12 @@ int readInverterfiles() {
     if(actionFlag == 0) return;
     //if(actionFlag != 0) Serial.println("test_actionFlag 1 val = " + String(actionFlag));  
     // ******************  reset the nework data and reboot in AP *************************
-    if (actionFlag == 11 || value == 11) 
-    { // 
-     //DebugPrintln("erasing the wifi credentials, value = " + String(value) + "  actionFlag = " + String(actionFlag));
+    if (actionFlag == 11 || value == 11)
+    {
      delay(1000); //reserve time to release the button
-     //eraseWifiFlash();
-     WiFi.disconnect();
-//    WiFi.end();
-     // we write a flag in EEPROM
-     consoleOut(F("wifi disconnected"));
-//we try to overwrite the wifi creentials     
-     const char* ssid = "dummy";
-    const char* password = "dummy";
-    WiFi.begin(ssid, password);
-    Serial.println(F("\nConnecting to dummy network"));
-    int teller = 0;
-      while(WiFi.status() != WL_CONNECTED){
-          Serial.print(F("wipe wifi credentials\n"));
-          delay(100);         
-          teller ++;
-          if (teller > 2) break;
-      }
+     clearStoredWifiCredentials();
+     WiFi.disconnect(true, true);
+     consoleOut(F("Wi-Fi configuration erased"));
      ESP.restart();
     }  
 
