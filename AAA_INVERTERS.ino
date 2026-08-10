@@ -77,23 +77,23 @@ window.location.href='/MENU';
 
  const char INVERTER_GENERAL[] PROGMEM = R"=====(
 <div id='inverter0' style='display:block'>
-    <table><tr><td style='width:160px;'><h4>INVERTER {nr}</h4>
+    <table><tr><td style='width:160px;'><h4>{heading}</h4>
     <td style='width:70px;'><h4>STATUS:</h4><td>
     <input style='width:100px;' class='inp3' value='unpaired' readonly></tr></table>
         
     <br>
     <table style="background-color: lightgreen; padding:10px;">
     
-    <tr><td class="cap" style="width:100px;">SERIALNR<td><input class='inp4' id='iv' name='iv' minlength='12' maxlength='12' required value='000000'></input>
-    <tr><td class="cap">TYPE<td><select name='invt' class='sb1' id='sel' onchange='myFunction()'>
+    <tr><td class="cap" style="width:170px;">Serial number<td><input class='inp4' id='iv' name='iv' inputmode='numeric' pattern='[0-9]{12}' minlength='12' maxlength='12' required value='000000' title='The 12-digit serial number printed on the inverter label'></input>
+    <tr><td class="cap">Inverter model<td><select name='invt' class='sb1' id='sel' onchange='myFunction()' title='Select the exact APsystems inverter family'>
     <option value='0' invtype_0>YC600</option>
     <option value='2' invtype_2>DS3</option>
     <option value='1' invtype_1>QS1</option></select>
     </tr>
-    <tr><td class="cap" >NAME<td class="cap" ><input class='inp4' id='il' name='il' maxlength='12' value='{location}'></input>
-    <tr><td class="cap" >CALIBR<td class="cap" ><input class='inp2' id='cv' name='pMax' type='number' min='-15' max='15' step='1' value='{cal}'></input>
-    <tr><td class="cap" >DOM. IDX<td class="cap" ><input class='inp2' name='mqidx' value='{idx}' size='4' length='4'></td></tr>
-    <tr><td class="cap" >PANELS: 
+    <tr><td class="cap" >Display name<td class="cap" ><input class='inp4' id='il' name='il' maxlength='12' value='{location}' title='A short name used throughout the ECU web interface'></input>
+    <tr><td class="cap" >Power-limit correction<td class="cap" ><input class='inp2' id='cv' name='cal' type='number' min='-15' max='15' step='1' value='{cal}' title='Adjusts outbound throttle commands in percentage points. Leave at 0 unless a limit is consistently inaccurate.'></input>
+    <tr><td class="cap" >Domoticz device ID<td class="cap" ><input class='inp2' name='mqidx' type='number' min='0' max='65535' value='{idx}' title='Only used by the legacy Domoticz MQTT integration. Leave at 0 otherwise.'></td></tr>
+    <tr><td class="cap" >Connected PV inputs:
     <td style='width: 230px;'>
     1&nbsp;<input type='checkbox' name='pan1' #1check>
     2&nbsp;<input type='checkbox' name='pan2' #2check>
@@ -142,17 +142,37 @@ function delFunction(a) {
 //*******************************************************************************************
 //             prepare for saving the data
 // *****************************************************************************************
-void handleInverterconfig(AsyncWebServerRequest *request) 
-{ 
+void handleInverterconfig(AsyncWebServerRequest *request)
+{
   // form action = handleInverterconfig
   // we only collect the data for this specific inverter
   // collect the serverarguments
-   strcpy(Inv_Prop[iKeuze].invLocation, request->arg("il").c_str());
-   strcpy(Inv_Prop[iKeuze].invSerial, request->arg("iv").c_str());
+   if (iKeuze < 0 || iKeuze >= YC600_MAX_NUMBER_OF_INVERTERS ||
+       !request->hasParam("il") || !request->hasParam("iv") ||
+       !request->hasParam("invt") || !request->hasParam("mqidx") ||
+       !request->hasParam("cal")) {
+     request->send(400, "text/plain", "Invalid or incomplete inverter settings");
+     return;
+   }
+   String submittedSerial = request->arg("iv");
+   if (submittedSerial.length() != 12) {
+     request->send(400, "text/plain", "Inverter serial number must contain 12 digits");
+     return;
+   }
+   for (size_t i = 0; i < submittedSerial.length(); ++i) {
+     if (!isdigit((unsigned char)submittedSerial[i])) {
+       request->send(400, "text/plain", "Inverter serial number must contain only digits");
+       return;
+     }
+   }
+   strlcpy(Inv_Prop[iKeuze].invLocation, request->arg("il").c_str(),
+           sizeof(Inv_Prop[iKeuze].invLocation));
+   strlcpy(Inv_Prop[iKeuze].invSerial, submittedSerial.c_str(),
+           sizeof(Inv_Prop[iKeuze].invSerial));
    Inv_Prop[iKeuze].encrypted = apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial);
-   Inv_Prop[iKeuze].invType = request->arg("invt").toInt(); //values are 0 1 2  
-   Inv_Prop[iKeuze].invIdx = request->arg("mqidx").toInt(); //values are 0 1  
-   Inv_Prop[iKeuze].calib = request->arg("cal").toInt(); //
+   Inv_Prop[iKeuze].invType = constrain(request->arg("invt").toInt(), 0, 2);
+   Inv_Prop[iKeuze].invIdx = constrain(request->arg("mqidx").toInt(), 0, 65535);
+   Inv_Prop[iKeuze].calib = constrain(request->arg("cal").toInt(), -15, 15);
 
 // the selectboxes
    char tempChar[1] = "";
@@ -190,12 +210,16 @@ void handleInverterconfig(AsyncWebServerRequest *request)
 //*******************************************************************************************
 //             delete an inverter
 // *****************************************************************************************
-void handleInverterdel(AsyncWebServerRequest *request) 
-{ 
+void handleInverterdel(AsyncWebServerRequest *request)
+{
   // form action = handleInverterconfig
   // we only collect the data for this specific inverter
   // read the serverargs and copy the values into the variables
 
+   if (iKeuze < 0 || iKeuze >= inverterCount) {
+     request->send(400, "text/plain", "Invalid inverter index");
+     return;
+   }
    String bestand = "/Inv_Prop" + String(iKeuze) + ".str"; // /Inv_Prop0.str
    consoleOut("remove file " + bestand ); 
  
@@ -378,7 +402,7 @@ void inverterForm() {
        {
         consoleOut("File exists " + bestand);
         //the file exists so we can display the values 
-        toSend.replace("{nr}" , String(iKeuze)); // vervang inverter nummer not available
+        toSend.replace("{heading}", "INVERTER " + String(iKeuze + 1));
         toSend.replace("000000", String(Inv_Prop[iKeuze].invSerial)); // handled by the script
         toSend.replace("{location}", String(Inv_Prop[iKeuze].invLocation));
         toSend.replace("{idx}", String(Inv_Prop[iKeuze].invIdx));
@@ -417,6 +441,8 @@ void inverterForm() {
         toSend.replace("000000", "");
         toSend.replace("{location}", "");
         toSend.replace("{idx}", "0");
+        toSend.replace("{cal}", "0");
+        toSend.replace("{heading}", "NEW INVERTER");
         }
 
     } else { // so if inverterCount == 0 we present this page
@@ -434,16 +460,11 @@ void structCopy(int a, int b) {
 //  int  invIdx          = 0;
 //  bool conPanels[4]    = {true,true,true,true}; 
 
-   //copy all the values of struct 1 to struct 2  
-   strcpy(Inv_Prop[a].invLocation, Inv_Prop[b].invLocation);
-   strcpy(Inv_Prop[a].invSerial,   Inv_Prop[b].invSerial);
-   strcpy(Inv_Prop[a].invID,   Inv_Prop[b].invID);
-   Inv_Prop[a].invType      = Inv_Prop[b].invType;
-   Inv_Prop[a].invIdx       = Inv_Prop[b].invIdx;
-   Inv_Prop[a].conPanels[0] = Inv_Prop[b].conPanels[0];
-   Inv_Prop[a].conPanels[1] = Inv_Prop[b].conPanels[1];
-   Inv_Prop[a].conPanels[2] = Inv_Prop[b].conPanels[2];
-   Inv_Prop[a].conPanels[3] = Inv_Prop[b].conPanels[3];
-   Inv_Prop[a].encrypted    = Inv_Prop[b].encrypted;
+   // Keep persistent settings and the live snapshot aligned when the final
+   // inverter is moved into a deleted index.
+   Inv_Prop[a] = Inv_Prop[b];
+   Inv_Data[a] = Inv_Data[b];
+   polled[a] = polled[b];
+   desiredThrottle[a] = desiredThrottle[b];
    // now write file a and remove file b
 }

@@ -11,9 +11,14 @@ void handleDataRequests(AsyncWebServerRequest *request)
      AsyncResponseStream *response = request->beginResponseStream("application/json");
      JsonDocument root;
      root["encrypted"] = apsInverterUsesEncryption(i);
+     root["name"] = Inv_Prop[i].invLocation;
+     root["serial"] = Inv_Prop[i].invSerial;
+     root["polled"] = polled[i];
      root["firmware"] = Inv_Data[i].firmwareVersion;
      root["today_wh"] = energyTodayWhFor(i);
      root["lifetime_wh"] = energyLifetimeWhFor(i);
+     root["current_hour_wh"] = timeRetrieved ? energyHourWhFor(i, hour()) : 0;
+     root["power_total"] = polled[i] ? round1(Inv_Data[i].pw_total) : 0;
      if(Inv_Data[i].en_total > 0) { // only possible when was polled this day
         root["eN"] = round2(Inv_Data[i].en_total/(float)1000); // rounded
      } else {
@@ -55,7 +60,17 @@ void handleDataRequests(AsyncWebServerRequest *request)
     root["cnt"] = inverterCount;    
     root["rm"] = remote;
     root["st"] = zigbeeUp;
-    root["sl"] = night;    
+    root["sl"] = night;
+    root["polling"] = Polling;
+    root["poll_interval"] = pollIntervalSeconds;
+    root["daylight_polling"] = daylightPolling;
+    root["time_valid"] = timeRetrieved;
+    root["location_valid"] = locationConfigured;
+    char localTime[24] = "unavailable";
+    if (timeRetrieved) snprintf(localTime, sizeof(localTime), "%04d-%02d-%02d %02d:%02d",
+                                year(), month(), day(), hour(), minute());
+    root["local_time"] = localTime;
+    root["timezone"] = timeZoneId;
     serializeJson(root, * response);
     request->send(response);
     return;

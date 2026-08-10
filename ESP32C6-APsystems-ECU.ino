@@ -115,7 +115,8 @@ void loop() {
  dayTime = true;
 #endif
 
-   if(now() > switchonTime && now() < switchoffTime)
+   if(!daylightPolling || !timeRetrieved || !locationConfigured ||
+      (now() > switchonTime && now() < switchoffTime))
     {
           if(!dayTime)
           {
@@ -130,9 +131,6 @@ void loop() {
     } else {
          if(dayTime)
          {
-            // The inverters have stopped producing; finalize exactly one flash
-            // record for the day before clearing live power values.
-            energyFinalizeDay();
             dayTime = false;
             //String term= "nightmode";
             Update_Log(1, "nightmode");

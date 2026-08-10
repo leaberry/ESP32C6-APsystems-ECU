@@ -5,7 +5,7 @@ void sun_setrise() {
 //float OUR_latitude = atof(breedte);
 float OUR_longtitude = longi;
 float OUR_latitude = lati;
-float OUR_timezone = atof(gmtOffset); //   120                     // localtime with UTC difference in minutes
+float OUR_timezone = currentUtcOffsetMinutes;
 
 sunMoon  sm;
 
@@ -31,17 +31,8 @@ sunMoon  sm;
       time_t sunrise = sm.sunRise();
       time_t sunset  = sm.sunSet();
       
-      if ( zomerTijd ) { // er is zomertijd ingesteld
-            if (zomertijd() == true) { // we kijken of het zomertijd is
-              sunrise = sunrise + 3600; // seconden
-              sunset  = sunset + 3600;
-              dst = 1; //summer time
-              } else {
-              dst = 2; // winter time 
-              }
-       } else { 
-           dst = 0; 
-           }
+      // sunMoon receives the active UTC offset, including DST, so no second
+      // daylight-saving adjustment belongs here.
    switchonTime = sunrise + pollOffset*60; // was -900
    switchoffTime = sunset - pollOffset*60; // was +900
  

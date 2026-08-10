@@ -174,6 +174,27 @@ void loadStoredWifiAddressing(bool &useDhcp, String &staticIp,
   wifiPrefs.end();
 }
 
+void saveStoredWifiConfiguration(const String &storedSsid,
+                                 const String &storedPassword,
+                                 const String &storedHostname, bool useDhcp,
+                                 const String &staticIp, const String &netmask,
+                                 const String &gateway) {
+  Preferences wifiPrefs;
+  if (!wifiPrefs.begin(WIFI_PREFS_NAMESPACE, false)) return;
+  wifiPrefs.putString(WIFI_PREF_SSID, storedSsid);
+  wifiPrefs.putString(WIFI_PREF_PASSWORD, storedPassword);
+  wifiPrefs.putString(WIFI_PREF_HOSTNAME, normalizeWifiHostname(storedHostname));
+  wifiPrefs.putBool(WIFI_PREF_DHCP, useDhcp);
+  wifiPrefs.putString(WIFI_PREF_IP, staticIp);
+  wifiPrefs.putString(WIFI_PREF_NETMASK, netmask);
+  wifiPrefs.putString(WIFI_PREF_GATEWAY, gateway);
+  wifiPrefs.end();
+}
+
+String normalizedWifiHostname(const String &value) {
+  return normalizeWifiHostname(value);
+}
+
 void clearStoredWifiCredentials() {
   Preferences wifiPrefs;
   wifiPrefs.begin(WIFI_PREFS_NAMESPACE, false);

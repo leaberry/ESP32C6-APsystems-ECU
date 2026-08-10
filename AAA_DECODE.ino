@@ -336,14 +336,15 @@ void mqttPoll(int which) {
 
 if(Mqtt_Format == 0) return;  
 
-  char Mqtt_send[26]={0};  
-  strcpy(Mqtt_send, Mqtt_outTopic);
-  if( Mqtt_send[strlen(Mqtt_send)-1] == '/' ) {
-    strcat(Mqtt_send, String(Inv_Prop[which].invIdx).c_str());
+  char Mqtt_send[40]={0};
+  strlcpy(Mqtt_send, Mqtt_outTopic, sizeof(Mqtt_send));
+  size_t mqttTopicLength = strlen(Mqtt_send);
+  if(mqttTopicLength && Mqtt_send[mqttTopicLength-1] == '/' ) {
+    strlcat(Mqtt_send, String(Inv_Prop[which].invIdx).c_str(), sizeof(Mqtt_send));
   }
   bool reTain = false;
-  char pan[50]={0};
-  char tail[40]={0};
+  char pan[96]={0};
+  char tail[64]={0};
   char toMQTT[300]={0};
 
 // the json to domoticz must be something like {"idx" : 7, "nvalue" : 0,"svalue" : "90;2975.00"}
@@ -362,49 +363,49 @@ if(Mqtt_Format == 0) return;
        snprintf(toMQTT, sizeof(toMQTT), "{\"inv_serial\":\"%s\",\"freq\":%.1f,\"temp\":%.1f,\"acv\":%.1f,\"signal\":%.1f,\"polled\":%d" , Inv_Prop[which].invSerial, Inv_Data[which].freq, Inv_Data[which].heath, Inv_Data[which].acv, Inv_Data[which].sigQ, polled[which]);
        //char pan[50]={0};
        if( Inv_Prop[which].invType == 1 ) { // qs1
-           sprintf(pan, ",\"dcv\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].dcv[0], Inv_Data[which].dcv[1],Inv_Data[which].dcv[2],Inv_Data[which].dcv[3]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"dcc\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].dcc[0], Inv_Data[which].dcc[1],Inv_Data[which].dcc[2],Inv_Data[which].dcc[3]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"pwr\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].power[0], Inv_Data[which].power[1],Inv_Data[which].power[2],Inv_Data[which].power[3]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"pwr_total\":%.2f", Inv_Data[which].pw_total);
-           strcat(toMQTT, pan);            
-           sprintf(pan, ",\"en\":[%.2f,%.2f,%.2f,%.2f]", en_saved[which][0], en_saved[which][1], en_saved[which][2], en_saved[which][3]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"energy_total\":%.2f}", Inv_Data[which].en_total);          
-           strcat(toMQTT, pan);            
+           snprintf(pan, sizeof(pan), ",\"dcv\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].dcv[0], Inv_Data[which].dcv[1],Inv_Data[which].dcv[2],Inv_Data[which].dcv[3]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"dcc\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].dcc[0], Inv_Data[which].dcc[1],Inv_Data[which].dcc[2],Inv_Data[which].dcc[3]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"pwr\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].power[0], Inv_Data[which].power[1],Inv_Data[which].power[2],Inv_Data[which].power[3]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"pwr_total\":%.2f", Inv_Data[which].pw_total);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"en\":[%.2f,%.2f,%.2f,%.2f]", en_saved[which][0], en_saved[which][1], en_saved[which][2], en_saved[which][3]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"energy_total\":%.2f}", Inv_Data[which].en_total);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
        } else {
-           sprintf(pan, ",\"dcv\":[%.1f,%.1f]", Inv_Data[which].dcv[0], Inv_Data[which].dcv[1]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"dcc\":[%.1f,%.1f]", Inv_Data[which].dcc[0], Inv_Data[which].dcc[1]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"pwr\":[%.1f,%.1f]", Inv_Data[which].power[0], Inv_Data[which].power[1]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"pwr_total\":%.2f", Inv_Data[which].pw_total);
-           strcat(toMQTT, pan);            
-           sprintf(pan, ",\"en\":[%.2f,%.2f]", en_saved[which][0], en_saved[which][1]);
-           strcat(toMQTT, pan);
-           sprintf(pan, ",\"energy_total\":%.2f}", Inv_Data[which].en_total);          
-           strcat(toMQTT, pan);
+           snprintf(pan, sizeof(pan), ",\"dcv\":[%.1f,%.1f]", Inv_Data[which].dcv[0], Inv_Data[which].dcv[1]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"dcc\":[%.1f,%.1f]", Inv_Data[which].dcc[0], Inv_Data[which].dcc[1]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"pwr\":[%.1f,%.1f]", Inv_Data[which].power[0], Inv_Data[which].power[1]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"pwr_total\":%.2f", Inv_Data[which].pw_total);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"en\":[%.2f,%.2f]", en_saved[which][0], en_saved[which][1]);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
+           snprintf(pan, sizeof(pan), ",\"energy_total\":%.2f}", Inv_Data[which].en_total);
+           strlcat(toMQTT, pan, sizeof(toMQTT));
        }
        reTain=true;
        break;
     case 4:
         snprintf(toMQTT, sizeof(toMQTT), "{\"inv_serial\":\"%s\",\"freq\":%.1f,\"temp\":%.1f,\"acv\":%.1f" , Inv_Prop[which].invSerial, Inv_Data[which].freq, Inv_Data[which].heath, Inv_Data[which].acv);      
-        sprintf(pan, ",\"ch0\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[0], Inv_Data[which].dcc[0], Inv_Data[which].power[0], en_saved[which][0]);  
-        strcat(toMQTT, pan);
-        sprintf(pan, ",\"ch1\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[1], Inv_Data[which].dcc[1], Inv_Data[which].power[1], en_saved[which][1]);  
-        strcat(toMQTT, pan);
+        snprintf(pan, sizeof(pan), ",\"ch0\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[0], Inv_Data[which].dcc[0], Inv_Data[which].power[0], en_saved[which][0]);
+        strlcat(toMQTT, pan, sizeof(toMQTT));
+        snprintf(pan, sizeof(pan), ",\"ch1\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[1], Inv_Data[which].dcc[1], Inv_Data[which].power[1], en_saved[which][1]);
+        strlcat(toMQTT, pan, sizeof(toMQTT));
 
         if( Inv_Prop[which].invType == 1 ) { // add ch2 and ch3
-            sprintf(pan, ",\"ch2\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[2], Inv_Data[which].dcc[2], Inv_Data[which].power[2], en_saved[which][2]);  
-            strcat(toMQTT, pan);
-            sprintf(pan, ",\"ch3\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[3], Inv_Data[which].dcc[3], Inv_Data[which].power[3], en_saved[which][3]);  
-            strcat(toMQTT, pan);
+            snprintf(pan, sizeof(pan), ",\"ch2\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[2], Inv_Data[which].dcc[2], Inv_Data[which].power[2], en_saved[which][2]);
+            strlcat(toMQTT, pan, sizeof(toMQTT));
+            snprintf(pan, sizeof(pan), ",\"ch3\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[3], Inv_Data[which].dcc[3], Inv_Data[which].power[3], en_saved[which][3]);
+            strlcat(toMQTT, pan, sizeof(toMQTT));
         }
-        sprintf(tail, ",\"totals\":[%.1f,%.2f]}", Inv_Data[which].pw_total, Inv_Data[which].en_total);
-        strcat(toMQTT, tail);
+        snprintf(tail, sizeof(tail), ",\"totals\":[%.1f,%.2f]}", Inv_Data[which].pw_total, Inv_Data[which].en_total);
+        strlcat(toMQTT, tail, sizeof(toMQTT));
         reTain=true;
         break;
      

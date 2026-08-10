@@ -42,6 +42,21 @@ void pollSchedulerRequest(bool manual) {
   pollRoundManual = pollRoundManual || manual;
 }
 
+bool pollingAllowedNow() {
+  // Time/location failures must never disable telemetry. Daylight-aware
+  // scheduling only applies after a valid local clock and solar window exist.
+  return !daylightPolling || !timeRetrieved || !locationConfigured || dayTime;
+}
+
+bool pollingRoundInProgress() { return pollRoundActive; }
+
+uint32_t pollingSecondsUntilNextRound() {
+  if (!Polling || pollRoundActive || !pollingAllowedNow()) return 0;
+  uint32_t intervalMs = pollIntervalSeconds * 1000UL;
+  uint32_t elapsed = millis() - pollLastRoundStartedMs;
+  return elapsed >= intervalMs ? 0 : (intervalMs - elapsed + 999UL) / 1000UL;
+}
+
 static void pollSchedulerStartRound(bool manual) {
   // Re-evaluate the floor in case the inverter list changed since setup.
   pollIntervalSeconds = pollingClampSeconds(pollIntervalSeconds);
@@ -58,12 +73,12 @@ void pollSchedulerLoop() {
   uint32_t nowMs = millis();
 
   if (!pollRoundActive) {
-    bool automaticDue = Polling && dayTime &&
+    bool automaticDue = Polling && pollingAllowedNow() &&
       (uint32_t)(nowMs - pollLastRoundStartedMs) >= pollIntervalSeconds * 1000UL;
     if (pollRoundRequested || automaticDue) {
       bool manual = pollRoundManual;
       pollRoundManual = false;
-      if ((manual || (Polling && dayTime)) && zigbeeUp == 1) {
+      if ((manual || (Polling && pollingAllowedNow())) && zigbeeUp == 1) {
         pollSchedulerStartRound(manual);
       } else {
         pollRoundRequested = false;

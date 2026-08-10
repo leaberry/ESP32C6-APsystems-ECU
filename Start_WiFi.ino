@@ -70,14 +70,19 @@ void start_wifi() {
   start_server();
 }
 
-void loginBoth(AsyncWebServerRequest *request, String who) {
+bool loginBoth(AsyncWebServerRequest *request, String who) {
   if (who == "admin") {
-    if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+    if (!request->authenticate("admin", pswd)) {
+      request->requestAuthentication();
+      return false;
+    }
   }
   if (who == "both") {
     if (!request->authenticate("admin", pswd) &&
         !request->authenticate("user", userPwd)) {
-      return request->requestAuthentication();
+      request->requestAuthentication();
+      return false;
     }
   }
+  return true;
 }

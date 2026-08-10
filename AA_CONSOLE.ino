@@ -405,6 +405,7 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 }
 
 void initWebSocket() {
+  ws.setAuthentication("admin", pswd, AsyncAuthType::AUTH_BASIC);
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 }

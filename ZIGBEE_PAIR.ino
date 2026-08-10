@@ -3,7 +3,7 @@ void pairOnActionflag() {
 //can we pair when the radio is up for normal operation
    
    char term[20];
-   sprintf(term, "inverter %d" , Inv_Prop[iKeuze].invSerial);
+   snprintf(term, sizeof(term), "inverter %.10s", Inv_Prop[iKeuze].invSerial);
    Update_Log(4, term);
     if( !coordinator(false) ) {
       //term="pairing failed, zb down";

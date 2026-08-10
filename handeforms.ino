@@ -1,48 +1,30 @@
-void handleForms(AsyncWebServerRequest *request) 
+bool handleForms(AsyncWebServerRequest *request)
 {
      //every form submission is handled here
      // we find out which form with a parameter present 
      String serverUrl = request->url().c_str();
      Serial.println("serverUrl = " + serverUrl); // this is /submitform 
 
-     if(request->hasParam("ecuid")) {
-         // received form basisconfig
-         strcpy(ECU_ID, request->arg("ecuid").c_str());
-         strcpy(userPwd, request->arg("pw1").c_str());
-         pollOffset = request->arg("offs").toInt();
-         pollIntervalSeconds = pollingClampSeconds(request->arg("pollsec").toInt());
-  
-//BEWARE CHECKBOX
-         if(request->hasParam("pL")) { Polling = true; } else { Polling = false;}
-         basisConfigsave();  // alles opslaan
-         return; 
-     } else 
-
-      if(request->hasParam("longi")) {
-        // received the geoconfig form
-        longi = request->getParam("longi")->value().toFloat();
-        lati = request->getParam("be")->value().toFloat();
-        strcpy(gmtOffset, request->getParam("tz")->value().c_str());
-        // a checkbox has only a parameter when checked
-        if(request->hasParam("ts")) zomerTijd = true;  else  zomerTijd = false;
-        wifiConfigsave();
-        actionFlag=25; // recalculate with these settings 
-        return;
-          
-     } else
+     // Polling/access and time/location now use validated POST handlers.
      if(request->hasParam("mqtAdres")) {
+        const char *mqttParams[] = {"mqtPort", "mqtoutTopic", "mqtUser",
+                                    "mqtPas", "mqidx", "fm"};
+        for (const char *name : mqttParams) if (!request->hasParam(name)) {
+          request->send(400, "text/plain", "Incomplete MQTT settings");
+          return false;
+        }
         // form mosquitto received
-  strcpy( Mqtt_Broker  , request->getParam("mqtAdres")   ->value().c_str() );
-  strcpy( Mqtt_Port    , request->getParam("mqtPort")    ->value().c_str() );
-  strcpy( Mqtt_outTopic, request->getParam("mqtoutTopic")->value().c_str() );
-  strcpy( Mqtt_Username, request->getParam("mqtUser")    ->value().c_str() );
-  strcpy( Mqtt_Password, request->getParam("mqtPas")     ->value().c_str() );
+  strlcpy(Mqtt_Broker, request->getParam("mqtAdres")->value().c_str(), sizeof(Mqtt_Broker));
+  strlcpy(Mqtt_Port, request->getParam("mqtPort")->value().c_str(), sizeof(Mqtt_Port));
+  strlcpy(Mqtt_outTopic, request->getParam("mqtoutTopic")->value().c_str(), sizeof(Mqtt_outTopic));
+  strlcpy(Mqtt_Username, request->getParam("mqtUser")->value().c_str(), sizeof(Mqtt_Username));
+  strlcpy(Mqtt_Password, request->getParam("mqtPas")->value().c_str(), sizeof(Mqtt_Password));
   //strcpy( Mqtt_Clientid, request->getParam("mqtCi")     ->value().c_str() );  
   Mqtt_stateIDX = request->arg("mqidx").toInt(); //values are 0 1 2
   Mqtt_Format = request->arg("fm").toInt(); //values are 0 1 2 3 4 5
         mqttConfigsave();  // 
         actionFlag=24; // reconnect with these settings
-        return;
+        return true;
   } else
 // the request is something like pMax=200 MPW=0 
   if(request->hasParam("pMax")) // name of the hidden input
@@ -60,10 +42,19 @@ void handleForms(AsyncWebServerRequest *request)
         Serial.println(p->value());
       }
        
+       if (!request->hasParam("INV")) {
+         request->send(400, "text/plain", "Missing inverter index");
+         return false;
+       }
        int Inv = request->arg("INV").toInt();
+       int throttle = request->getParam("pMax")->value().toInt();
+       if (Inv < 0 || Inv >= inverterCount || throttle < 0 || throttle > 500) {
+         request->send(400, "text/plain", "Invalid inverter or throttle value");
+         return false;
+       }
        Serial.println("the form is for inverter " + String(Inv));
        
-       desiredThrottle[Inv] = request->getParam("pMax")->value().toInt();
+       desiredThrottle[Inv] = throttle;
        
        //Inv_Prop[Inv].maxPower = request->getParam("pMax")->value().toInt();
       //{
@@ -96,12 +87,13 @@ void handleForms(AsyncWebServerRequest *request)
           Serial.println("actionFlag set to " + String(actionFlag));
           //Serial.println("setting the return url to /details?inv=");
           String toReturn = "/details?inv=" + String(Inv);
-          strcpy(requestUrl, toReturn.c_str() ); 
+          strlcpy(requestUrl, toReturn.c_str(), sizeof(requestUrl));
           Serial.println("requestUrl = " + String(requestUrl));
-          return;
+          return true;
 
   }
 
      // if we are here something was wrong, no parameters found
      request->send(200, "text/html", "no valid form found");
-}    
+     return false;
+}

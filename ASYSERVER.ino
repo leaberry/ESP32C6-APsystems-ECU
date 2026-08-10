@@ -17,12 +17,12 @@ events.onConnect([](AsyncEventSourceClient *client){
 //                                     homepage
 // ***********************************************************************************
 server.on("/SW=BACK", HTTP_GET, [](AsyncWebServerRequest *request) {
-    loginBoth(request, "both");
+    if (!loginBoth(request, "both")) return;
     request->redirect( String(requestUrl) );
 });
 
 server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    loginBoth(request, "both");
+    if (!loginBoth(request, "both")) return;
     request->send_P(200, "text/html", ECU_HOMEPAGE);
 });
 
@@ -37,9 +37,12 @@ server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
 });
 
 server.on("/details", HTTP_GET, [](AsyncWebServerRequest *request) {
-iKeuze = atoi(request->arg("inv").c_str()) ;
+if (!loginBoth(request, "both")) return;
+if (!request->hasParam("inv")) { request->send(400, "text/plain", "Missing inverter index"); return; }
+iKeuze = request->getParam("inv")->value().toInt();
+if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "text/plain", "Unknown inverter"); return; }
 //requestUrl = request->url();
-strcpy( requestUrl, request->url().c_str() );
+strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
 //Serial.println("details url = " + String(requestUrl));
 request->send_P(200, "text/html", DETAILSPAGE);
 });
@@ -47,7 +50,8 @@ request->send_P(200, "text/html", DETAILSPAGE);
 // very often called  XHT REQUESTS handled by handleDataRequests()
 //***********************************************************************
 server.on("/get.Data", HTTP_GET, [](AsyncWebServerRequest *request) {
-  strcpy( requestUrl, request->url().c_str() );
+  if (!loginBoth(request, "both")) return;
+  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   Serial.println("get.Data url = " + String(requestUrl));
   handleDataRequests(request);
 });
@@ -56,9 +60,8 @@ server.on("/get.Data", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 server.on("/MENU", HTTP_GET, [](AsyncWebServerRequest *request) {
 //Serial.println("requestUrl = " + request->url() ); // can we use this
-if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-
-loginBoth(request, "admin");
+if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+if (!loginBoth(request, "admin")) return;
 //toSend = FPSTR(HTML_HEAD);
 //toSend += FPSTR(MENUPAGE);
 request->send_P(200, "text/html", MENUPAGE);
@@ -72,7 +75,8 @@ server.on("/DENIED", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 
 server.on("/CONSOLE", HTTP_GET, [](AsyncWebServerRequest *request){
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+    if (!loginBoth(request, "admin")) return;
     diagNose=1;
     request->send_P(200, "text/html", CONSOLE_HTML);
   });
@@ -96,16 +100,17 @@ server.on("/DIAGNOSTICS", HTTP_GET, [](AsyncWebServerRequest *request) {
 //                                   basisconfig
 // ***********************************************************************************
 server.on("/BASISCONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-loginBoth(request, "admin");
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+if (!loginBoth(request, "admin")) return;
 //requestUrl = request->url();// remember this to come back after reboot
-strcpy( requestUrl, request->url().c_str() );
+strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
 zendPageBasis(request);
 //request->send(200, "text/html", toSend);
 });
 
 server.on("/submitform", HTTP_GET, [](AsyncWebServerRequest *request) {
-handleForms(request);
+if (!loginBoth(request, "admin")) return;
+if (!handleForms(request)) return;
 confirm(); // puts a response in toSend
 request->send(200, "text/html", toSend);
 });
@@ -122,19 +127,19 @@ request->send(200, "text/html", toSend);
 // });
 
 server.on("/MQTT", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-  loginBoth(request, "admin");
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  if (!loginBoth(request, "admin")) return;
   //requestUrl = request->url();
-  strcpy( requestUrl, request->url().c_str() );
+  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   zendPageMQTTconfig(request);
   //request->send(200, "text/html", toSend);
 });
 
 server.on("/GEOCONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-  loginBoth(request, "admin");
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  if (!loginBoth(request, "admin")) return;
   //requestUrl = request->url();
-  strcpy( requestUrl, request->url().c_str() );
+  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   zendPageGEOconfig(request);
   //request->send(200, "text/html", toSend);
 });
@@ -148,17 +153,61 @@ server.on("/GEOCONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
 //   //request->send(200, "text/html", toSend);
 // });
 
+server.on("/SETTINGS_SAVE", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  handleBasisSave(request);
+});
+
+server.on("/TIME_SAVE", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  handleTimeSave(request);
+});
+
+server.on("/NETWORK", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote(request->client()->remoteIP().toString())) { request->redirect("/DENIED"); return; }
+  if (!loginBoth(request, "admin")) return;
+  handleNetworkPage(request);
+});
+
+server.on("/NETWORK_SAVE", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if(checkRemote(request->client()->remoteIP().toString())) { request->redirect("/DENIED"); return; }
+  if (!loginBoth(request, "admin")) return;
+  handleNetworkSave(request);
+});
+
+server.on("/ENERGY", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  request->send_P(200, "text/html", ENERGY_PAGE);
+});
+
+server.on("/api/energy/hourly", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  int inverter = request->hasParam("inv") ? request->getParam("inv")->value().toInt() : -1;
+  energySendHourlyJson(request, inverter);
+});
+
+server.on("/api/energy/days", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  uint16_t limit = request->hasParam("limit") ? request->getParam("limit")->value().toInt() : 90;
+  energySendDailyHistoryJson(request, limit);
+});
+
+server.on("/api/energy/history.csv", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  energySendHistoryCsv(request);
+});
+
 server.on("/REBOOT", HTTP_GET, [](AsyncWebServerRequest *request) {
-  loginBoth(request, "admin");
+  if (!loginBoth(request, "admin")) return;
   actionFlag = 10;
   confirm(); 
-  strcpy( requestUrl, "/");
+  strlcpy(requestUrl, "/", sizeof(requestUrl));
   request->send(200, "text/html", toSend);
 });
 
 server.on("/STARTAP", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-  loginBoth(request, "admin");
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  if (!loginBoth(request, "admin")) return;
   String toSend = F("<!DOCTYPE html><html><head><script type='text/javascript'>setTimeout(function(){ window.location.href='/SW=BACK'; }, 5000 ); </script>");
   toSend += F("</head><body><center><h2>OK the accesspoint is started.</h2>Wait unil the led goes on.<br><br>Then go to the wifi-settings on your pc/phone/tablet and connect to ESP32-ECU");
   request->send ( 200, "text/html", toSend ); //zend bevestiging
@@ -167,29 +216,30 @@ server.on("/STARTAP", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 server.on("/ABOUT", HTTP_GET, [](AsyncWebServerRequest *request) {
 Serial.println(F("/INFOPAGE requested"));
-loginBoth(request, "both");
+if (!loginBoth(request, "both")) return;
 handleAbout(request);
 });
 server.on("/TEST", HTTP_GET, [](AsyncWebServerRequest *request) {
-  loginBoth(request, "admin");
+  if (!loginBoth(request, "admin")) return;
   actionFlag = 44;
   request->send( 200, "text/html", "<center><br><br><h3>checking zigbee.. please wait a minute.<br>Then you can find the result in the log.<br><br><a href=\'/LOGPAGE\'>click here</a></h3>" );
 });
 
 server.on("/LOGPAGE", HTTP_GET, [](AsyncWebServerRequest *request) {
-  loginBoth(request, "both");
+  if (!loginBoth(request, "both")) return;
   //requestUrl = request->url();
-  strcpy( requestUrl, request->url().c_str() );
+  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   //handleLogPage(request);
   request->send_P(200, "text/html", LOGPAGE, putList);
 });
 
 server.on("/MQTT_TEST", HTTP_GET, [](AsyncWebServerRequest *request) {
-loginBoth(request, "admin");
-char Mqtt_send[26] = {0};
-strcpy( Mqtt_send , Mqtt_outTopic);
-if(Mqtt_send[strlen(Mqtt_send -1)] == '/') {
-  strcat(Mqtt_send, String(Inv_Prop[0].invIdx).c_str());
+if (!loginBoth(request, "admin")) return;
+char Mqtt_send[40] = {0};
+strlcpy(Mqtt_send, Mqtt_outTopic, sizeof(Mqtt_send));
+size_t mqttTopicLength = strlen(Mqtt_send);
+if(mqttTopicLength && Mqtt_send[mqttTopicLength - 1] == '/') {
+  strlcat(Mqtt_send, String(Inv_Prop[0].invIdx).c_str(), sizeof(Mqtt_send));
 }
 
 String toMQTT = "{\"test\":\"" + String(Mqtt_send) + "\"}";
@@ -208,35 +258,41 @@ server.on("/INVSCRIPT", HTTP_GET, [](AsyncWebServerRequest *request) {
 });
 
 server.on("/INV_CONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );  
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  if (!loginBoth(request, "admin")) return;
   iKeuze=0;
-  strcpy( requestUrl, request->url().c_str() ); 
+  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   inverterForm(); // prepare the page part with the form
   request->send_P(200, "text/html", INVCONFIG_START, processor);
 });
 
 server.on("/inverterconfig", HTTP_GET, [](AsyncWebServerRequest *request) {
+if (!loginBoth(request, "admin")) return;
 handleInverterconfig(request);
 });
 
 server.on("/PAIR", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-  loginBoth(request, "admin");
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  if (!loginBoth(request, "admin")) return;
   //requestUrl = request->url();
-  strcpy( requestUrl, request->url().c_str() );
+  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   //DebugPrintln(F("pairing requested"));
   handlePair(request);
 });
 
 server.on("/INV_DEL", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  if (!loginBoth(request, "admin")) return;
   handleInverterdel(request);
 });
 
 server.on("/INV", HTTP_GET, [](AsyncWebServerRequest *request) {
-    strcpy( requestUrl, request->url().c_str() );
+    if (!loginBoth(request, "admin")) return;
+    if (!request->hasParam("welke")) { request->send(400, "text/plain", "Missing inverter index"); return; }
+    strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
     //bool nothing = false;
     int i = atoi(request->arg("welke").c_str()) ;
+    if (i != 99 && (i < 0 || i >= inverterCount)) { request->send(404, "text/plain", "Unknown inverter"); return; }
     iKeuze = i;
     consoleOut("?INV iKeuze at enter = " + String(iKeuze));
     if( iKeuze == 99 ) {
@@ -258,7 +314,9 @@ server.on("/INV", HTTP_GET, [](AsyncWebServerRequest *request) {
 //                    X H T  R E Q U E S T S
 //***********************************************************************
 
-server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {     
+server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {
+if (!loginBoth(request, "both")) return;
+if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/json", "{\"error\":\"unknown inverter\"}"); return; }
 // set the array into a json object
   String json="{";
   json += "\"invID\":\"" + String(Inv_Prop[iKeuze].invID) + "\"";
@@ -321,8 +379,8 @@ server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {
     });
 
   server.on("/FWUPDATE", HTTP_GET, [](AsyncWebServerRequest *request){
-    if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
-    strcpy(requestUrl, "/");
+    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+    strlcpy(requestUrl, "/", sizeof(requestUrl));
     if (!request->authenticate("admin", pswd) ) return request->requestAuthentication();
     if (esp_ota_get_next_update_partition(nullptr) == nullptr) {
       request->send(409, "text/html", "<h2>OTA is disabled in the 4 MB USB-only build.</h2><p>Connect USB to install new firmware.</p><a href='/MENU'>Back</a>");
@@ -331,7 +389,7 @@ server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send_P(200, "text/html", otaIndex); 
     });
   server.on("/handleFwupdate", HTTP_POST, [](AsyncWebServerRequest *request){
-    if(checkRemote( request->client()->remoteIP().toString()) ) request->redirect( "/DENIED" );
+    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
     Serial.println("FWUPDATE requested");
     if( !Update.hasError() ) {
     toSend="<br><br><center><h2>UPDATE SUCCESS !!</h2><br><br>";

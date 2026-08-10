@@ -24,18 +24,11 @@ void getTijd() {
     return;
   } else {
    
-    epochTime += atoi(gmtOffset) * 60;
-    setTime(epochTime); // dit moeten we doen omdat anders zomertijd() niet werkt
-    //Serial.print("epoch gecorrigeerd voor timezone = "); Serial.println(epochTime);
-    if ( zomerTijd == true ) {
-    //Serial.print("zomerTijd[0] = een o dus on "); Serial.println(String(zomerTijd));  
-      if (zomertijd() == true) {  
-        epochTime += 3600; // een uur erbij
-        setTime(epochTime);
-        //DebugPrint("epoch corrected with dts = "); //DebugPrintln(epochTime);
-      }
+    if (!ecuSetLocalTimeFromUtc((time_t)epochTime)) {
+      ntpUDP.stop();
+      return;
     }
-    timeRetrieved=true;  
+    timeRetrieved=true;
     Update_Log(1, "got time");
     }
     //DebugPrint(" Unix time epoch = ");

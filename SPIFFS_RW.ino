@@ -82,6 +82,9 @@ void wifiConfigsave() {
     
     json["gmtOffset"] = gmtOffset;
     json["zomerTijd"] = zomerTijd;
+    json["timeZoneId"] = timeZoneId;
+    json["daylightPolling"] = daylightPolling;
+    json["locationConfigured"] = locationConfigured;
     json["securityLevel"] = securityLevel;
     File configFile = SPIFFS.open("/wificonfig.json", "w");
     if (!configFile) {
@@ -108,6 +111,7 @@ void basisConfigsave() {
     json["Polling"] = Polling;
     json["pollOffset"] = pollOffset;
     json["pollIntervalSeconds"] = pollIntervalSeconds;
+    json["schemaVersion"] = 2;
         
     File configFile = SPIFFS.open("/basisconfig.json", "w");
     if (!configFile) {
@@ -178,28 +182,55 @@ bool file_open_for_read(const char* bestand)
             //serializeJson(doc, jsonStr);
             if (strcmp(bestand, "/wificonfig.json") == 0) {
                       //strcpy(static_ip, doc["ip"] | "000.000.000.000");
-                      strcpy(pswd, doc["pswd"] | "0000");
-                      longi = doc["longi"] | 5.432;
-                      lati = doc["lati"] | 51.743;                      
-                      strcpy(gmtOffset, doc["gmtOffset"] | "+120");
-                      zomerTijd = doc["zomerTijd"].as<bool>() | true;
+                      strlcpy(pswd, doc["pswd"] | "0000", sizeof(pswd));
+                      longi = doc["longi"] | 0.0;
+                      lati = doc["lati"] | 0.0;
+                      strlcpy(gmtOffset, doc["gmtOffset"] | "0", sizeof(gmtOffset));
+                      zomerTijd = doc["zomerTijd"] | false;
+                      const char *storedZone = doc["timeZoneId"] | "";
+                      if (storedZone[0]) {
+                        strlcpy(timeZoneId, storedZone, sizeof(timeZoneId));
+                      } else if (doc["gmtOffset"].isNull()) {
+                        strlcpy(timeZoneId, "UTC", sizeof(timeZoneId));
+                      } else {
+                        // Migrate the common legacy offsets. The old DST code
+                        // used European transition dates for every location.
+                        int oldOffset = atoi(gmtOffset);
+                        if (oldOffset == -420 && zomerTijd)
+                          strlcpy(timeZoneId, "America/Denver", sizeof(timeZoneId));
+                        else if (oldOffset == -480 && zomerTijd)
+                          strlcpy(timeZoneId, "America/Los_Angeles", sizeof(timeZoneId));
+                        else if (oldOffset == -360 && zomerTijd)
+                          strlcpy(timeZoneId, "America/Chicago", sizeof(timeZoneId));
+                        else if (oldOffset == -300 && zomerTijd)
+                          strlcpy(timeZoneId, "America/New_York", sizeof(timeZoneId));
+                        else
+                          strlcpy(timeZoneId, "Custom", sizeof(timeZoneId));
+                      }
+                      daylightPolling = doc["daylightPolling"] | true;
+                      locationConfigured = doc["locationConfigured"] |
+                          (!doc["lati"].isNull() && !doc["longi"].isNull());
                       securityLevel = doc["securityLevel"].as<int>() | 6;
             }
 
             if ( strcmp(bestand, "/basisconfig.json") == 0) {
-                    strcpy (ECU_ID, doc["ECU_ID"] | "D8A3011B9780");
-                    strcpy (userPwd, doc["userPwd"] | "1111" );
+                    strlcpy(ECU_ID, doc["ECU_ID"] | "D8A3011B9780", sizeof(ECU_ID));
+                    strlcpy(userPwd, doc["userPwd"] | "1111", sizeof(userPwd));
                     pollOffset = doc["pollOffset"].as<int>() | 0;
                     pollIntervalSeconds = doc["pollIntervalSeconds"].as<uint32_t>() | 300U;
-                    Polling = doc["Polling"].as<bool>() | false;
+                    // Schema 1 defaulted automatic polling off. Migrate every
+                    // existing installation to the new enabled default once;
+                    // subsequent saves preserve an intentional user choice.
+                    uint8_t schemaVersion = doc["schemaVersion"] | 0;
+                    Polling = schemaVersion < 2 ? true : (doc["Polling"] | true);
               }            
 
             if ( strcmp(bestand, "/mqttconfig.json") == 0) {
-                     strcpy(Mqtt_Broker,   doc["Mqtt_Broker"] | "192.168.0.100");
-                     strcpy(Mqtt_Port,     doc["Mqtt_Port"]   | "1883");  
-                     strcpy(Mqtt_outTopic, doc["Mqtt_outTopic"] | "domoticz/in");         
-                     strcpy(Mqtt_Username, doc["Mqtt_Username"] | "n/a");
-                     strcpy(Mqtt_Password, doc["Mqtt_Password"] | "n/a");
+                     strlcpy(Mqtt_Broker, doc["Mqtt_Broker"] | "192.168.0.100", sizeof(Mqtt_Broker));
+                     strlcpy(Mqtt_Port, doc["Mqtt_Port"] | "1883", sizeof(Mqtt_Port));
+                     strlcpy(Mqtt_outTopic, doc["Mqtt_outTopic"] | "domoticz/in", sizeof(Mqtt_outTopic));
+                     strlcpy(Mqtt_Username, doc["Mqtt_Username"] | "n/a", sizeof(Mqtt_Username));
+                     strlcpy(Mqtt_Password, doc["Mqtt_Password"] | "n/a", sizeof(Mqtt_Password));
                      Mqtt_Format = doc["Mqtt_Format"].as<int>() | 0;
                      Mqtt_stateIDX = doc["Mqtt_stateIDX"].as<int>() | 123;      
             }

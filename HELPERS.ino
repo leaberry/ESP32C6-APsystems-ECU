@@ -203,14 +203,15 @@ int readInverterfiles() {
         MQTT_Client.disconnect();
         ws.textAll("dropped connection");
         delay(100);
-        char Mqtt_send[26] = {0};
+        char Mqtt_send[40] = {0};
        
         if(mqttConnect() ) {
         String toMQTT=""; // if we are connected we do this
         
-        strcpy( Mqtt_send , Mqtt_outTopic);
-        
-        if(Mqtt_send[strlen(Mqtt_send -1)] == '/') strcat(Mqtt_send, String(Inv_Prop[0].invIdx).c_str());
+        strlcpy(Mqtt_send, Mqtt_outTopic, sizeof(Mqtt_send));
+        size_t topicLength = strlen(Mqtt_send);
+        if (topicLength > 0 && Mqtt_send[topicLength - 1] == '/')
+          strlcat(Mqtt_send, String(Inv_Prop[0].invIdx).c_str(), sizeof(Mqtt_send));
         toMQTT = "{\"test\":\"" + String(Mqtt_send) + "\"}";
         
         if(Mqtt_Format == 5) toMQTT = "field1=12.3&field4=44.4&status=MQTTPUBLISH";

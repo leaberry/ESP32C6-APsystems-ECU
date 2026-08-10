@@ -1,44 +1,17 @@
-const char MENUPAGE[] PROGMEM = R"=====(
-<!DOCTYPE html><html><head><meta charset='utf-8'>
-<title>ESP32-ECU</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" type="image/x-icon" href="/favicon.ico" />
-<link rel="stylesheet" type="text/css" href="/STYLESHEET">
-
-<style>
-#menu2 a:link, #menu2 a:visited {
-  width: 98px;
-}
-</style>
-<script type="text/javascript" src="SECURITY"></script>
-</head><body>
-<div id='msect'>
-<div id='menu'>
-    <a  href="/" class='close' >&times;</a>  
-</div>
-<br><br>
-<kop>ESP32 ECU MENU</kop><br><br>
-<div class='divstijl'><center><br>
-<div id="menu2">
-  <table><tr>
-  <td style="width:100px"><a href='/ABOUT'>system info</a>
-  </td><td style="width:60px"></td>
-  <td style="width:100px"><a href='/GEOCONFIG'>time config</a></td></tr>
-
-  <tr><td><a href='/LOGPAGE'>journal</a></td><td></td>
-  <td><a href='/MQTT'>mosquitto</a></td></tr>
-  
-  <tr><td><a href='/INV_CONFIG'>inverters</a></td><td></td>
-  <td><a href='/FWUPDATE'>fw update</a></td></tr>
-  
-  <tr><td><a href='/CONSOLE'>console</a></td><td></td>
-  <td><a href='/DIAGNOSTICS'>diagnostics</a></td></tr>
-  <tr><td><a href='/GRIDPROFILE'>grid profiles</a></td><td></td>
-  <td><a onclick="return confirm('are you sure?')" href='/REBOOT'>reboot</a></td></tr>
-
-   <tr><td><a href='/BASISCONFIG'>settings</a></td><td></td>
-  <td><a onclick="return confirm('are you sure?')" href='/STARTAP'>start AP</a></td></tr> 
-  </table>
-</div></div></div>
-</body></html>
-  )=====";
+const char MENUPAGE[] PROGMEM = R"=====menu(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>APsystems ECU menu</title><link rel="stylesheet" href="/STYLESHEET"></head>
+<body><header class="topbar"><a class="brand" href="/">APsystems ECU</a><nav class="nav"><a class="button secondary" href="/">Dashboard</a></nav></header><main class="page"><div class="eyebrow">Administration</div><h1>Menu</h1><p>Configure the ECU, inspect its status, and manage your inverters.</p><div class="menu-grid">
+<a class="menu-item" href="/BASISCONFIG"><strong>Polling and access</strong><span>Automatic polling, interval, ECU ID and user password</span></a>
+<a class="menu-item" href="/GEOCONFIG"><strong>Time and location</strong><span>Coordinates, time zone and daylight-aware polling</span></a>
+<a class="menu-item" href="/NETWORK"><strong>Network</strong><span>Hostname, DHCP, static addressing and Wi-Fi details</span></a>
+<a class="menu-item" href="/INV_CONFIG"><strong>Inverters</strong><span>Add, pair, edit or remove microinverters</span></a>
+<a class="menu-item" href="/ENERGY"><strong>Energy history</strong><span>Hourly output today and recorded daily totals</span></a>
+<a class="menu-item" href="/ABOUT"><strong>System information</strong><span>Firmware, memory, radio, network and polling status</span></a>
+<a class="menu-item" href="/MQTT"><strong>MQTT</strong><span>Broker and publishing configuration</span></a>
+<a class="menu-item" href="/GRIDPROFILE"><strong>Grid profiles</strong><span>Read and cautiously manage protection settings</span></a>
+<a class="menu-item" href="/LOGPAGE"><strong>Journal</strong><span>Recent operational messages</span></a>
+<a class="menu-item" href="/CONSOLE"><strong>Diagnostics console</strong><span>Live diagnostic output over the network</span></a>
+<a class="menu-item" href="/DIAGNOSTICS"><strong>Diagnostic snapshot</strong><span>Download current radio and system diagnostics</span></a>
+<a class="menu-item" href="/FWUPDATE"><strong>Firmware update</strong><span>Install an OTA image on supported 8 MB builds</span></a>
+</div><div class="actions"><a class="button danger" onclick="return confirm('Restart the ECU?')" href="/REBOOT">Restart ECU</a><a class="button secondary" onclick="return confirm('Start the setup access point?')" href="/STARTAP">Start setup access point</a></div></main></body></html>
+)=====menu";

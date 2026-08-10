@@ -1,74 +1,52 @@
-const char BASISCONFIG[] PROGMEM = R"=====(
-<body>
-<div id='msect'>
-<div id='menu'>
-    <a href="/MENU" class='close'>&times;</a>
-    <a href="#" id="sub" style='background:green; display: none' onclick='submitFunction()'>save</a><br>
-</div>
-
-<kop>ECU GENERAL SETTINGS</kop>
-
-<div class='divstijl' style='width: 480px; height:56vh;'>
-  <form id='formulier' method='get' action='submitform' oninput='showSubmit()'>
-  <center><table>
-  <tr><td style='width:140px;'>ecu id<td><input class='inp6' name='ecuid' value='{id}' minlength='12' maxlength='12' required></input><td></tr>
-  <tr><td>user passwd<td><input  class='inp5' name='pw1' length='11' placeholder='max. 10 char' value='{pw1}' pattern='.{4,10}' title='between 4 en 10 characters'></input> 
-  </td></tr>
-  <tr><td style='width:140px;'>offset sun-set/rise<td><input class='inp2' type='number' min='-15' max='15' name='offs' value='{of}' size='4' ><td>
-  <tr><td>auto polling<td><input type='checkbox' style='width:30px; height:30px;' name='pL' #check></input></td><tr>
-  <tr><td>poll interval<td><input class='inp2' type='number' min='5' max='86400' name='pollsec' value='{pi}' required> seconds</td></tr>
-  <tr><td colspan='2'><small>The firmware raises values below the safe fleet minimum (3 seconds per configured inverter, never below 5 seconds). Default: 300 seconds.</small></td></tr>
-  
-  </td></tr></table></form>
-  </table>
-  </div><br>
-</div>
-</body></html>
-)=====";
-
 void zendPageBasis(AsyncWebServerRequest *request) {
-  String(webPage)="";
-    //DebugPrintln("we zijn nu op zendPageBasis");
-    webPage = FPSTR(HTML_HEAD);
-    webPage += FPSTR(BASISCONFIG);
-    
-    // replace data
-    webPage.replace("'{id}'" , "'" + String(ECU_ID) + "'") ;
-    webPage.replace( "'{pw1}'" , "'" + String(userPwd) + "'") ;
-    webPage.replace( "'{of}'" , "'" + String(pollOffset) + "'") ;
-    webPage.replace( "'{pi}'" , "'" + String(pollIntervalSeconds) + "'") ;
-    if (Polling) { 
-      webPage.replace("#check", "checked");
+  String page = ecuPageStart(F("Polling and access"),
+      F("Configure normal data collection and local web access."));
+  page += F("<form class=\"form-card\" method=\"post\" action=\"/SETTINGS_SAVE\"><div class=\"form-grid\">");
+  page += F("<div class=\"field full\"><label for=\"ecuid\">ECU identifier</label><input id=\"ecuid\" name=\"ecuid\" maxlength=\"12\" minlength=\"12\" pattern=\"[0-9A-Fa-f]{12}\" value=\"");
+  page += webEscape(ECU_ID);
+  page += F("\" required><span class=\"help\">A 12-digit hexadecimal coordinator identifier. Keep the generated value unless replacing an existing ECU.</span></div>");
+  page += F("<div class=\"field full\"><label for=\"userpw\">Read-only user password</label><input id=\"userpw\" name=\"userpw\" type=\"password\" minlength=\"4\" maxlength=\"10\" placeholder=\"Leave blank to keep the current password\"><span class=\"help\">Used by pages that permit either the administrator or read-only user.</span></div>");
+  page += F("<div class=\"field full\"><div class=\"checkline\"><input id=\"polling\" name=\"polling\" type=\"checkbox\"");
+  if (Polling) page += F(" checked");
+  page += F("><label for=\"polling\">Enable automatic polling<span class=\"help\">The recommended default is enabled. Manual Poll actions continue to work when disabled.</span></label></div></div>");
+  page += F("<div class=\"field\"><label for=\"pollsec\">Fleet poll interval</label><input id=\"pollsec\" name=\"pollsec\" type=\"number\" min=\"5\" max=\"86400\" value=\"");
+  page += String(pollIntervalSeconds);
+  page += F("\" required><span class=\"help\">Seconds between complete fleet rounds. Default: 300 seconds.</span></div><div class=\"field\"><label>Safe minimum now</label><input value=\"");
+  page += String(pollingMinimumSeconds());
+  page += F(" seconds\" disabled><span class=\"help\">Three seconds per configured inverter, never below five seconds. Faster requests are automatically raised to this value.</span></div></div><div class=\"actions\"><button type=\"submit\">Save settings</button><a class=\"button secondary\" href=\"/MENU\">Cancel</a></div></form>");
+  page += ecuPageEnd();
+  request->send(200, "text/html", page);
+}
+
+void handleBasisSave(AsyncWebServerRequest *request) {
+  if (!request->hasParam("ecuid", true) || !request->hasParam("pollsec", true)) {
+    request->send(400, "text/plain", "Missing required settings");
+    return;
+  }
+  String id = request->getParam("ecuid", true)->value();
+  if (id.length() != 12) {
+    request->send(400, "text/plain", "ECU identifier must contain 12 hexadecimal digits");
+    return;
+  }
+  for (char c : id) if (!isxdigit((unsigned char)c)) {
+    request->send(400, "text/plain", "ECU identifier must contain only hexadecimal digits");
+    return;
+  }
+  id.toUpperCase();
+  strlcpy(ECU_ID, id.c_str(), sizeof(ECU_ID));
+  if (request->hasParam("userpw", true)) {
+    String newPassword = request->getParam("userpw", true)->value();
+    if (!newPassword.isEmpty()) {
+      if (newPassword.length() < 4 || newPassword.length() > 10) {
+        request->send(400, "text/plain", "User password must be 4 to 10 characters");
+        return;
+      }
+      strlcpy(userPwd, newPassword.c_str(), sizeof(userPwd));
     }
-    request->send(200, "text/html", webPage);
-    webPage=""; // free up
-}
-
-
-void handleBasisconfig(AsyncWebServerRequest *request) { // form action = handleConfigsave
-// verzamelen van de serverargumenten   
-   strcpy(ECU_ID, request->arg("ecuid").c_str());
-   strcpy(userPwd, request->arg("pw1").c_str());
-//   pollRes = request->arg("pr").toInt();
-//   hc_IDX = request->arg("hcidx").toInt();
-   pollOffset = request->arg("offs").toInt();
-   pollIntervalSeconds = pollingClampSeconds(request->arg("pollsec").toInt());
-// this value gets currupted when it is negative, we get 256 -/- the number
-// so -2 becomes 254
-//   if (po > 200) { pollOffset = po - 256; } else { pollOffset = po; } 
-   
-   
-//   calliBration = request->arg("cali").toFloat();
-//BEWARE CHECKBOX
-String dag = "";
-if(request->hasParam("pL")) {
-dag = request->getParam("pL")->value();  
-}
-   if (dag == "on") { Polling = true; } else { Polling = false;}
-  //toSend = FPSTR(CONFIRM);
-  basisConfigsave();  // alles opslaan
- // request->send_P(200, "text/html", CONFIRM); //send the html code to the client
- 
-  //DebugPrintln("basisconfig saved");
-  actionFlag=25; // recalculates the time with these new values 
+  }
+  pollIntervalSeconds = pollingClampSeconds(
+      request->getParam("pollsec", true)->value().toInt());
+  Polling = request->hasParam("polling", true);
+  basisConfigsave();
+  request->redirect("/BASISCONFIG");
 }
