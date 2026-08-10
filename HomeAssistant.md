@@ -62,7 +62,6 @@ modbus:
         address: 94
         input_type: holding
         data_type: uint32
-        swap: none
         scale: 0.001
         precision: 3
         unit_of_measurement: kWh
@@ -109,7 +108,6 @@ the included file:
       address: 94
       input_type: holding
       data_type: uint32
-      swap: none
       scale: 0.001
       precision: 3
       unit_of_measurement: kWh
@@ -155,7 +153,6 @@ part is the `slave` value: 2 is inverter index 0, 3 is index 1, and 4 is index 2
         address: 94
         input_type: holding
         data_type: uint32
-        swap: none
         scale: 0.001
         precision: 3
         unit_of_measurement: kWh
@@ -180,7 +177,6 @@ part is the `slave` value: 2 is inverter index 0, 3 is index 1, and 4 is index 2
         address: 94
         input_type: holding
         data_type: uint32
-        swap: none
         scale: 0.001
         precision: 3
         unit_of_measurement: kWh
@@ -205,7 +201,6 @@ part is the `slave` value: 2 is inverter index 0, 3 is index 1, and 4 is index 2
         address: 94
         input_type: holding
         data_type: uint32
-        swap: none
         scale: 0.001
         precision: 3
         unit_of_measurement: kWh
@@ -236,9 +231,10 @@ longer `scan_interval` is also fine if faster dashboard updates are unnecessary.
 - Confirm the ECU web interface loads from the Home Assistant host's network.
 - Confirm TCP port 502 is reachable and is not blocked between VLANs.
 - Use a reserved DHCP address or static IP so the configured host does not move.
-- Leave `input_type: holding`, `data_type: uint32`, and `swap: none` unchanged for
-  the energy counter. Home Assistant automatically reads both registers for a
-  `uint32`; do not add `count: 2`.
+- Leave `input_type: holding` and `data_type: uint32` unchanged for the energy
+  counter. Omit `swap` to use Home Assistant's default unswapped word order.
+  Home Assistant automatically reads both registers for a `uint32`; do not add
+  `count: 2`.
 - If an individual entity is unavailable, verify the inverter's index in the ECU
   web interface and use unit ID `index + 2`.
 - If values update in five-minute steps, that is expected with the ECU's default
