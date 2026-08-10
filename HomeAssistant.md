@@ -71,6 +71,56 @@ modbus:
         scan_interval: 30
 ```
 
+### Using a separate include file
+
+If `configuration.yaml` delegates the Modbus section to another file:
+
+```yaml
+modbus: !include includes/modbus.yaml
+```
+
+then `includes/modbus.yaml` represents the value of `modbus:` and must start
+directly with the list of connections. Do not put another `modbus:` heading in
+the included file:
+
+```yaml
+- name: apsystems_ecu
+  type: tcp
+  host: 192.168.20.45
+  port: 502
+  timeout: 5
+  message_wait_milliseconds: 50
+
+  sensors:
+    - name: "APSystems solar power"
+      unique_id: apsystems_solar_power
+      slave: 1
+      address: 84
+      input_type: holding
+      data_type: int16
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      scan_interval: 30
+
+    - name: "APSystems solar production"
+      unique_id: apsystems_solar_production
+      slave: 1
+      address: 94
+      input_type: holding
+      data_type: uint32
+      swap: none
+      scale: 0.001
+      precision: 3
+      unit_of_measurement: kWh
+      device_class: energy
+      state_class: total_increasing
+      scan_interval: 30
+```
+
+Additional Modbus connections go in the same included file as additional
+top-level `- name: ...` list items.
+
 `APSystems solar production` is the entity intended for the Energy dashboard.
 It is the sum of all configured inverters. `APSystems solar power` is an
 instantaneous W reading and is useful on ordinary dashboards, but it is not the
