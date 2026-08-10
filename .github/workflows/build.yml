@@ -57,6 +57,17 @@ jobs:
           if [[ "${{ matrix.name }}" == "8mb-ota" ]]; then
             cp "${source}.elf" "$output/${base}.elf"
           fi
+          version="$(sed -n 's/^#define VERSION[[:space:]]*"\([^"]*\)"/\1/p' AAA_INCLUDES.h)"
+          {
+            echo "Firmware version: $version"
+            echo "Git commit: $GITHUB_SHA"
+            echo "Git ref: $GITHUB_REF_NAME"
+            echo "Build variant: ${{ matrix.name }}"
+            echo "Flash size: ${{ matrix.flash }}"
+            echo "Built UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "OTA/application image: ${base}.bin"
+            echo "USB first-install image: ${base}.merged.bin"
+          } > "$output/BUILD-INFO.txt"
           (cd "$output" && sha256sum * > SHA256SUMS.txt)
       - name: Upload ${{ matrix.name }} artifacts
         uses: actions/upload-artifact@v4

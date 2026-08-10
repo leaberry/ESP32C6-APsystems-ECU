@@ -81,7 +81,9 @@ If it says OTA is unavailable, use USB instead; an OTA upload cannot convert a
 1. Download `ESP32C6_ECU-8MB-OTA.bin` from the
    [latest GitHub Release](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases/latest).
    Use the application `.bin`, **not** the `.merged.bin`, bootloader or
-   partition image.
+   partition image. A published release can lag behind the `main` branch; when
+   testing unreleased changes, download the Actions artifact produced by the
+   exact commit you intend to test.
 2. Open the ECU web interface, sign in as `admin`, and select **Menu > Firmware
    update**. The page can also be opened directly at `http://ECU-IP/FWUPDATE`.
 3. Select `ESP32C6_ECU-8MB-OTA.bin` and start the upload. Keep the ECU powered
@@ -182,9 +184,17 @@ USB connectors must use the native USB connector for JTAG debugging.
 
 Every GitHub Actions build uploads temporary, separate `4mb-noota` and
 `8mb-ota` bundles containing the application, merged image, bootloader,
-partition image, checksums and 8 MB debugging ELF. Builds triggered by a tag
+partition image, checksums, `BUILD-INFO.txt` and 8 MB debugging ELF.
+`BUILD-INFO.txt` identifies the firmware version, full Git commit, ref, variant,
+build time, and which image is intended for OTA versus USB. Builds triggered by a tag
 whose name starts with `v` publish the same files as permanent GitHub Release
 assets. Neither kind of binary is stored in Git history.
+
+The local `artifacts` directory is only a downloaded snapshot. It is ignored by
+Git and is **not** refreshed by `git pull`, a commit, or a source-only build.
+Before flashing from that directory, open `BUILD-INFO.txt` and verify its
+version and commit. If an older bundle has no manifest, treat it as unverified
+and replace the entire variant directory with a newly downloaded artifact.
 
 For a later 4 MB same-layout USB update, flash only
 `ESP32C6_ECU-4MB-noOTA.bin` at `0x10000`. For an installed 8 MB build, upload
