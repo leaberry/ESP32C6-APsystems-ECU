@@ -71,6 +71,32 @@ Do not flash the 8 MB image onto a 4 MB device. The release also provides ZIP
 bundles, individual application images for later updates, SHA-256 checksums and
 the 8 MB ELF file used for debugging.
 
+### Upgrade an existing 8 MB installation over the air
+
+OTA updates are available only when the ECU is already running the 8 MB
+dual-slot layout. The System information page must show **OTA available: Yes**.
+If it says OTA is unavailable, use USB instead; an OTA upload cannot convert a
+4 MB or single-slot installation to the 8 MB partition layout.
+
+1. Download `ESP32C6_ECU-8MB-OTA.bin` from the
+   [latest GitHub Release](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases/latest).
+   Use the application `.bin`, **not** the `.merged.bin`, bootloader or
+   partition image.
+2. Open the ECU web interface, sign in as `admin`, and select **Menu > Firmware
+   update**. The page can also be opened directly at `http://ECU-IP/FWUPDATE`.
+3. Select `ESP32C6_ECU-8MB-OTA.bin` and start the upload. Keep the ECU powered
+   and on Wi-Fi until the page reports **UPDATE SUCCESS**.
+4. Select **REBOOT**, allow the ECU to reconnect, and open **Menu > System
+   information** to confirm the new firmware version.
+5. Confirm that the inverter list, network configuration, polling settings and
+   energy history are still present before relying on the new installation.
+
+The application is written to the inactive OTA slot, so normal settings and
+SPIFFS energy history are preserved. Do not upload a merged image through the
+web page: merged images are for flashing at address `0x0` over USB and can
+replace partition/configuration data. Keep physical USB access available for
+recovery if power or connectivity is lost during the update.
+
 ### Standalone Windows GUI flasher
 
 Espressif's official
