@@ -165,6 +165,35 @@ For a later 4 MB same-layout USB update, flash only
 `ESP32C6_ECU-8MB-OTA.bin` through its web OTA page so the inactive slot is
 selected safely.
 
+## Web interface and initial configuration
+
+The dashboard shows fleet power, current-day and recorded energy, polling/time
+status, and one responsive status card per inverter. **Menu** groups the
+configuration, energy, diagnostics and maintenance pages. **System
+information** reports the actual compiled firmware version plus live flash,
+heap, filesystem, network, polling, time, radio, MQTT and Modbus state.
+
+Automatic polling is enabled by default at 300 seconds. Version 1.3 also
+migrates an existing disabled default to enabled once; after saving the Basic
+configuration page, an operator can intentionally disable it again.
+
+On **Time and location**, enter latitude and longitude as signed decimal
+degrees, for example `39.7392` and `-104.9903` for Denver. Choose the nearest
+regional time zone from the list so daylight-saving transitions are applied
+automatically. **Custom fixed offset** remains available for locations that do
+not match a listed rule; enter its UTC offset in minutes.
+
+Daylight-aware polling pauses inverter radio queries outside the calculated
+sunrise/sunset window. Web, MQTT and Modbus continue serving cached values. If
+time synchronization or location is unavailable, the scheduler fails open to
+24-hour polling instead of silently pausing. Disable daylight-aware polling to
+query at the configured interval around the clock.
+
+The **Network** page displays the active SSID, signal and address, and can
+switch between DHCP and validated static IPv4 settings. A configurable
+hostname is included in DHCP requests. Saving network settings restarts the
+ECU; its setup access point remains the recovery path if it cannot reconnect.
+
 ## Polling and bus arbitration
 
 The polling interval is configured in seconds on the Basic configuration page.
@@ -194,8 +223,14 @@ Energy deltas from decoded telemetry are accumulated per inverter:
 - the current day's 24 hourly buckets stay in RAM;
 - one finalized record per day is appended to `/energy-days.bin` in SPIFFS;
 - the recorded-energy total is reconstructed from that journal at boot;
-- the web API `get.Data?Energy=N` returns the current date, today, recorded total
-  and 24 hourly values for inverter index `N`.
+- the Energy history page graphs the current day's hourly production, displays
+  recent daily totals, and exports the journal as CSV;
+- `/api/energy/hourly?inv=N` returns 24 hourly values for one inverter, or use
+  `inv=-1` for the fleet total;
+- `/api/energy/days?limit=90` returns finalized daily records plus today, and
+  `/api/energy/history.csv` streams the full journal without loading it into
+  RAM;
+- the compatibility API `get.Data?Energy=N` remains available.
 
 This minimizes flash wear to one logical append per day. The total begins when
 this firmware is installed; it is not the inverter's factory lifetime counter.

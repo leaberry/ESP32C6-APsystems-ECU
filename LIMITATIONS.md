@@ -29,7 +29,7 @@ layout has dual OTA slots and about 1.85 MB SPIFFS.
 4. **Long requests.** Outbound APS fragmentation is not implemented. Current
    poll, query, pairing, throttle and profile messages fit one 802.15.4 frame;
    future commands larger than that must add transmit fragmentation.
-5. **Energy rollover.** Run across sunset and local midnight, reboot, and verify
+5. **Energy rollover.** Run across local midnight, reboot, and verify
    exactly one daily journal record and intact current-day hourly RAM values.
 6. **Soak testing.** Exercise repeated polling while serving the UI, MQTT and a
    persistent Modbus/TCP client, and watch coexistence retries and dropped frames.
