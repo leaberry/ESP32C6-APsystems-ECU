@@ -131,6 +131,17 @@ bool pairing(int which) {
   }
   //now all 4 commands have been sent
   radioTraceEnd();
+  if (!success) {
+    char inferredInverterId[5] = {};
+    if (radioTraceInferPairPeer(Inv_Prop[which].invSerial,
+                                inferredInverterId)) {
+      strlcpy(Inv_Prop[which].invID, inferredInverterId,
+              sizeof(Inv_Prop[which].invID));
+      success = true;
+      consoleOut("accepted uniquely inferred pairing peer, compatibility ID " +
+                 String(Inv_Prop[which].invID));
+    }
+  }
   if (!apsUsePairingPan(false)) {
     consoleOut("warning: could not restore operational Zigbee PAN");
   }

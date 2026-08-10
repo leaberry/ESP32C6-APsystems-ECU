@@ -7,9 +7,13 @@ layout has dual OTA slots and about 1.85 MB SPIFFS.
 
 - ESP32-C6 Wi-Fi and raw IEEE 802.15.4 coexist on channel 16.
 - Pairing discovers the proprietary reply and persists the inverter PAN/address.
+- If that reply omits the legacy inverter ID, pairing can safely infer a route
+  when exactly one responder remains after known peers are eliminated.
 - A plaintext DS3 returns two APS fragments; both are acknowledged, reassembled
   and decoded into voltage, frequency, per-panel power and energy.
 - The tested DS3 returned firmware version `5.456`.
+- A second DS3 was polled on a separate PAN and returned firmware `5.307`; its
+  inferred route remained functional after reboot.
 - Multiple inverters on the same PAN may answer a broadcast; replies are matched
   to the requested inverter by serial number.
 

@@ -19,10 +19,11 @@ The project includes:
 - cautious OpenAPS-compatible grid-protection profile apply and restore
 - one source tree for 4 MB USB-only and 8 MB OTA-capable boards
 
-> Hardware status: plaintext DS3 pairing, two-block telemetry reassembly,
-> firmware-version reads and simultaneous Wi-Fi/802.15.4 operation have been
-> validated on an 8 MB ESP32-C6 with three inverters in range. Encrypted models
-> and protection writes still require physical validation.
+> Hardware status: two plaintext DS3s on different PANs have been paired and
+> polled, including one that omits the legacy ID announcement. Two-block
+> telemetry reassembly, firmware-version reads and simultaneous Wi-Fi/802.15.4
+> operation have been validated on an 8 MB ESP32-C6 with three inverters in
+> range. Encrypted models and protection writes still require physical validation.
 > See [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Flash-size choices
@@ -248,6 +249,12 @@ renders the result in the legacy in-memory format. Pairing learns and persists
 each inverter's PAN and short radio address. This preserves the upstream
 APsystems commands and decoders while bypassing ZBOSS's standards-only receive
 path. Key additions are:
+
+When an inverter omits the optional pairing-ID announcement, the pairing trace
+can infer its route only if subtracting positively identified existing peers
+leaves exactly one responder. The learned PAN/address is authoritative; a
+deterministic four-digit compatibility ID keeps the legacy UI and command
+builders working. Ambiguous inference fails safely.
 
 - `APS_CRYPTO.ino` - plaintext/AES application transport
 - `POLL_SCHEDULER.ino` - configurable cooperative polling
