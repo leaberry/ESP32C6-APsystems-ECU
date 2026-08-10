@@ -142,17 +142,15 @@ function disConnect() {
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
+  if (!info->final || info->index != 0 || info->len != len ||
+      info->opcode != WS_TEXT || len < 3 || len >= sizeof(txBuffer))
+    return;
+  memcpy(txBuffer, data, len);
+  txBuffer[len] = '\0';
 
-  for(int i=0; i<len; i++ ) 
-  {
-  txBuffer[i] = data[i];
-  }
-  txBuffer[len]='\0'; // terminate the array
-
-  if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) 
+  if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)
   {
       //diagNose = 2; // direct the output to ws
-      data[len] = 0;
 
      
            if (strncasecmp(txBuffer+3,"INV_REBOOT",10) == 0) {
@@ -168,10 +166,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
             //input can be 10;POLL=0; 
             //ws.textAll("received " + String( (char*)data) + "<br>"); 
               int kz = String(txBuffer[8]).toInt();
-              if ( kz > inverterCount-1 ) {
-              ws.textAll("error, no such inverter");
-              if ( kz == 9 ) actionFlag=48; // poll all
-              return;  
+              if (kz == 9) {
+                ws.textAll("poll all inverters");
+                actionFlag = 48;
+                return;
+              }
+              if (kz < 0 || kz > inverterCount - 1) {
+                ws.textAll("error, no such inverter");
+                return;
               }
               ws.textAll("poll inverter " + String(kz));
               iKeuze=kz;

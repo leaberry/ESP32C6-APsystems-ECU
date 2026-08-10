@@ -33,7 +33,7 @@
 #include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_3"
+#define VERSION  "ESP32C6-ECU_v1_3_1"
 
 #include <TimeLib.h>
 #include <time.h>

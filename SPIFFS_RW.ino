@@ -210,14 +210,14 @@ bool file_open_for_read(const char* bestand)
                       daylightPolling = doc["daylightPolling"] | true;
                       locationConfigured = doc["locationConfigured"] |
                           (!doc["lati"].isNull() && !doc["longi"].isNull());
-                      securityLevel = doc["securityLevel"].as<int>() | 6;
+                      securityLevel = doc["securityLevel"] | 6;
             }
 
             if ( strcmp(bestand, "/basisconfig.json") == 0) {
                     strlcpy(ECU_ID, doc["ECU_ID"] | "D8A3011B9780", sizeof(ECU_ID));
                     strlcpy(userPwd, doc["userPwd"] | "1111", sizeof(userPwd));
-                    pollOffset = doc["pollOffset"].as<int>() | 0;
-                    pollIntervalSeconds = doc["pollIntervalSeconds"].as<uint32_t>() | 300U;
+                    pollOffset = doc["pollOffset"] | 0;
+                    pollIntervalSeconds = doc["pollIntervalSeconds"] | 300U;
                     // Schema 1 defaulted automatic polling off. Migrate every
                     // existing installation to the new enabled default once;
                     // subsequent saves preserve an intentional user choice.
@@ -231,8 +231,8 @@ bool file_open_for_read(const char* bestand)
                      strlcpy(Mqtt_outTopic, doc["Mqtt_outTopic"] | "domoticz/in", sizeof(Mqtt_outTopic));
                      strlcpy(Mqtt_Username, doc["Mqtt_Username"] | "n/a", sizeof(Mqtt_Username));
                      strlcpy(Mqtt_Password, doc["Mqtt_Password"] | "n/a", sizeof(Mqtt_Password));
-                     Mqtt_Format = doc["Mqtt_Format"].as<int>() | 0;
-                     Mqtt_stateIDX = doc["Mqtt_stateIDX"].as<int>() | 123;      
+                     Mqtt_Format = doc["Mqtt_Format"] | 0;
+                     Mqtt_stateIDX = doc["Mqtt_stateIDX"] | 123;
             }
              return true;
 } 
