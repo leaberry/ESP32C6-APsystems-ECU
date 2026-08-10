@@ -13,6 +13,11 @@ void polling(int which) {
            Inv_Prop[which].invID, ecuIdReverse);
   delayMicroseconds(250);
   consoleOut("pollCommand ex checksum:" + String(pollCommand));
+  // Manual/API polls do not pass through pollSchedulerLoop(), which normally
+  // clears late replies from another inverter on the same PAN. Always start a
+  // transaction with a clean application queue so stale profile/info traffic
+  // cannot be decoded as fresh telemetry.
+  empty_serial2();
   sendZB(pollCommand);
 
   errorCode = decodePollAnswer(which);
