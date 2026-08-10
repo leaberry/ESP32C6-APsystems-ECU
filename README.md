@@ -230,8 +230,11 @@ The read-only server implements Modbus functions 03 and 04 on TCP port 502.
 Unit 1 is the fleet aggregate; units 2 through 10 map to inverter indexes 0
 through 8. It exposes Common Model 1 and single-phase Inverter Model 101.
 
-For `CJNE/ha-sunspec`, enter the C6's IP address, port 502 and unit 1. Add unit
-2 onward for individual inverter devices. See [SUNSPEC.md](SUNSPEC.md).
+Home Assistant's built-in Modbus integration can expose site-total and
+per-inverter power and energy without HACS. See
+[HomeAssistant.md](HomeAssistant.md) for copy-ready YAML and Energy dashboard
+instructions. The complete register model is documented in
+[SUNSPEC.md](SUNSPEC.md).
 
 ## Architecture and repository files
 

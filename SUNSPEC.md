@@ -27,26 +27,11 @@ The server accepts normal 40000 addressing and clients that strip the 4xxxx
 reference and request address 0. It also detects clients that begin at 40001
 and applies their one-register offset for that TCP connection.
 
-## Home Assistant SunSpec discovery
+## Home Assistant
 
-Install `CJNE/ha-sunspec` through HACS, restart Home Assistant and add SunSpec:
-
-- Host: the ESP32-C6's reserved Wi-Fi address
-- Port: `502`
-- Slave ID: `1`
-
-Repeat with slave IDs 2 onward for one Home Assistant device per inverter.
-
-For the built-in generic Modbus integration, the connection is:
-
-```yaml
-modbus:
-  - name: apsystems_esp32c6
-    type: tcp
-    host: 192.168.1.50
-    port: 502
-    timeout: 5
-```
+Home Assistant's built-in Modbus integration can read aggregate and per-inverter
+power and energy without HACS. See [HomeAssistant.md](HomeAssistant.md) for a
+complete `configuration.yaml` example and Energy dashboard instructions.
 
 The server does not implement SunSpec control models or Modbus writes. Inverter
 power limiting and grid-profile actions remain behind the existing authenticated
