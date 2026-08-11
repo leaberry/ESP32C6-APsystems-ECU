@@ -20,23 +20,14 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <h1>Inverters</h1>
 <p>Select an inverter to edit, or add another unit. Save its identity before pairing so the ECU knows which serial number to request.</p>
 <div class="actions">
-<a class="button secondary" href="/inverter/select?welke=0" style="display:%none'0%">Inverter 1</a>
-<a class="button secondary" href="/inverter/select?welke=1" style="display:%none'1%">Inverter 2</a>
-<a class="button secondary" href="/inverter/select?welke=2" style="display:%none'2%">Inverter 3</a>
-<a class="button secondary" href="/inverter/select?welke=3" style="display:%none'3%">Inverter 4</a>
-<a class="button secondary" href="/inverter/select?welke=4" style="display:%none'4%">Inverter 5</a>
-<a class="button secondary" href="/inverter/select?welke=5" style="display:%none'5%">Inverter 6</a>
-<a class="button secondary" href="/inverter/select?welke=6" style="display:%none'6%">Inverter 7</a>
-<a class="button secondary" href="/inverter/select?welke=7" style="display:%none'7%">Inverter 8</a>
-<a class="button secondary" href="/inverter/select?welke=8" style="display:%none'8%">Inverter 9</a>
-<a class="button" href="/inverter/select?welke=99" style="display:%none'99%">Add inverter</a>
+%INVERTER_NAV%
 </div>
 <form id="formulier" class="form-card section" method="get" action="/inverter/save" onsubmit="return confirm('Save these inverter settings?')">%<FORMPAGE>%<div class="actions">
 <button type="submit">Save inverter</button>
 <a class="button secondary" href="/menu">Cancel</a>
 </div>
 </form>
-<div class="actions" style="display:%none'p%">
+<div class="actions" style="display:%PAIR_ACTION_STYLE%">
 <a class="button" href="/inverter/pair" onclick="return confirm('Pair this inverter now?')">Pair inverter</a>
 <a class="button danger" href="/inverter/delete" onclick="return confirm('Delete this inverter?')">Delete inverter</a>
 </div>

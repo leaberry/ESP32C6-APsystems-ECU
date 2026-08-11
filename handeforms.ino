@@ -50,7 +50,7 @@ bool handleForms(AsyncWebServerRequest *request)
        }
        int Inv = request->arg("INV").toInt();
        int throttle = request->getParam("pMax")->value().toInt();
-       if (Inv < 0 || Inv >= inverterCount || throttle < 0 || throttle > 500) {
+       if (Inv < 0 || Inv >= inverterCount || throttle < 20 || throttle > 500) {
          request->send(400, "text/plain", "Invalid inverter or throttle value");
          return false;
        }

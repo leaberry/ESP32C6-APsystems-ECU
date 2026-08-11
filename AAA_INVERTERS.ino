@@ -50,6 +50,7 @@ void handleInverterconfig(AsyncWebServerRequest *request)
    writeStruct(bestand, iKeuze); // alles opslaan in SPIFFS
    if(iKeuze == inverterCount) 
    {
+    energyResetInverterState(iKeuze);
     inverterCount += 1;
     consoleOut("we appended, inverterCount now : " + String(inverterCount)); 
     }
@@ -201,30 +202,30 @@ String processor(const String& var)
       return F("hideFunction()");  
       }
   }
-// make the menu items visible --> works
-  for(int x=0; x<9; x++) { // for every button we have to set the visibility
-     String placeholder = "none'" + String(x);
-     //Serial.println("placeholder = " + placeholder);
-       if(var == "none'" + String(x) ) { 
-        if (x < inverterCount) { return F("inline-block'"); } else { return F("none'"); }
-       }
+  if (var == "INVERTER_NAV") {
+    String navigation;
+    for (int x = 0; x < inverterCount && x < YC600_MAX_NUMBER_OF_INVERTERS; ++x) {
+      navigation += F("<a class=\"button secondary\" href=\"/inverter/select?welke=");
+      navigation += String(x);
+      navigation += F("\">");
+      const char *name = Inv_Prop[x].invLocation;
+      navigation += (name[0] && strcmp(name, "N/A") != 0)
+          ? String(name) : "Inverter " + String(x + 1);
+      navigation += F("</a>");
+    }
+    if (inverterCount < YC600_MAX_NUMBER_OF_INVERTERS)
+      navigation += F("<a class=\"button\" href=\"/inverter/select?welke=99\">Add inverter</a>");
+    return navigation;
   }
-//   
-   if(inverterCount < 9) {
-    // show the add button 
-    if(var == "none'99") return F("inline-block'");   
-   } else {
-    if(var == "none'99") return F("none'");
-   }
   
   if(var == "<FORMPAGE>"){
     consoleOut(F("found FORMPAGE"));
     return(toSend);  
   }
 
-  if(var == "none'p") {
+  if(var == "PAIR_ACTION_STYLE") {
     String bestand = "/Inv_Prop" + String(iKeuze) + ".str";
-    if(SPIFFS.exists(bestand)) return "inline-block'"; else return "none'";
+    if(SPIFFS.exists(bestand)) return "flex"; else return "none";
   }
 
 return String(); //return empty when no match
@@ -322,5 +323,7 @@ void structCopy(int a, int b) {
    Inv_Data[a] = Inv_Data[b];
    polled[a] = polled[b];
    desiredThrottle[a] = desiredThrottle[b];
+   inverterLastPollSuccess[a] = inverterLastPollSuccess[b];
+   energyMoveInverterState(a, b);
    // now write file a and remove file b
 }

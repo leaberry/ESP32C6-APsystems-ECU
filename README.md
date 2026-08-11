@@ -16,6 +16,8 @@ The project includes:
 - inverter model and firmware-version query (`0xDC`)
 - read-only SunSpec Modbus/TCP on port 502
 - daily and current-hour energy history
+- RAM-only per-inverter daily runtime, operating window, peak output,
+  temperature range and grid-voltage range
 - cautious OpenAPS-compatible grid-protection profile apply and restore
 - one source tree for 4 MB USB-only and 8 MB OTA-capable boards
 
@@ -273,6 +275,16 @@ this firmware is installed; it is not the inverter's factory lifetime counter.
 At 48 bytes per day, the 4 MB layout's energy journal has decades of capacity.
 Erasing flash or changing partition layouts erases the history unless it is
 backed up first.
+
+Per-inverter detail pages also summarize telemetry observed since the later of
+the ECU boot or local midnight. These RAM-only statistics include operating
+time, first/last output, peak AC output, temperature extremes and AC-voltage
+extremes. They intentionally reset after a reboot and are not written to flash.
+
+The inverter output-limit field is a **watts-per-connected-PV-input** target,
+not a percentage or whole-inverter limit. For example, `100` requests roughly
+100 W from each DS3 input. The web UI accepts 20-500 W per input; `500` requests
+normal maximum output.
 
 ## Grid-protection profiles
 

@@ -36,6 +36,7 @@ void polling(int which) {
   if (errorCode == 0) {
     polled[which] = true;
     if (timeRetrieved) inverterLastPollSuccess[which] = now();
+    energyRecordTelemetry(which);
     yield();
     mqttPoll(which);
     yield();

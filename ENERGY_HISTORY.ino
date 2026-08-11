@@ -23,6 +23,55 @@ static float energyFractionWh[YC600_MAX_NUMBER_OF_INVERTERS] = {};
 static uint32_t energyDateKey = 0;
 static uint32_t energyLastPersistedDateKey = 0;
 
+struct DailyInverterStats {
+  uint32_t samples = 0;
+  uint32_t runtimeSeconds = 0;
+  time_t firstOutput = 0;
+  time_t lastOutput = 0;
+  time_t lastSample = 0;
+  bool previousSampleProducing = false;
+  bool hasTemperature = false;
+  bool hasVoltage = false;
+  bool hasPower = false;
+  float minimumTemperature = 0;
+  float maximumTemperature = 0;
+  float minimumVoltage = 0;
+  float maximumVoltage = 0;
+  float peakPower = 0;
+  time_t minimumTemperatureTime = 0;
+  time_t maximumTemperatureTime = 0;
+  time_t minimumVoltageTime = 0;
+  time_t maximumVoltageTime = 0;
+  time_t peakPowerTime = 0;
+};
+
+static DailyInverterStats energyDailyStats[YC600_MAX_NUMBER_OF_INVERTERS] = {};
+
+static void energyResetDailyStats() {
+  memset(energyDailyStats, 0, sizeof(energyDailyStats));
+}
+
+void energyResetInverterState(uint8_t which) {
+  if (which >= YC600_MAX_NUMBER_OF_INVERTERS) return;
+  energyPersistedWh[which] = 0;
+  energyTodayWh[which] = 0;
+  memset(energyHourlyWh[which], 0, sizeof(energyHourlyWh[which]));
+  energyFractionWh[which] = 0;
+  energyDailyStats[which] = DailyInverterStats();
+}
+
+void energyMoveInverterState(uint8_t destination, uint8_t source) {
+  if (destination >= YC600_MAX_NUMBER_OF_INVERTERS ||
+      source >= YC600_MAX_NUMBER_OF_INVERTERS || destination == source) return;
+  energyPersistedWh[destination] = energyPersistedWh[source];
+  energyTodayWh[destination] = energyTodayWh[source];
+  memcpy(energyHourlyWh[destination], energyHourlyWh[source],
+         sizeof(energyHourlyWh[destination]));
+  energyFractionWh[destination] = energyFractionWh[source];
+  energyDailyStats[destination] = energyDailyStats[source];
+  energyResetInverterState(source);
+}
+
 static uint32_t energyCrc32(const uint8_t *data, size_t length) {
   uint32_t crc = 0xFFFFFFFFUL;
   while (length--) {
@@ -47,6 +96,7 @@ static bool energyValidRecord(const EnergyDayRecord &record) {
 
 void energyHistoryBegin() {
   memset(energyPersistedWh, 0, sizeof(energyPersistedWh));
+  energyResetDailyStats();
   File history = SPIFFS.open(ENERGY_HISTORY_FILE, "r");
   if (history) {
     EnergyDayRecord record = {};
@@ -133,7 +183,105 @@ void energyHistoryLoop() {
     memset(energyTodayWh, 0, sizeof(energyTodayWh));
     memset(energyHourlyWh, 0, sizeof(energyHourlyWh));
     memset(energyFractionWh, 0, sizeof(energyFractionWh));
+    energyResetDailyStats();
     energyDateKey = today;
+  }
+}
+
+void energyRecordTelemetry(uint8_t which) {
+  if (which >= YC600_MAX_NUMBER_OF_INVERTERS || !timeRetrieved ||
+      energyLocalDateKey() != energyDateKey) return;
+
+  DailyInverterStats &stats = energyDailyStats[which];
+  const time_t sampleTime = now();
+  const float power = Inv_Data[which].pw_total;
+  const float temperature = Inv_Data[which].heath;
+  const float voltage = Inv_Data[which].acv;
+  const bool producing = isfinite(power) && power >= 1.0f;
+
+  ++stats.samples;
+  if (producing) {
+    if (!stats.firstOutput) stats.firstOutput = sampleTime;
+    stats.lastOutput = sampleTime;
+    if (stats.previousSampleProducing && stats.lastSample && sampleTime > stats.lastSample) {
+      uint32_t elapsed = (uint32_t)(sampleTime - stats.lastSample);
+      // Do not turn a long communications outage into fictitious runtime.
+      uint32_t maximumGap = pollIntervalSeconds * 2UL + 10UL;
+      if (maximumGap < 60UL) maximumGap = 60UL;
+      if (elapsed <= maximumGap) stats.runtimeSeconds += elapsed;
+    }
+  }
+  stats.previousSampleProducing = producing;
+  stats.lastSample = sampleTime;
+
+  if (isfinite(power) && power >= 0.0f && power < 10000.0f &&
+      (!stats.hasPower || power > stats.peakPower)) {
+    stats.hasPower = true;
+    stats.peakPower = power;
+    stats.peakPowerTime = sampleTime;
+  }
+  if (isfinite(temperature) && temperature > -60.0f && temperature < 180.0f) {
+    if (!stats.hasTemperature || temperature < stats.minimumTemperature) {
+      stats.minimumTemperature = temperature;
+      stats.minimumTemperatureTime = sampleTime;
+    }
+    if (!stats.hasTemperature || temperature > stats.maximumTemperature) {
+      stats.maximumTemperature = temperature;
+      stats.maximumTemperatureTime = sampleTime;
+    }
+    stats.hasTemperature = true;
+  }
+  if (isfinite(voltage) && voltage > 50.0f && voltage < 350.0f) {
+    if (!stats.hasVoltage || voltage < stats.minimumVoltage) {
+      stats.minimumVoltage = voltage;
+      stats.minimumVoltageTime = sampleTime;
+    }
+    if (!stats.hasVoltage || voltage > stats.maximumVoltage) {
+      stats.maximumVoltage = voltage;
+      stats.maximumVoltageTime = sampleTime;
+    }
+    stats.hasVoltage = true;
+  }
+}
+
+static String energyStatsTime(time_t value) {
+  if (!value) return String();
+  char text[24];
+  snprintf(text, sizeof(text), "%04d-%02d-%02d %02d:%02d:%02d",
+           year(value), month(value), day(value), hour(value), minute(value), second(value));
+  return String(text);
+}
+
+void energyPopulateDailyStatsJson(JsonObject target, uint8_t which) {
+  if (which >= YC600_MAX_NUMBER_OF_INVERTERS) return;
+  const DailyInverterStats &stats = energyDailyStats[which];
+  uint32_t runtime = stats.runtimeSeconds;
+  if (stats.previousSampleProducing && stats.lastSample && now() > stats.lastSample) {
+    uint32_t ongoing = (uint32_t)(now() - stats.lastSample);
+    uint32_t maximumGap = pollIntervalSeconds * 2UL + 10UL;
+    if (maximumGap < 60UL) maximumGap = 60UL;
+    runtime += min(ongoing, maximumGap);
+  }
+  target["date"] = energyDateKey;
+  target["samples"] = stats.samples;
+  target["runtime_seconds"] = runtime;
+  target["first_output"] = energyStatsTime(stats.firstOutput);
+  target["last_output"] = energyStatsTime(stats.lastOutput);
+  if (stats.hasPower) {
+    target["peak_power_w"] = round1(stats.peakPower);
+    target["peak_power_time"] = energyStatsTime(stats.peakPowerTime);
+  }
+  if (stats.hasTemperature) {
+    target["minimum_temperature_c"] = round1(stats.minimumTemperature);
+    target["minimum_temperature_time"] = energyStatsTime(stats.minimumTemperatureTime);
+    target["maximum_temperature_c"] = round1(stats.maximumTemperature);
+    target["maximum_temperature_time"] = energyStatsTime(stats.maximumTemperatureTime);
+  }
+  if (stats.hasVoltage) {
+    target["minimum_voltage_v"] = round1(stats.minimumVoltage);
+    target["minimum_voltage_time"] = energyStatsTime(stats.minimumVoltageTime);
+    target["maximum_voltage_v"] = round1(stats.maximumVoltage);
+    target["maximum_voltage_time"] = energyStatsTime(stats.maximumVoltageTime);
   }
 }
 

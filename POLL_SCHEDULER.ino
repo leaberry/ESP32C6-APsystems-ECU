@@ -122,7 +122,9 @@ void pollSchedulerLoop() {
   empty_serial2();
   polling(which); // bounded by the 2.5-second APS receive timeout
   if (!polled[which]) pollRoundAllSucceeded = false;
-  if (polled[which]) inverterInfoMaybeQuery(which);
+  if (polled[which]) {
+    inverterInfoMaybeQuery(which);
+  }
   empty_serial2();
   pollNextSendMs = millis() + 250UL;
 }

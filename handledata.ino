@@ -124,6 +124,8 @@ void handleDataRequests(AsyncWebServerRequest *request)
       root["pwMax"] = desiredThrottle[i];
       root["panel_count"] = inverterPhysicalPanelCount(i);
       root["last_success"] = ecuApiTime(inverterLastPollSuccess[i]);
+      JsonObject dailyStats = root["daily_stats"].to<JsonObject>();
+      energyPopulateDailyStatsJson(dailyStats, i);
       //if(Inv_Prop[i].throttled == true) root["throttled"] = 1; else root["throttled"] = 0;
       
       for(int z = 0; z < 4; z++ ) 
