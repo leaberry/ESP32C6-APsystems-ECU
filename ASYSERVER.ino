@@ -221,6 +221,45 @@ server.on("/network/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   handleNetworkSave(request);
 });
 
+// Register the GET child before /energy so it cannot be shadowed by the page.
+server.on("/energy/backup", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  energySendHistoryBackup(request);
+});
+
+server.on("/energy/restore", HTTP_POST,
+  [](AsyncWebServerRequest *request) {
+    if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+    String message;
+    if (!energyRestoreUploadFinish(message)) {
+      request->send(400, "text/plain", message);
+      return;
+    }
+    request->redirect("/energy?status=restored");
+  },
+  [](AsyncWebServerRequest *request, String, size_t index,
+     uint8_t *data, size_t len, bool final) {
+    if (!request->authenticate("admin", pswd)) return;
+    if (index == 0) energyRestoreUploadBegin();
+    energyRestoreUploadWrite(data, len, index + len);
+    if (final) energyRestoreUploadClose();
+  });
+
+server.on("/energy/wipe", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+  if (!request->hasParam("confirm", true) ||
+      request->getParam("confirm", true)->value() != "WIPE") {
+    request->send(400, "text/plain", "Type WIPE exactly to confirm permanent history deletion.");
+    return;
+  }
+  String message;
+  if (!energyWipeHistory(message)) {
+    request->send(500, "text/plain", message);
+    return;
+  }
+  request->redirect("/energy?status=wiped");
+});
+
 server.on("/energy", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   request->send_P(200, "text/html", ENERGY_PAGE);

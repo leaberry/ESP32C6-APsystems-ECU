@@ -1,10 +1,13 @@
-# Default 4 MB USB-only layout: one 3.375 MB application, 488 KB SPIFFS,
-# Zigbee storage and coredump. There is intentionally no OTA slot.
+# 8 MB layout: dual 3 MB OTA applications, 1.85 MB SPIFFS, Zigbee storage.
+# This is the repository default. Copy partitions-4mb-noota.csv over this file
+# only when building for a 4 MB board.
 # Name,     Type, SubType, Offset,  Size, Flags
 nvs,        data, nvs,     0x9000,  0x5000,
-app0,       app,  factory, 0x10000, 0x360000,
-spiffs,     data, spiffs,  0x370000,0x7A000,
-zb_storage, data, fat,     0x3EA000,0x4000,
-zb_fct,     data, fat,     0x3EE000,0x1000,
-rcp_fw,     data, spiffs,  0x3EF000,0x1000,
-coredump,   data, coredump,0x3F0000,0x10000,
+otadata,    data, ota,     0xe000,  0x2000,
+app0,       app,  ota_0,   0x10000, 0x300000,
+app1,       app,  ota_1,   0x310000,0x300000,
+spiffs,     data, spiffs,  0x610000,0x1DA000,
+zb_storage, data, fat,     0x7EA000,0x4000,
+zb_fct,     data, fat,     0x7EE000,0x1000,
+rcp_fw,     data, spiffs,  0x7EF000,0x1000,
+coredump,   data, coredump,0x7F0000,0x10000,

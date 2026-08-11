@@ -1,5 +1,5 @@
 # 8 MB layout: dual 3 MB OTA applications, 1.85 MB SPIFFS, Zigbee storage.
-# Copy this file to partitions.csv and select 8 MB flash before building.
+# This is the repository default and is identical to partitions.csv.
 # Name,     Type, SubType, Offset,  Size, Flags
 nvs,        data, nvs,     0x9000,  0x5000,
 otadata,    data, ota,     0xe000,  0x2000,

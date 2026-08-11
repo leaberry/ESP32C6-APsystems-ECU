@@ -7,6 +7,8 @@
  */
 
 static const char ENERGY_HISTORY_FILE[] = "/energy-days.bin";
+static const char ENERGY_HISTORY_RESTORE_FILE[] = "/energy-restore.tmp";
+static const char ENERGY_HISTORY_PREVIOUS_FILE[] = "/energy-days.previous";
 static const uint32_t ENERGY_RECORD_MAGIC = 0x41505345UL; // "APSE"
 
 struct __attribute__((packed)) EnergyDayRecord {
@@ -22,6 +24,10 @@ static uint32_t energyHourlyWh[YC600_MAX_NUMBER_OF_INVERTERS][24] = {};
 static float energyFractionWh[YC600_MAX_NUMBER_OF_INVERTERS] = {};
 static uint32_t energyDateKey = 0;
 static uint32_t energyLastPersistedDateKey = 0;
+static File energyRestoreUploadFile;
+static bool energyRestoreUploadStarted = false;
+static bool energyRestoreUploadFailed = false;
+static String energyRestoreUploadError;
 
 struct DailyInverterStats {
   uint32_t samples = 0;
@@ -96,6 +102,10 @@ static bool energyValidRecord(const EnergyDayRecord &record) {
 
 void energyHistoryBegin() {
   memset(energyPersistedWh, 0, sizeof(energyPersistedWh));
+  memset(energyTodayWh, 0, sizeof(energyTodayWh));
+  memset(energyHourlyWh, 0, sizeof(energyHourlyWh));
+  memset(energyFractionWh, 0, sizeof(energyFractionWh));
+  energyLastPersistedDateKey = 0;
   energyResetDailyStats();
   File history = SPIFFS.open(ENERGY_HISTORY_FILE, "r");
   if (history) {
@@ -444,4 +454,132 @@ void energySendHistoryCsv(AsyncWebServerRequest *request) {
       });
   response->addHeader("Content-Disposition", "attachment; filename=apsystems-energy-history.csv");
   request->send(response);
+}
+
+void energySendHistoryBackup(AsyncWebServerRequest *request) {
+  AsyncWebServerResponse *response;
+  if (SPIFFS.exists(ENERGY_HISTORY_FILE)) {
+    response = request->beginResponse(SPIFFS, ENERGY_HISTORY_FILE,
+                                      "application/octet-stream", false);
+  } else {
+    response = request->beginResponse(200, "application/octet-stream", "");
+  }
+  response->addHeader("Content-Disposition",
+                      "attachment; filename=apsystems-energy-history.bin");
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+}
+
+void energyRestoreUploadBegin() {
+  if (energyRestoreUploadFile) energyRestoreUploadFile.close();
+  if (SPIFFS.exists(ENERGY_HISTORY_RESTORE_FILE))
+    SPIFFS.remove(ENERGY_HISTORY_RESTORE_FILE);
+  energyRestoreUploadStarted = true;
+  energyRestoreUploadFailed = false;
+  energyRestoreUploadError = String();
+  energyRestoreUploadFile = SPIFFS.open(ENERGY_HISTORY_RESTORE_FILE, "w");
+  if (!energyRestoreUploadFile) {
+    energyRestoreUploadFailed = true;
+    energyRestoreUploadError = F("Could not create the temporary restore file.");
+  }
+}
+
+void energyRestoreUploadWrite(const uint8_t *data, size_t len, size_t totalAfterWrite) {
+  if (!energyRestoreUploadStarted || energyRestoreUploadFailed || !len) return;
+  if (totalAfterWrite > SPIFFS.totalBytes()) {
+    energyRestoreUploadFailed = true;
+    energyRestoreUploadError = F("The backup is larger than the history partition.");
+    return;
+  }
+  if (!energyRestoreUploadFile || energyRestoreUploadFile.write(data, len) != len) {
+    energyRestoreUploadFailed = true;
+    energyRestoreUploadError = F("The restore upload could not be written. Check free storage.");
+  }
+}
+
+void energyRestoreUploadClose() {
+  if (energyRestoreUploadFile) energyRestoreUploadFile.close();
+}
+
+static bool energyValidateRestoreFile(String &error) {
+  File candidate = SPIFFS.open(ENERGY_HISTORY_RESTORE_FILE, "r");
+  if (!candidate) {
+    error = F("The uploaded backup could not be opened.");
+    return false;
+  }
+  if (candidate.size() % sizeof(EnergyDayRecord) != 0) {
+    candidate.close();
+    error = F("The backup is truncated or uses an incompatible record size.");
+    return false;
+  }
+  EnergyDayRecord record = {};
+  size_t recordIndex = 0;
+  while (candidate.read((uint8_t *)&record, sizeof(record)) == sizeof(record)) {
+    ++recordIndex;
+    if (!energyValidRecord(record)) {
+      candidate.close();
+      error = "Backup record " + String(recordIndex) + F(" failed its format or CRC check.");
+      return false;
+    }
+  }
+  candidate.close();
+  return true;
+}
+
+bool energyRestoreUploadFinish(String &message) {
+  energyRestoreUploadClose();
+  if (!energyRestoreUploadStarted) {
+    message = F("No backup file was uploaded.");
+    return false;
+  }
+  energyRestoreUploadStarted = false;
+  if (energyRestoreUploadFailed) {
+    message = energyRestoreUploadError;
+    SPIFFS.remove(ENERGY_HISTORY_RESTORE_FILE);
+    return false;
+  }
+  if (!energyValidateRestoreFile(message)) {
+    SPIFFS.remove(ENERGY_HISTORY_RESTORE_FILE);
+    return false;
+  }
+
+  if (SPIFFS.exists(ENERGY_HISTORY_PREVIOUS_FILE))
+    SPIFFS.remove(ENERGY_HISTORY_PREVIOUS_FILE);
+  bool hadHistory = SPIFFS.exists(ENERGY_HISTORY_FILE);
+  if (hadHistory && !SPIFFS.rename(ENERGY_HISTORY_FILE, ENERGY_HISTORY_PREVIOUS_FILE)) {
+    message = F("Could not preserve the existing journal before restore.");
+    SPIFFS.remove(ENERGY_HISTORY_RESTORE_FILE);
+    return false;
+  }
+  if (!SPIFFS.rename(ENERGY_HISTORY_RESTORE_FILE, ENERGY_HISTORY_FILE)) {
+    if (hadHistory)
+      SPIFFS.rename(ENERGY_HISTORY_PREVIOUS_FILE, ENERGY_HISTORY_FILE);
+    message = F("Could not activate the uploaded journal; the previous history was retained.");
+    return false;
+  }
+
+  energyHistoryBegin();
+  if (SPIFFS.exists(ENERGY_HISTORY_PREVIOUS_FILE))
+    SPIFFS.remove(ENERGY_HISTORY_PREVIOUS_FILE);
+  consoleOut(F("energy history: validated backup restored"));
+  message = F("Production history restored. Current-day RAM counters were reset.");
+  return true;
+}
+
+bool energyWipeHistory(String &message) {
+  energyRestoreUploadClose();
+  energyRestoreUploadStarted = false;
+  energyRestoreUploadFailed = false;
+  if (SPIFFS.exists(ENERGY_HISTORY_RESTORE_FILE))
+    SPIFFS.remove(ENERGY_HISTORY_RESTORE_FILE);
+  if (SPIFFS.exists(ENERGY_HISTORY_PREVIOUS_FILE))
+    SPIFFS.remove(ENERGY_HISTORY_PREVIOUS_FILE);
+  if (SPIFFS.exists(ENERGY_HISTORY_FILE) && !SPIFFS.remove(ENERGY_HISTORY_FILE)) {
+    message = F("The history journal could not be removed.");
+    return false;
+  }
+  energyHistoryBegin();
+  consoleOut(F("energy history: permanently wiped by administrator"));
+  message = F("Production history and current-day RAM counters were permanently wiped.");
+  return true;
 }
