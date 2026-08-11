@@ -7,6 +7,7 @@ void setup() {
   Serial.println(F("ESP32-C6 native APsystems radio (no ZBOSS/CC253x)"));
   Serial.println(apsCryptoSelfTest() ? F("APsystems AES self-test: PASS")
                                      : F("APsystems AES self-test: FAILED"));
+  systemTemperatureBegin();
 
   // ESP32-C6 has one shared 2.4 GHz RF path. The native-radio build must
   // enable Wi-Fi/802.15.4 arbitration before either radio stack is used.
@@ -193,6 +194,7 @@ void loop() {
   }
 
   energyHistoryLoop();
+  systemTemperatureLoop();
 
   // Operator work runs before the polite automatic poller. At most one
   // inverter transaction (2.5-second bounded wait) can delay an operator op.

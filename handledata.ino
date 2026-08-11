@@ -71,7 +71,8 @@ void handleDataRequests(AsyncWebServerRequest *request)
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     JsonDocument root; //(160);
     //JsonObject root = doc.to<JsonObject>();
-    root["cnt"] = inverterCount;    
+    root["cnt"] = inverterCount;
+    root["fleet_name"] = fleetName;
     root["rm"] = remote;
     root["st"] = zigbeeUp;
     root["sl"] = night;
@@ -88,6 +89,8 @@ void handleDataRequests(AsyncWebServerRequest *request)
     root["last_poll_success"] = ecuApiTime(pollingLastSuccessfulEpoch());
     root["next_poll"] = ecuApiTime(pollingNextEpoch());
     root["poll_in_progress"] = pollingRoundInProgress();
+    root["night_mode"] = pollingNightModeActive();
+    root["next_sunrise"] = ecuApiTime(pollingNextResumeEpoch());
     serializeJson(root, * response);
     request->send(response);
     return;

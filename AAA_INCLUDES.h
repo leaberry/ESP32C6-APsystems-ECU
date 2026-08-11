@@ -33,7 +33,7 @@
 #include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_4"
+#define VERSION  "ESP32C6-ECU_v1_4_5"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -149,6 +149,7 @@ int testCounter = 0;
 #define YC600_MAX_NUMBER_OF_INVERTERS 9  // 0 1 2 3 4 5 6 7 8
 char inMessage[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
 int readCounter = 0;
+char fleetName[49] = "APsystems Fleet";
 //char messageHead[5];
 int diagNose = 0; // initial true but after a successful healthcheck false
 bool Polling = true; // automatic polling is enabled for new and migrated installs

@@ -19,7 +19,7 @@ const char ECU_HOMEPAGE[] PROGMEM = R"=====(
 <main class="page">
 <section class="hero">
 <div class="eyebrow">Solar production</div>
-<h1>APsystems Fleet</h1>
+<div class="title-edit"><h1 id="fleetName">APsystems Fleet</h1><a class="edit-icon" href="/fleet-name" title="Edit fleet name" aria-label="Edit fleet name">&#9998;</a></div>
 <p id="statusText">Loading the latest cached telemetry...</p>
 <div class="metrics">
 <div class="metric">
@@ -49,6 +49,7 @@ const char ECU_HOMEPAGE[] PROGMEM = R"=====(
 <br>
 <span id="nextPoll">Next poll: checking...</span>
 </p>
+<p id="nightMode" class="alert info night-status" hidden></p>
 </div>
 <span class="badge" id="pollBadge">Loading</span>
 </div>
@@ -97,12 +98,15 @@ let watts=items.reduce((s,n)=>s+Number(n.power_total||0),0),today=items.reduce((
 q('#totalPower').textContent=fmt(watts)+' W';
 q('#todayEnergy').textContent=fmt(today/1000,3)+' kWh';
 q('#lifetimeEnergy').textContent=fmt(life/1000,3)+' kWh';
+q('#fleetName').textContent=g.fleet_name||'APsystems Fleet';
 q('#inverters').innerHTML=items.length?items.map(inverterCard).join(''):'<div class="card empty">No inverters configured. Open Menu to add one.</div>';
-q('#pollBadge').textContent=g.polling?(g.poll_in_progress?'Polling now':g.poll_interval+' s interval'):'Automatic polling off';
-q('#pollBadge').className='badge '+(g.polling?'':'warn');
-q('#statusText').textContent=g.st===1?'Radio ready; showing the latest cached values.':'Radio is not ready.';
+let night=g.night_mode===true,sunrise=(g.next_sunrise||'').slice(11,16),nightText='Night Mode - polling will resume at '+(sunrise||'the next calculated sunrise');
+q('#nightMode').hidden=!night;q('#nightMode').textContent=nightText;
+q('#pollBadge').textContent=night?'Night Mode':(g.polling?(g.poll_in_progress?'Polling now':g.poll_interval+' s interval'):'Automatic polling off');
+q('#pollBadge').className='badge '+((g.polling&&!night)?'':'warn');
+q('#statusText').textContent=night?nightText:(g.st===1?'Radio ready; showing the latest cached values.':'Radio is not ready.');
 q('#lastPoll').textContent='Last successful fleet poll: '+(g.last_poll_success||'not yet completed');
-q('#nextPoll').textContent='Next poll: '+(g.next_poll||(g.polling?'pending valid time or daylight window':'automatic polling disabled'));
+q('#nextPoll').textContent=night?nightText:'Next poll: '+(g.next_poll||(g.polling?'pending valid time or daylight window':'automatic polling disabled'));
 }catch(e){q('#statusText').textContent='Unable to load ECU data.';
 q('#pollBadge').textContent='Unavailable';
 q('#pollBadge').className='badge warn'}}

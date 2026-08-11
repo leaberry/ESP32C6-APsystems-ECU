@@ -38,6 +38,8 @@ credit.
   history;
 - records RAM-only daily runtime, operating window, peak output, temperature
   range and grid-voltage range per inverter;
+- monitors the ESP32-C6 internal die temperature, including low/high values
+  and local timestamps since boot on the System information page;
 - supports guarded OpenAPS-compatible grid-protection profile read, apply and
   restore operations; and
 - builds for 8 MB boards with OTA by default, with a supported 4 MB USB-only
@@ -184,6 +186,11 @@ Daylight-aware polling pauses inverter radio traffic outside the calculated
 sunrise/sunset window. HTTP, MQTT and Modbus continue serving cached values. If
 time or location is invalid, the scheduler deliberately falls back to 24-hour
 polling rather than silently stopping.
+
+During that pause the dashboard prominently reports **Night Mode** and the
+calculated local time when polling will resume at the next sunrise. The fleet
+heading defaults to **APsystems Fleet** and can be changed from its adjacent
+edit icon; the custom name is retained across restarts and OTA updates.
 
 ### 6. Add and pair each inverter
 

@@ -90,6 +90,16 @@ server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) 
   request->send(response);
 });
 
+server.on("/fleet-name", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  handleFleetNamePage(request);
+});
+
+server.on("/fleet-name/save", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  handleFleetNameSave(request);
+});
+
 // Register the longer path first. ESPAsyncWebServer 3.12 can otherwise let
 // the page route shadow /diagnostics/download on ESP32-C6.
 server.on("/diagnostics", HTTP_GET, [](AsyncWebServerRequest *request) {

@@ -106,6 +106,7 @@ void basisConfigsave() {
     JsonDocument doc;
     JsonObject json = doc.to<JsonObject>();
     json["ECU_ID"] = ECU_ID;
+    json["fleetName"] = fleetName;
     json["userPwd"] = userPwd;
     json["inverterCount"] = inverterCount;
     json["Polling"] = Polling;
@@ -215,6 +216,7 @@ bool file_open_for_read(const char* bestand)
 
             if ( strcmp(bestand, "/basisconfig.json") == 0) {
                     strlcpy(ECU_ID, doc["ECU_ID"] | "D8A3011B9780", sizeof(ECU_ID));
+                    strlcpy(fleetName, doc["fleetName"] | "APsystems Fleet", sizeof(fleetName));
                     strlcpy(userPwd, doc["userPwd"] | "1111", sizeof(userPwd));
                     pollOffset = doc["pollOffset"] | 0;
                     pollIntervalSeconds = doc["pollIntervalSeconds"] | 300U;

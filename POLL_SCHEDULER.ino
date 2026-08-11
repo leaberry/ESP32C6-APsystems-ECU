@@ -50,6 +50,21 @@ bool pollingAllowedNow() {
   return !daylightPolling || !timeRetrieved || !locationConfigured || dayTime;
 }
 
+bool pollingNightModeActive() {
+  return Polling && daylightPolling && timeRetrieved &&
+         locationConfigured && !dayTime;
+}
+
+time_t pollingNextResumeEpoch() {
+  if (!pollingNightModeActive()) return 0;
+  sunMoon solar;
+  if (!solar.init(currentUtcOffsetMinutes, lati, longi)) return 0;
+  time_t candidate = solar.sunRise(now()) + (time_t)pollOffset * 60;
+  if (candidate <= now())
+    candidate = solar.sunRise(now() + 86400UL) + (time_t)pollOffset * 60;
+  return candidate > now() ? candidate : 0;
+}
+
 bool pollingRoundInProgress() { return pollRoundActive; }
 
 uint32_t pollingSecondsUntilNextRound() {
