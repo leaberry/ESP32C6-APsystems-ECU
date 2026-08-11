@@ -110,6 +110,7 @@ jobs:
         run: >-
           gh release create "${{ github.ref_name }}"
           release-assets/*
+          --repo "${{ github.repository }}"
           --verify-tag
           --generate-notes
           --title "ESP32C6 APsystems ECU ${{ github.ref_name }}"
