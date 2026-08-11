@@ -1,7 +1,9 @@
 # SunSpec Modbus/TCP
 
-The ESP32-C6 listens on TCP port 502 and exposes a read-only SunSpec chain at
-holding-register address 40000. Modbus function codes 03 and 04 are supported.
+The server is enabled by default and can be switched off under **Menu > Polling
+and access**. When enabled, the ESP32-C6 listens on TCP port 502 and exposes a
+read-only SunSpec chain at holding-register address 40000. Modbus function
+codes 03 and 04 are supported.
 The server reads cached telemetry only, so a long-lived client connection never
 causes extra Zigbee traffic or blocks the APsystems poll scheduler.
 

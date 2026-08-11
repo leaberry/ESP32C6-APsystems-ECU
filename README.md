@@ -74,8 +74,8 @@ space. A 4 MB board runs the same application but must be updated over USB.
 
 Keep the ECU reasonably close to the inverters and away from metal enclosures.
 The board is normally cool enough without a heatsink, but use a ventilated,
-UV- and moisture-resistant enclosure in a hot shed and keep it out of direct
-sunlight.
+UV- and moisture-resistant enclosure in a hot installation location and keep
+it out of direct sunlight.
 
 ### 2. Download the firmware
 
@@ -152,7 +152,8 @@ Open `http://ECU-IP/`, sign in as `admin`, and use **Menu**:
    zones apply daylight-saving transitions automatically.
 2. **Polling and access:** automatic polling defaults to enabled at 300 seconds.
    The minimum is three seconds per configured inverter and never below five
-   seconds. Start with the default until communication is proven.
+   seconds. Start with the default until communication is proven. The read-only
+   SunSpec/Modbus TCP server also defaults to enabled and can be disabled here.
 3. **Network:** confirm the hostname, address and Wi-Fi signal.
 
 ### Administrator and read-only accounts
@@ -294,9 +295,11 @@ available. Use only utility-approved settings.
 
 ## Home Assistant, Modbus and SunSpec
 
-The read-only server accepts Modbus functions 03 and 04 on TCP port 502. Unit 1
-is the fleet aggregate; units 2-10 map to inverter indexes 0-8. It exposes
-SunSpec Common Model 1 and single-phase Inverter Model 101.
+When enabled, the read-only server accepts Modbus functions 03 and 04 on TCP
+port 502. It is enabled by default and can be switched off under **Menu >
+Polling and access**. Unit 1 is the fleet aggregate; units 2-10 map to inverter
+indexes 0-8. It exposes SunSpec Common Model 1 and single-phase Inverter Model
+101.
 
 Home Assistant's built-in Modbus integration can create fleet and per-inverter
 power/energy sensors without HACS. Copy-ready YAML is in

@@ -112,6 +112,7 @@ void basisConfigsave() {
     json["Polling"] = Polling;
     json["pollOffset"] = pollOffset;
     json["pollIntervalSeconds"] = pollIntervalSeconds;
+    json["sunspecEnabled"] = sunspecEnabled;
     json["schemaVersion"] = 2;
         
     File configFile = SPIFFS.open("/basisconfig.json", "w");
@@ -220,6 +221,7 @@ bool file_open_for_read(const char* bestand)
                     strlcpy(userPwd, doc["userPwd"] | "1111", sizeof(userPwd));
                     pollOffset = doc["pollOffset"] | 0;
                     pollIntervalSeconds = doc["pollIntervalSeconds"] | 300U;
+                    sunspecEnabled = doc["sunspecEnabled"] | true;
                     // Schema 1 defaulted automatic polling off. Migrate every
                     // existing installation to the new enabled default once;
                     // subsequent saves preserve an intentional user choice.

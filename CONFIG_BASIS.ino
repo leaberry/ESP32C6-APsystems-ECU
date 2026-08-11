@@ -25,6 +25,9 @@ void zendPageBasis(AsyncWebServerRequest *request) {
   page += F("<div class=\"field full\"><div class=\"checkline\"><input id=\"polling\" name=\"polling\" type=\"checkbox\"");
   if (Polling) page += F(" checked");
   page += F("><label for=\"polling\">Enable automatic polling<span class=\"help\">The recommended default is enabled. Manual Poll actions continue to work when disabled.</span></label></div></div>");
+  page += F("<div class=\"field full\"><div class=\"checkline\"><input id=\"sunspec\" name=\"sunspec\" type=\"checkbox\"");
+  if (sunspecEnabled) page += F(" checked");
+  page += F("><label for=\"sunspec\">Enable SunSpec/Modbus TCP server<span class=\"help\">Listens on TCP port 502 and serves cached telemetry. Enabled by default. Disable it when Modbus is not used or the installation network should not expose the service.</span></label></div></div>");
   page += F("<div class=\"field\"><label for=\"pollsec\">Fleet poll interval</label><input id=\"pollsec\" name=\"pollsec\" type=\"number\" min=\"5\" max=\"86400\" value=\"");
   page += String(pollIntervalSeconds);
   page += F("\" required><span class=\"help\">Seconds between complete fleet rounds. Default: 300 seconds.</span></div><div class=\"field\"><label>Safe minimum now</label><input value=\"");
@@ -99,6 +102,7 @@ void handleBasisSave(AsyncWebServerRequest *request) {
   pollIntervalSeconds = pollingClampSeconds(
       request->getParam("pollsec", true)->value().toInt());
   Polling = request->hasParam("polling", true);
+  sunspecEnabled = request->hasParam("sunspec", true);
   basisConfigsave();
   if (administratorChanged) {
     wifiConfigsave();

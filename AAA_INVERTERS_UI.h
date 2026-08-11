@@ -64,7 +64,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <div class="field">
 <label for="il">Display name</label>
 <input id="il" name="il" maxlength="12" value="{location}">
-<span class="help">A short, recognizable name such as Shed East.</span>
+<span class="help">A short, recognizable name such as Roof East.</span>
 </div>
 <div class="field">
 <label for="cv">Power-limit correction</label>

@@ -3,9 +3,11 @@
 Home Assistant can read the ECU directly with its built-in Modbus integration.
 HACS and a separate SunSpec integration are not required.
 
-The ECU listens for Modbus/TCP on port `502`. Home Assistant only reads the
-telemetry already cached by the ECU, so its persistent TCP connection and scan
-interval do not cause extra radio traffic or change the inverter polling rate.
+The SunSpec/Modbus TCP service is enabled by default under **Menu > Polling and
+access**. While enabled, the ECU listens on port `502`. Home Assistant only
+reads telemetry already cached by the ECU, so its persistent TCP connection and
+scan interval do not cause extra radio traffic or change the inverter polling
+rate.
 
 ## Unit IDs and registers
 

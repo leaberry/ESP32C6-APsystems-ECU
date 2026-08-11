@@ -72,19 +72,22 @@ String diagnosticsReportText() {
   report += F("\nConfigured inverters: "); report += inverterCount;
   report += F("\nAutomatic polling: "); report += Polling ? F("enabled") : F("disabled");
   report += F("\nPoll interval seconds: "); report += pollIntervalSeconds;
+  report += F("\nSunSpec/Modbus TCP: "); report += sunspecEnabled ? F("enabled on port 502") : F("disabled");
   report += F("\nLocal time: "); report += ecuClockText();
   report += F("\nTimezone: "); report += timeZoneId;
   report += F("\n\nINVERTERS\n---------\n");
   for (uint8_t i = 0; i < inverterCount; ++i) {
     uint16_t pan = 0, source = 0;
     bool peer = apsRadioLoadPeer(Inv_Prop[i].invSerial, &pan, &source);
-    char line[220];
+    char line[300];
     snprintf(line, sizeof(line),
-             "[%u] name=%s serial=%s model=%d id=%s paired=%s polled=%s encrypted=%s peer_pan=0x%04X peer_source=0x%04X firmware=%s\n",
+             "[%u] name=%s serial=%s model=%d id=%s paired=%s polled=%s encrypted=%s peer_pan=0x%04X peer_source=0x%04X firmware=%s radio_rssi_dbm=%d raw_lqi=%u\n",
              i, Inv_Prop[i].invLocation, Inv_Prop[i].invSerial, Inv_Prop[i].invType,
              Inv_Prop[i].invID, strcmp(Inv_Prop[i].invID, "0000") ? "yes" : "no",
              polled[i] ? "yes" : "no", apsInverterUsesEncryption(i) ? "yes" : "no",
-             peer ? pan : 0, peer ? source : 0, Inv_Data[i].firmwareVersion);
+             peer ? pan : 0, peer ? source : 0, Inv_Data[i].firmwareVersion,
+             Inv_Data[i].radioMetricsValid ? Inv_Data[i].radioRssi : 0,
+             Inv_Data[i].radioMetricsValid ? Inv_Data[i].radioLqi : 0);
     report += line;
   }
   report += F("\nTRACE (bounded to the newest 96 entries)\n----------------------------------------\n");

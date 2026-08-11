@@ -33,7 +33,7 @@
 #include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_5"
+#define VERSION  "ESP32C6-ECU_v1_4_6"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -154,6 +154,7 @@ char fleetName[49] = "APsystems Fleet";
 int diagNose = 0; // initial true but after a successful healthcheck false
 bool Polling = true; // automatic polling is enabled for new and migrated installs
 uint32_t pollIntervalSeconds = 300; // complete fleet round cadence; web configurable
+bool sunspecEnabled = true; // read-only Modbus/TCP is enabled on new installations
 int errorCode=10;
 //int recovered = 0;
   char txBuffer[90];

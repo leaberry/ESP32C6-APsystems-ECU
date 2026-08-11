@@ -16,6 +16,7 @@ static uint8_t sunspecRequests[SUNSPEC_MAX_CLIENTS][260];
 static size_t sunspecRequestUsed[SUNSPEC_MAX_CLIENTS] = {};
 static int8_t sunspecAddressBias[SUNSPEC_MAX_CLIENTS] = {};
 static bool sunspecAddressKnown[SUNSPEC_MAX_CLIENTS] = {};
+static bool sunspecListenerActive = false;
 
 static void ssPut16(uint16_t *bank, size_t &pos, uint16_t value) { bank[pos++] = value; }
 
@@ -201,6 +202,7 @@ static void ssHandleRequest(uint8_t slot, const uint8_t *req, size_t length) {
 }
 
 void sunspecLoop() {
+  if (!sunspecListenerActive) return;
   WiFiClient incoming = sunspecTcpServer.accept();
   if (incoming) {
     bool accepted = false;
@@ -244,13 +246,25 @@ void sunspecLoop() {
 
 static void sunspecTask(void *) {
   for (;;) {
-    sunspecLoop();
-    vTaskDelay(pdMS_TO_TICKS(2));
+    if (sunspecEnabled && !sunspecListenerActive) {
+      sunspecTcpServer.begin();
+      sunspecListenerActive = true;
+      Serial.println(F("SunSpec Modbus/TCP listening on port 502 (unit 1 aggregate, 2-10 inverters)"));
+    } else if (!sunspecEnabled && sunspecListenerActive) {
+      for (uint8_t slot = 0; slot < SUNSPEC_MAX_CLIENTS; ++slot) {
+        if (sunspecClients[slot]) sunspecClients[slot].stop();
+        sunspecRequestUsed[slot] = 0;
+        sunspecAddressKnown[slot] = false;
+      }
+      sunspecTcpServer.end();
+      sunspecListenerActive = false;
+      Serial.println(F("SunSpec Modbus/TCP disabled"));
+    }
+    if (sunspecListenerActive) sunspecLoop();
+    vTaskDelay(pdMS_TO_TICKS(sunspecListenerActive ? 2 : 100));
   }
 }
 
 void sunspecBegin() {
-  sunspecTcpServer.begin();
   xTaskCreate(sunspecTask, "sunspec", 4096, nullptr, 2, nullptr);
-  Serial.println(F("SunSpec Modbus/TCP listening on port 502 (unit 1 aggregate, 2-10 inverters)"));
 }
