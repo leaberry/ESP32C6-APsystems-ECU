@@ -6,7 +6,7 @@ static String ecuApiTime(time_t value) {
   if (!timeRetrieved || value == 0) return String();
   char text[24];
   snprintf(text, sizeof(text), "%04d-%02d-%02d %02d:%02d:%02d",
-           year(value), month(value), day(value), hour(value), minute(value), second(value));
+           ecuYear(value), ecuMonth(value), ecuDay(value), ecuHour(value), ecuMinute(value), ecuSecond(value));
   return String(text);
 }
 
@@ -29,7 +29,7 @@ void handleDataRequests(AsyncWebServerRequest *request)
      root["firmware"] = Inv_Data[i].firmwareVersion;
      root["today_wh"] = energyTodayWhFor(i);
      root["lifetime_wh"] = energyLifetimeWhFor(i);
-     root["current_hour_wh"] = timeRetrieved ? energyHourWhFor(i, hour()) : 0;
+     root["current_hour_wh"] = timeRetrieved ? energyHourWhFor(i, ecuHour(ecuNow())) : 0;
      root["power_total"] = polled[i] ? round1(Inv_Data[i].pw_total) : 0;
      root["panel_count"] = inverterPhysicalPanelCount(i);
      root["last_success"] = ecuApiTime(inverterLastPollSuccess[i]);
@@ -82,8 +82,10 @@ void handleDataRequests(AsyncWebServerRequest *request)
     root["time_valid"] = timeRetrieved;
     root["location_valid"] = locationConfigured;
     char localTime[24] = "unavailable";
+    const time_t current = ecuNow();
     if (timeRetrieved) snprintf(localTime, sizeof(localTime), "%04d-%02d-%02d %02d:%02d",
-                                year(), month(), day(), hour(), minute());
+                                ecuYear(current), ecuMonth(current), ecuDay(current),
+                                ecuHour(current), ecuMinute(current));
     root["local_time"] = localTime;
     root["timezone"] = timeZoneId;
     root["last_poll_success"] = ecuApiTime(pollingLastSuccessfulEpoch());

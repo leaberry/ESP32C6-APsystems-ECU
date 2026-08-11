@@ -67,7 +67,9 @@ tr {width:94vw;}
  void Update_Log(int what, const char* message) {
   char nu[14];
   // when the log is full we start overwriting with the first row 
-        sprintf(nu,"%d-%d:%d:%d ", day(), hour(), minute(), second());
+        const time_t current = ecuNow();
+        sprintf(nu,"%d-%d:%d:%d ", ecuDay(current), ecuHour(current),
+                ecuMinute(current), ecuSecond(current));
         
         strcpy( Log_Events[logNr].date, nu );
                               

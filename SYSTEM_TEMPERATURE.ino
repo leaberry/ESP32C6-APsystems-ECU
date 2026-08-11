@@ -76,11 +76,11 @@ String systemTemperatureTimestamp(int64_t sampledAtUs) {
              (unsigned long long)uptimeSeconds);
     return String(value);
   }
-  time_t captured = now() - (time_t)ageSeconds;
+  time_t captured = ecuNow() - (time_t)ageSeconds;
   char value[32];
   snprintf(value, sizeof(value), "%04d-%02d-%02d %02d:%02d:%02d",
-           year(captured), month(captured), day(captured),
-           hour(captured), minute(captured), second(captured));
+           ecuYear(captured), ecuMonth(captured), ecuDay(captured),
+           ecuHour(captured), ecuMinute(captured), ecuSecond(captured));
   return String(value);
 }
 

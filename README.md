@@ -188,6 +188,11 @@ sunrise/sunset window. HTTP, MQTT and Modbus continue serving cached values. If
 time or location is invalid, the scheduler deliberately falls back to 24-hour
 polling rather than silently stopping.
 
+The application clock uses ESP-IDF's 64-bit monotonic timer behind a
+task-safe local-time wrapper. This avoids the 32-bit `millis()` rollover and
+cross-task race behavior of the legacy Time library while the web, scheduler
+and Modbus tasks are active together.
+
 During that pause the dashboard prominently reports **Night Mode** and the
 calculated local time when polling will resume at the next sunrise. The fleet
 heading defaults to **APsystems Fleet** and can be changed from its adjacent

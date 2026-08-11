@@ -89,8 +89,10 @@ static uint32_t energyCrc32(const uint8_t *data, size_t length) {
 }
 
 static uint32_t energyLocalDateKey() {
-  if (!timeRetrieved || year() < 2020) return 0;
-  return (uint32_t)year() * 10000UL + (uint32_t)month() * 100UL + day();
+  const time_t current = ecuNow();
+  if (!timeRetrieved || ecuYear(current) < 2020) return 0;
+  return (uint32_t)ecuYear(current) * 10000UL +
+      (uint32_t)ecuMonth(current) * 100UL + ecuDay(current);
 }
 
 static bool energyValidRecord(const EnergyDayRecord &record) {
@@ -142,7 +144,8 @@ void energyRecordDelta(uint8_t which, float deltaWh) {
   if (!wholeWh) return;
   energyFractionWh[which] -= wholeWh;
   energyTodayWh[which] += wholeWh;
-  if (timeRetrieved && hour() < 24) energyHourlyWh[which][hour()] += wholeWh;
+  const int currentHour = ecuHour(ecuNow());
+  if (timeRetrieved && currentHour < 24) energyHourlyWh[which][currentHour] += wholeWh;
 }
 
 bool energyFinalizeDay() {
@@ -203,7 +206,7 @@ void energyRecordTelemetry(uint8_t which) {
       energyLocalDateKey() != energyDateKey) return;
 
   DailyInverterStats &stats = energyDailyStats[which];
-  const time_t sampleTime = now();
+  const time_t sampleTime = ecuNow();
   const float power = Inv_Data[which].pw_total;
   const float temperature = Inv_Data[which].heath;
   const float voltage = Inv_Data[which].acv;
@@ -258,7 +261,7 @@ static String energyStatsTime(time_t value) {
   if (!value) return String();
   char text[24];
   snprintf(text, sizeof(text), "%04d-%02d-%02d %02d:%02d:%02d",
-           year(value), month(value), day(value), hour(value), minute(value), second(value));
+           ecuYear(value), ecuMonth(value), ecuDay(value), ecuHour(value), ecuMinute(value), ecuSecond(value));
   return String(text);
 }
 
@@ -266,8 +269,9 @@ void energyPopulateDailyStatsJson(JsonObject target, uint8_t which) {
   if (which >= YC600_MAX_NUMBER_OF_INVERTERS) return;
   const DailyInverterStats &stats = energyDailyStats[which];
   uint32_t runtime = stats.runtimeSeconds;
-  if (stats.previousSampleProducing && stats.lastSample && now() > stats.lastSample) {
-    uint32_t ongoing = (uint32_t)(now() - stats.lastSample);
+  const time_t current = ecuNow();
+  if (stats.previousSampleProducing && stats.lastSample && current > stats.lastSample) {
+    uint32_t ongoing = (uint32_t)(current - stats.lastSample);
     uint32_t maximumGap = pollIntervalSeconds * 2UL + 10UL;
     if (maximumGap < 60UL) maximumGap = 60UL;
     runtime += min(ongoing, maximumGap);

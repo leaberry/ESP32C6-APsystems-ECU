@@ -31,9 +31,11 @@ String ecuPageEnd() { return F("</main></body></html>"); }
 
 String ecuClockText() {
   if (!timeRetrieved) return F("Not synchronized");
+  const time_t current = ecuNow();
   char value[32];
   snprintf(value, sizeof(value), "%04d-%02d-%02d %02d:%02d:%02d",
-           year(), month(), day(), hour(), minute(), second());
+           ecuYear(current), ecuMonth(current), ecuDay(current),
+           ecuHour(current), ecuMinute(current), ecuSecond(current));
   return String(value);
 }
 
@@ -43,8 +45,8 @@ String ecuSolarWindowText() {
   if (!locationConfigured) return F("24-hour fallback — location not configured");
   char value[48];
   snprintf(value, sizeof(value), "%02d:%02d to %02d:%02d",
-           hour(switchonTime), minute(switchonTime),
-           hour(switchoffTime), minute(switchoffTime));
+           ecuHour(switchonTime), ecuMinute(switchonTime),
+           ecuHour(switchoffTime), ecuMinute(switchoffTime));
   return String(value);
 }
 
@@ -175,7 +177,7 @@ void handleAbout(AsyncWebServerRequest *request) {
   }
   page += F("</section>");
   page += F("<section class=\"card\"><h2>Network</h2><dl class=\"kv\"><dt>Hostname</dt><dd>"); page += webEscape(hostname); page += F("</dd><dt>SSID</dt><dd>"); page += webEscape(WiFi.SSID()); page += F("</dd><dt>Addressing</dt><dd>"); page += useDhcp ? F("DHCP") : F("Static"); page += F("</dd><dt>IP address</dt><dd>"); page += WiFi.localIP().toString(); page += F("</dd><dt>Netmask</dt><dd>"); page += WiFi.subnetMask().toString(); page += F("</dd><dt>Gateway</dt><dd>"); page += WiFi.gatewayIP().toString(); page += F("</dd><dt>DNS</dt><dd>"); page += WiFi.dnsIP().toString(); page += F("</dd><dt>MAC address</dt><dd>"); page += WiFi.macAddress(); page += F("</dd><dt>Signal</dt><dd>"); page += String(WiFi.RSSI()); page += F(" dBm</dd></dl><a class=\"button secondary\" href=\"/network\">Change network settings</a></section>");
-  page += F("<section class=\"card\"><h2>Polling and time</h2><dl class=\"kv\"><dt>Automatic polling</dt><dd>"); page += Polling ? F("Enabled") : F("Disabled"); page += F("</dd><dt>Fleet interval</dt><dd>"); page += String(pollIntervalSeconds); page += F(" seconds</dd><dt>Poll round</dt><dd>"); page += pollingRoundInProgress() ? F("In progress") : F("Idle"); page += F("</dd><dt>Next round</dt><dd>"); if (pollingNightModeActive()) { page += F("Night Mode — resumes "); time_t resume = pollingNextResumeEpoch(); if (resume) { char value[8]; snprintf(value, sizeof(value), "%02d:%02d", hour(resume), minute(resume)); page += value; } else page += F("at sunrise"); } else if (Polling && pollingAllowedNow()) { page += String(pollingSecondsUntilNextRound()); page += F(" seconds"); } else page += F("Paused"); page += F("</dd><dt>Local time</dt><dd>"); page += ecuClockText(); page += F("</dd><dt>Time zone</dt><dd>"); page += webEscape(ecuTimeZoneLabel()); page += F("</dd><dt>Solar window</dt><dd>"); page += ecuSolarWindowText(); page += F("</dd></dl></section>");
+  page += F("<section class=\"card\"><h2>Polling and time</h2><dl class=\"kv\"><dt>Automatic polling</dt><dd>"); page += Polling ? F("Enabled") : F("Disabled"); page += F("</dd><dt>Fleet interval</dt><dd>"); page += String(pollIntervalSeconds); page += F(" seconds</dd><dt>Poll round</dt><dd>"); page += pollingRoundInProgress() ? F("In progress") : F("Idle"); page += F("</dd><dt>Next round</dt><dd>"); if (pollingNightModeActive()) { page += F("Night Mode — resumes "); time_t resume = pollingNextResumeEpoch(); if (resume) { char value[8]; snprintf(value, sizeof(value), "%02d:%02d", ecuHour(resume), ecuMinute(resume)); page += value; } else page += F("at sunrise"); } else if (Polling && pollingAllowedNow()) { page += String(pollingSecondsUntilNextRound()); page += F(" seconds"); } else page += F("Paused"); page += F("</dd><dt>Local time</dt><dd>"); page += ecuClockText(); page += F("</dd><dt>Time zone</dt><dd>"); page += webEscape(ecuTimeZoneLabel()); page += F("</dd><dt>Solar window</dt><dd>"); page += ecuSolarWindowText(); page += F("</dd></dl></section>");
   page += F("<section class=\"card\"><h2>Radio and services</h2><dl class=\"kv\"><dt>802.15.4 radio</dt><dd>"); page += zigbeeUp == 1 ? F("Ready") : (zigbeeUp == 11 ? F("Starting") : F("Fault")); page += F("</dd><dt>Configured inverters</dt><dd>"); page += String(inverterCount); page += F("</dd><dt>Modbus/TCP</dt><dd>"); page += sunspecEnabled ? F("Enabled on port 502") : F("Disabled"); page += F("</dd><dt>MQTT</dt><dd>"); page += Mqtt_Format == 0 ? F("Disabled") : (MQTT_Client.connected() ? F("Connected") : F("Disconnected")); page += F("</dd><dt>Last Wi-Fi disconnect</dt><dd>"); page += String(lastWifiDisconnectReason); page += F("</dd></dl></section></div>");
   page += ecuPageEnd();
   request->send(200, "text/html", page);

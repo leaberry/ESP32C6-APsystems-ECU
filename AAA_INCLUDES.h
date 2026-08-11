@@ -33,11 +33,12 @@
 #include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_6"
+#define VERSION  "ESP32C6-ECU_v1_4_7"
 
 #include <TimeLib.h>
 #include <time.h>
 #include <sunMoon.h>
+#include <esp_timer.h>
 
 // Classic ESP32 brownout-register workaround removed: not valid on ESP32-C6.
 #include <esp_task_wdt.h> // ha
@@ -65,6 +66,17 @@ struct EnergyDayRecord;
 struct EcuTimeZone;
 struct GridProtectionSnapshot;
 enum GridScale : uint8_t;
+void ecuTimeBegin();
+time_t ecuNow();
+void ecuSetTime(time_t value);
+int ecuSecond(time_t value);
+int ecuMinute(time_t value);
+int ecuHour(time_t value);
+int ecuDay(time_t value);
+int ecuMonth(time_t value);
+int ecuYear(time_t value);
+time_t ecuSunRise(sunMoon &solar, time_t value);
+time_t ecuSunSet(sunMoon &solar, time_t value);
 extern const char GRID_PROFILE_FILE[];
 extern File gridProfileUploadFile;
 extern uint8_t gridProfileTarget;

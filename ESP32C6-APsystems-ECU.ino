@@ -4,6 +4,7 @@
 // *****************************************************************************
 void setup() {
   Serial.begin(115200);
+  ecuTimeBegin();
   Serial.println(F("ESP32-C6 native APsystems radio (no ZBOSS/CC253x)"));
   Serial.println(apsCryptoSelfTest() ? F("APsystems AES self-test: PASS")
                                      : F("APsystems AES self-test: FAILED"));
@@ -116,8 +117,9 @@ void loop() {
  dayTime = true;
 #endif
 
+   const time_t currentTime = ecuNow();
    if(!daylightPolling || !timeRetrieved || !locationConfigured ||
-      (now() > switchonTime && now() < switchoffTime))
+      (currentTime > switchonTime && currentTime < switchoffTime))
     {
           if(!dayTime)
           {
@@ -163,7 +165,7 @@ void loop() {
 
   // we recalcultate the switchtimes for this day when there is a new date
   // if retrieve fails, day will not be datum, so we keep trying by healthcheck
-  if (day() != datum && hour() > 2) // if date overflew and later then 2
+  if (ecuDay(currentTime) != datum && ecuHour(currentTime) > 2) // if date overflew and later then 2
   {
           getTijd(); // retrieve time and recalculate the switch times
           //delay(500);
@@ -181,9 +183,9 @@ void loop() {
   //*********************************************************************
   //             send null data at midnight
   // ********************************************************************
-  if(hour() == 0 && timeRetrieved && midnightFlag == 250)
+  if(ecuHour(currentTime) == 0 && timeRetrieved && midnightFlag == 250)
   {
-      if(second() > 0 )
+      if(ecuSecond(currentTime) > 0 )
       {
         resetValues(true, true); //set all values to zero and sent mqtt
         Update_Log(1, "values wipe");

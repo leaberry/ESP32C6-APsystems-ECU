@@ -28,8 +28,9 @@ sunMoon  sm;
 // if (mDay == 13 || mDay == 14 || mDay == 15){maan = "full moon";}
 // if (mDay == 0 || mDay == 1 || mDay == 28){maan = "new moon";} 
 
-      time_t sunrise = sm.sunRise();
-      time_t sunset  = sm.sunSet();
+      const time_t current = ecuNow();
+      time_t sunrise = ecuSunRise(sm, current);
+      time_t sunset  = ecuSunSet(sm, current);
       
       // sunMoon receives the active UTC offset, including DST, so no second
       // daylight-saving adjustment belongs here.
@@ -49,7 +50,7 @@ bool zomertijd() {
     //DebugPrint(year());
     //DebugPrintln(" ");
 
-    int eerstemrt = dow(year(), 3 ,1);
+    int eerstemrt = dow(ecuYear(ecuNow()), 3 ,1);
     int zdmrt;
 
     if (eerstemrt == 0) {
@@ -66,7 +67,7 @@ bool zomertijd() {
     //DebugPrintln("");
     
     //Serial.print("de eerste dag van oktober is dag ");
-    int eersteoct = dow(year(), 10 ,1);
+    int eersteoct = dow(ecuYear(ecuNow()), 10 ,1);
     int zdoct ;
     //Serial.print(eersteoct);
     //Serial.println("");
@@ -87,7 +88,10 @@ bool zomertijd() {
     //DebugPrint(zdoct);
     //DebugPrintln("");
 
-    if(((month() == 3 and day() >= zdmrt) or month() > 3) and ((month() == 10 and day() < zdoct) or month() < 10)) {  
+    const time_t current = ecuNow();
+    const int currentMonth = ecuMonth(current);
+    const int currentDay = ecuDay(current);
+    if(((currentMonth == 3 and currentDay >= zdmrt) or currentMonth > 3) and ((currentMonth == 10 and currentDay < zdoct) or currentMonth < 10)) {
     //DebugPrintln("het is zomertijd");
     return true;
     } else {

@@ -15,16 +15,16 @@ Verified on 2026-08-11 with:
   PSACrypto 1.1.1; and
 - ESP Async WebServer 3.12.0 and AsyncTCP 3.5.0.
 
-Final v1.4.6 sizes for both layouts:
+Final v1.4.7 sizes for both layouts:
 
 ```text
-8 MB application: 1,467,366 bytes
-4 MB application: 1,467,366 bytes
-Global variables: 88,904 bytes (238,776 bytes free)
+8 MB application: 1,468,150 bytes
+4 MB application: 1,468,150 bytes
+Global variables: 88,928 bytes (238,752 bytes free)
 8 MB OTA application slot: 3,145,728 bytes
-8 MB OTA application-slot margin: 1,678,362 bytes
+8 MB OTA application-slot margin: 1,677,578 bytes
 4 MB factory application slot: 3,538,944 bytes
-4 MB application-slot margin: 2,071,578 bytes
+4 MB application-slot margin: 2,070,794 bytes
 ```
 
 GitHub Actions explicitly copies `partitions-8mb-ota.csv` or

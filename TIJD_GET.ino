@@ -41,7 +41,7 @@ ntpUDP.stop();
 //  
 //DebugPrint("het uur is ");  //DebugPrint(hour());
 //DebugPrint("   aantal minuten "); //DebugPrintln(minute());
-datum = day();
+datum = ecuDay(ecuNow());
 //
 //yield();
 delay(10);

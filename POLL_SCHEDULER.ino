@@ -59,10 +59,11 @@ time_t pollingNextResumeEpoch() {
   if (!pollingNightModeActive()) return 0;
   sunMoon solar;
   if (!solar.init(currentUtcOffsetMinutes, lati, longi)) return 0;
-  time_t candidate = solar.sunRise(now()) + (time_t)pollOffset * 60;
-  if (candidate <= now())
-    candidate = solar.sunRise(now() + 86400UL) + (time_t)pollOffset * 60;
-  return candidate > now() ? candidate : 0;
+  const time_t current = ecuNow();
+  time_t candidate = ecuSunRise(solar, current) + (time_t)pollOffset * 60;
+  if (candidate <= current)
+    candidate = ecuSunRise(solar, current + 86400UL) + (time_t)pollOffset * 60;
+  return candidate > current ? candidate : 0;
 }
 
 bool pollingRoundInProgress() { return pollRoundActive; }
@@ -81,7 +82,7 @@ time_t pollingNextEpoch() {
   uint32_t intervalMs = pollIntervalSeconds * 1000UL;
   uint32_t elapsed = millis() - pollLastRoundStartedMs;
   uint32_t remaining = elapsed >= intervalMs ? 0 : (intervalMs - elapsed + 999UL) / 1000UL;
-  return now() + remaining;
+  return ecuNow() + remaining;
 }
 
 static void pollSchedulerStartRound(bool manual) {
@@ -127,7 +128,7 @@ void pollSchedulerLoop() {
   if (pollNextInverter >= YC600_MAX_NUMBER_OF_INVERTERS) {
     pollRoundActive = false;
     pollRoundManual = false;
-    if (pollRoundAllSucceeded && timeRetrieved) pollLastSuccessfulEpoch = now();
+    if (pollRoundAllSucceeded && timeRetrieved) pollLastSuccessfulEpoch = ecuNow();
     eventSend(2);
     consoleOut(F("inverter poll round complete"));
     return;

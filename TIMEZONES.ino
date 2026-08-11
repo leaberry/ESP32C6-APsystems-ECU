@@ -67,7 +67,7 @@ bool ecuSetLocalTimeFromUtc(time_t utcEpoch) {
   const EcuTimeZone *zone = ecuTimeZoneById(timeZoneId);
   if (!strcmp(zone->id, "Custom")) {
     currentUtcOffsetMinutes = constrain(atoi(gmtOffset), -720, 840);
-    setTime(utcEpoch + (time_t)currentUtcOffsetMinutes * 60);
+    ecuSetTime(utcEpoch + (time_t)currentUtcOffsetMinutes * 60);
     dst = 0;
     return true;
   }
@@ -87,7 +87,7 @@ bool ecuSetLocalTimeFromUtc(time_t utcEpoch) {
   time_t localEpoch = makeTime(elements);
   currentUtcOffsetMinutes = (int16_t)((localEpoch - utcEpoch) / 60);
   dst = strchr(zone->rule, ',') ? (local.tm_isdst > 0 ? 1 : 2) : 0;
-  setTime(localEpoch);
+  ecuSetTime(localEpoch);
   return true;
 }
 
