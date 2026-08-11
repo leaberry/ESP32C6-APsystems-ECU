@@ -134,6 +134,44 @@ request->send(200, "text/html", toSend);
 //   handleIPconfig(request);
 // });
 
+// Register the MQTT child routes before /mqtt. ESPAsyncWebServer treats the
+// parent path as a match for slash-delimited children when the HTTP method is
+// the same, so the old order made both Save and Send test render this page.
+server.on("/mqtt/save", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  if (!handleForms(request)) return;
+  request->redirect("/mqtt");
+});
+
+server.on("/mqtt/test", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  if (Mqtt_Format == 0) {
+    request->send(409, "text/plain", "MQTT is disabled. Save an enabled message format first.");
+    return;
+  }
+  if (!Mqtt_outTopic[0]) {
+    request->send(400, "text/plain", "MQTT publish topic is empty.");
+    return;
+  }
+
+  char topic[40] = {0};
+  strlcpy(topic, Mqtt_outTopic, sizeof(topic));
+  size_t topicLength = strlen(topic);
+  if (topicLength && topic[topicLength - 1] == '/' && inverterCount) {
+    strlcat(topic, String(Inv_Prop[0].invIdx).c_str(), sizeof(topic));
+  }
+  String payload = "{\"test\":\"" + String(topic) + "\"}";
+  if (!mqttConnect()) {
+    request->send(503, "text/plain", "MQTT broker connection failed.");
+    return;
+  }
+  if (!MQTT_Client.publish(topic, payload.c_str(), true)) {
+    request->send(502, "text/plain", "MQTT broker connected, but the test publish failed.");
+    return;
+  }
+  request->send(200, "text/plain", "MQTT test published to " + String(topic) + ": " + payload);
+});
+
 server.on("/mqtt", HTTP_GET, [](AsyncWebServerRequest *request) {
   if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
@@ -164,12 +202,6 @@ server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request) {
 server.on("/settings/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   handleBasisSave(request);
-});
-
-server.on("/mqtt/save", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if (!loginBoth(request, "admin")) return;
-  if (!handleForms(request)) return;
-  request->redirect("/mqtt");
 });
 
 server.on("/time/save", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -244,22 +276,6 @@ server.on("/journal", HTTP_GET, [](AsyncWebServerRequest *request) {
   //requestUrl = request->url();
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   handleJournalPage(request);
-});
-
-server.on("/mqtt/test", HTTP_GET, [](AsyncWebServerRequest *request) {
-if (!loginBoth(request, "admin")) return;
-char Mqtt_send[40] = {0};
-strlcpy(Mqtt_send, Mqtt_outTopic, sizeof(Mqtt_send));
-size_t mqttTopicLength = strlen(Mqtt_send);
-if(mqttTopicLength && Mqtt_send[mqttTopicLength - 1] == '/') {
-  strlcat(Mqtt_send, String(Inv_Prop[0].invIdx).c_str(), sizeof(Mqtt_send));
-}
-
-String toMQTT = "{\"test\":\"" + String(Mqtt_send) + "\"}";
-//DebugPrintln("MQTT_Client.publish the message : " + toMQTT);
-MQTT_Client.publish ( Mqtt_send, toMQTT.c_str(), true );
-toSend = "sent mqtt message : " + toMQTT;
-request->send( 200, "text/plain", toSend  );
 });
   
 // ********************************************************************

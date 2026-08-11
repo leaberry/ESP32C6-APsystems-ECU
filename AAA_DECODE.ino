@@ -14,7 +14,7 @@ int decodePollAnswer(int which)
     float energy_old_total = 0;
     int t_extr  = 0;
     int ts = 0;
-    bool resetFlag = false;
+    bool establishBaseline = false;
     float total_pwr = 0;
   
     //retrieve the poll answer
@@ -210,14 +210,13 @@ We keep stacking the increases so we have also en_inc_total
     
 
 
-    //if the inverter had a reset, time new would be smaller than time old
-    //t_saved is globally defined so we remember the last. With the new we can calculate the timeperiod
-    if (t_extr < t_saved[which] || t_saved[which] == 0) { // there has been a reset 
-    ts = t_extr;
-    resetFlag = true;
-    } else {
-    ts = t_extr - t_saved[which]; // this is the timespan we use to calculate the power
-    }  
+    // A fresh ECU has no matching energy baseline even though the inverter's
+    // uptime and energy counters are already non-zero. Treating those totals as
+    // one new interval produced a false power spike and double-counted energy
+    // after every ECU reboot. A backwards/non-advancing inverter clock also
+    // requires a fresh baseline.
+    establishBaseline = t_saved[which] == 0 || t_extr <= t_saved[which];
+    ts = establishBaseline ? 0 : t_extr - t_saved[which];
     //whatever happened we remember t_extr as the new time value
     t_saved[which] = t_extr;
 
@@ -264,18 +263,17 @@ We keep stacking the increases so we have also en_inc_total
            
 
             // calculate the energy increase with or without reset and totalize it
-            if(resetFlag){
-            en_incr = en_saved[which][x]; // the increase is the new value 
-            } else {
-            en_incr = en_saved[which][x] - en_old[x]; //increase is new-old
-            }
+            en_incr = establishBaseline ? 0 : en_saved[which][x] - en_old[x];
+            // Counter discontinuities establish a new panel baseline rather
+            // than subtracting energy or inventing negative power.
+            if (en_incr < 0) en_incr = 0;
 
             en_incr_total += en_incr; //totalize the energy increase for this poll
             //add en_incr to Inv_Data[which].en_total 
             //Inv_Data[which].en_total += en_incr; // stack the increase
             
             //calculate the power for this panel and remember
-            power = en_incr / ts * (float)3600; //[W]
+            power = ts > 0 ? en_incr / ts * (float)3600 : 0; //[W]
 //            if ( Inv_Prop[which].invType == 2) {
 //              power = en_incr / ts * (float)3600; //[W]
 //            } else {
@@ -285,8 +283,7 @@ We keep stacking the increases so we have also en_inc_total
             total_pwr += power;
             
             yield();
-                consoleOut("1st poll after inverter (re)start"); 
-                //delay(100);
+                if (establishBaseline) consoleOut("established first energy/time baseline");
                 consoleOut("en_incr " + String(en_incr) + "  power " + String(power) );
      
 
