@@ -324,6 +324,22 @@ The compatibility `get.Data` interface remains available. New UI/API code uses
 lowercase routes under `/api`. Do not expose the ECU directly to the Internet;
 place remote access behind a trusted VPN or authenticated reverse proxy.
 
+## Failure diagnostics
+
+**Menu > Diagnostics** provides three administrator-only downloads:
+
+- the current system/radio report and newest in-memory trace lines;
+- a fixed-size twelve-hour flight recorder with one-minute heap, largest-free-
+  block, task-stack, Wi-Fi, temperature and polling snapshots; and
+- the ESP-IDF crash dump stored in the dedicated flash partition, when a panic
+  or watchdog failure has created one.
+
+The flight recorder is a circular file and cannot grow until storage is
+exhausted. Wi-Fi loss/restoration events are recorded immediately. A crash dump
+must be decoded with the exact `.elf` file from the firmware build that
+crashed, so retain the release ELF when reporting a failure. Download all three
+files before installing another build whenever possible.
+
 ## Build from source
 
 ### Default 8 MB build

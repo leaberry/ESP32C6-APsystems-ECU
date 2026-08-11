@@ -244,6 +244,8 @@ void sunspecLoop() {
   }
 }
 
+TaskHandle_t sunspecTaskHandle = nullptr;
+
 static void sunspecTask(void *) {
   for (;;) {
     if (sunspecEnabled && !sunspecListenerActive) {
@@ -266,5 +268,5 @@ static void sunspecTask(void *) {
 }
 
 void sunspecBegin() {
-  xTaskCreate(sunspecTask, "sunspec", 4096, nullptr, 2, nullptr);
+  xTaskCreate(sunspecTask, "sunspec", 4096, nullptr, 2, &sunspecTaskHandle);
 }

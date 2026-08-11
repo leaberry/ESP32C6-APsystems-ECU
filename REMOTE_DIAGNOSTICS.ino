@@ -63,6 +63,23 @@ String diagnosticsReportText() {
   report += F("\nBuild: "); report += __DATE__; report += ' '; report += __TIME__;
   report += F("\nUptime seconds: "); report += millis() / 1000UL;
   report += F("\nFree heap bytes: "); report += ESP.getFreeHeap();
+  report += F("\nMinimum free heap since boot: "); report += ESP.getMinFreeHeap();
+  report += F("\nLargest free 8-bit block: "); report += heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  report += F("\nReset reason: "); report += (int)esp_reset_reason();
+  report += F("\nFlight-recorder sequence: "); report += flightRecorderSequence();
+  size_t coreAddress = 0, coreSize = 0;
+  esp_err_t coreResult = esp_core_dump_image_get(&coreAddress, &coreSize);
+  report += F("\nStored crash dump: ");
+  if (coreResult == ESP_OK) {
+    report += coreSize;
+    report += F(" bytes");
+    char panicReason[200] = {};
+    if (esp_core_dump_get_panic_reason(panicReason, sizeof(panicReason)) == ESP_OK) {
+      report += F(" ("); report += panicReason; report += ')';
+    }
+  } else {
+    report += F("none ("); report += esp_err_to_name(coreResult); report += ')';
+  }
   report += F("\nFlash bytes: "); report += ESP.getFlashChipSize();
   report += F("\nWi-Fi SSID: "); report += WiFi.SSID();
   report += F("\nWi-Fi IP: "); report += WiFi.localIP().toString();
@@ -92,6 +109,8 @@ String diagnosticsReportText() {
   }
   report += F("\nTRACE (bounded to the newest 96 entries)\n----------------------------------------\n");
   report += diagnosticsText();
+  report += F("\nPERSISTENT FLIGHT RECORDER (newest 30 records)\n------------------------------------------------\n");
+  report += flightRecorderReport(30);
   return report;
 }
 

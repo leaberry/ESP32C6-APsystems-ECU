@@ -201,7 +201,7 @@ int readInverterfiles() {
         ledblink(1,100);
         // always first drop the existing connection
         MQTT_Client.disconnect();
-        ws.textAll("dropped connection");
+        consoleQueueText("dropped connection");
         delay(100);
         char Mqtt_send[40] = {0};
        
@@ -217,9 +217,9 @@ int readInverterfiles() {
         if(Mqtt_Format == 5) toMQTT = "field1=12.3&field4=44.4&status=MQTTPUBLISH";
         
         if( MQTT_Client.publish (Mqtt_outTopic, toMQTT.c_str() ) ) {
-            ws.textAll("sent mqtt message : " + toMQTT);
+            consoleQueueText("sent mqtt message : " + toMQTT);
         } else {
-            ws.textAll("sending mqtt message failed : " + toMQTT);    
+            consoleQueueText("sending mqtt message failed : " + toMQTT);
         }
       } 
      // the not connected message is displayed by mqttConnect()
@@ -255,7 +255,41 @@ void showDir() {
     }
   }
 
-  // function to 
+struct ConsoleQueueLine {
+  char text[192];
+};
+
+QueueHandle_t consoleOutputQueue = nullptr;
+
+void consoleTransportBegin() {
+  if (!consoleOutputQueue)
+    consoleOutputQueue = xQueueCreate(32, sizeof(ConsoleQueueLine));
+}
+
+void consoleQueueText(const String &message) {
+  if (!consoleOutputQueue) return;
+  ConsoleQueueLine line = {};
+  strlcpy(line.text, message.c_str(), sizeof(line.text));
+  // Diagnostics must never block an HTTP/AsyncTCP callback. If a slow or
+  // disconnected browser fills the bounded queue, discard the oldest line.
+  if (xQueueSend(consoleOutputQueue, &line, 0) != pdTRUE) {
+    ConsoleQueueLine discarded;
+    xQueueReceive(consoleOutputQueue, &discarded, 0);
+    xQueueSend(consoleOutputQueue, &line, 0);
+  }
+}
+
+void consoleTransportLoop() {
+  if (!consoleOutputQueue || diagNose != 1 || ws.count() == 0 ||
+      !ws.availableForWriteAll()) return;
+  ConsoleQueueLine line;
+  for (uint8_t sent = 0; sent < 4 &&
+       xQueueReceive(consoleOutputQueue, &line, 0) == pdTRUE; ++sent) {
+    ws.textAll(line.text);
+  }
+}
+
+  // function to
 void consoleOut(String toLog) {
   diagnosticsAppend(toLog);
   if( diagNose == 0 ) return;
@@ -263,8 +297,7 @@ void consoleOut(String toLog) {
   {
       Serial.println(toLog);
   } else {
-      delay(100); // otherwise the socket cannot keep up
-      ws.textAll(toLog);
+      consoleQueueText(toLog);
   }
 
 }

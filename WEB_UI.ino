@@ -186,7 +186,7 @@ void handleAbout(AsyncWebServerRequest *request) {
 void handleDiagnosticsPage(AsyncWebServerRequest *request) {
   String page = ecuPageStart(F("Diagnostic snapshot"),
       F("A bounded support report with firmware, network, radio, inverter and recent trace information. Passwords are never included."));
-  page += F("<div class=\"actions\"><a class=\"button\" href=\"/diagnostics/download\">Download report</a><button class=\"secondary\" onclick=\"location.reload()\">Refresh</button><a class=\"button secondary\" href=\"/console\">Open live console</a></div><section class=\"card section\"><pre style=\"white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow:auto\">");
+  page += F("<div class=\"actions\"><a class=\"button\" href=\"/diagnostics/download\">Download report</a><a class=\"button secondary\" href=\"/diagnostics/flight-recorder\">Download flight recorder</a><a class=\"button secondary\" href=\"/diagnostics/coredump\">Download crash dump</a><button class=\"secondary\" onclick=\"location.reload()\">Refresh</button><a class=\"button secondary\" href=\"/console\">Open live console</a></div><section class=\"card section\"><pre style=\"white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow:auto\">");
   page += webEscape(diagnosticsReportText());
   page += F("</pre></section>");
   page += ecuPageEnd();

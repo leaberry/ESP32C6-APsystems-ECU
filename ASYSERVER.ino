@@ -90,6 +90,37 @@ server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) 
   request->send(response);
 });
 
+server.on("/diagnostics/flight-recorder", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  AsyncWebServerResponse *response = request->beginResponse(
+      200, "text/csv; charset=utf-8", flightRecorderReport(720));
+  response->addHeader("Content-Disposition", "attachment; filename=aps-ecu-flight-recorder.csv");
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+});
+
+server.on("/diagnostics/coredump", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  size_t address = 0, size = 0;
+  esp_err_t result = esp_core_dump_image_get(&address, &size);
+  if (result != ESP_OK || size == 0) {
+    request->send(404, "text/plain", "No valid crash dump is stored");
+    return;
+  }
+  AsyncWebServerResponse *response = request->beginResponse(
+      "application/octet-stream", size,
+      [address, size](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+        if (index >= size) return 0;
+        size_t count = min(maxLen, size - index);
+        return esp_flash_read(nullptr, buffer, address + index, count) == ESP_OK ? count : 0;
+      });
+  response->addHeader("Content-Disposition", "attachment; filename=aps-ecu-coredump.elf");
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+});
+
 server.on("/fleet-name", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   handleFleetNamePage(request);

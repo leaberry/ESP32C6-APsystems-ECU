@@ -68,6 +68,10 @@ time_t pollingNextResumeEpoch() {
 
 bool pollingRoundInProgress() { return pollRoundActive; }
 
+uint8_t pollSchedulerCurrentInverter() {
+  return pollRoundActive ? pollNextInverter : 0xFF;
+}
+
 uint32_t pollingSecondsUntilNextRound() {
   if (!Polling || pollRoundActive || !pollingAllowedNow()) return 0;
   uint32_t intervalMs = pollIntervalSeconds * 1000UL;
@@ -86,6 +90,7 @@ time_t pollingNextEpoch() {
 }
 
 static void pollSchedulerStartRound(bool manual) {
+  flightRecorderActivity(manual ? "manual-poll" : "automatic-poll");
   // Re-evaluate the floor in case the inverter list changed since setup.
   pollIntervalSeconds = pollingClampSeconds(pollIntervalSeconds);
   pollRoundActive = true;
@@ -131,10 +136,14 @@ void pollSchedulerLoop() {
     if (pollRoundAllSucceeded && timeRetrieved) pollLastSuccessfulEpoch = ecuNow();
     eventSend(2);
     consoleOut(F("inverter poll round complete"));
+    flightRecorderActivity("idle");
     return;
   }
 
   uint8_t which = pollNextInverter++;
+  char activity[20];
+  snprintf(activity, sizeof(activity), "poll-inverter-%u", which);
+  flightRecorderActivity(activity);
   empty_serial2();
   polling(which); // bounded by the 2.5-second APS receive timeout
   if (!polled[which]) pollRoundAllSucceeded = false;

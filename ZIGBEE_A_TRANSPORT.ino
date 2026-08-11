@@ -464,6 +464,10 @@ static bool submitRawAps(uint16_t requestedDestination, uint8_t dstEp,
 }
 }  // namespace
 
+uint16_t rawRadioStackHighWaterWords() {
+  return rawWorkerHandle ? (uint16_t)uxTaskGetStackHighWaterMark(rawWorkerHandle) : 0;
+}
+
 extern "C" void IRAM_ATTR esp_ieee802154_receive_done(
     uint8_t *frame, esp_ieee802154_frame_info_t *info) {
   BaseType_t wake = pdFALSE;

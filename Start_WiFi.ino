@@ -1,7 +1,7 @@
 // ************************************************************************************
 // *                        START Wi-Fi
 // ************************************************************************************
-static volatile uint8_t lastWifiDisconnectReason = 0;
+volatile uint8_t lastWifiDisconnectReason = 0;
 
 void start_wifi() {
   String storedSsid;
@@ -42,6 +42,7 @@ void start_wifi() {
   WiFi.onEvent(
       [](WiFiEvent_t, WiFiEventInfo_t info) {
         lastWifiDisconnectReason = info.wifi_sta_disconnected.reason;
+        flightRecorderWifiEvent();
       },
       WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
@@ -64,6 +65,7 @@ void start_wifi() {
   }
 
   WiFi.setAutoReconnect(true);
+  flightRecorderManageStation(true);
   Serial.println();
   Serial.println("Wi-Fi connected: " + WiFi.localIP().toString());
   Serial.println("DHCP hostname: " + hostname);

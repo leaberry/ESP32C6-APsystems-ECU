@@ -15,16 +15,16 @@ Verified on 2026-08-11 with:
   PSACrypto 1.1.1; and
 - ESP Async WebServer 3.12.0 and AsyncTCP 3.5.0.
 
-Final v1.4.7 sizes for both layouts:
+Final v1.4.8 sizes for both layouts:
 
 ```text
-8 MB application: 1,468,150 bytes
-4 MB application: 1,468,150 bytes
-Global variables: 88,928 bytes (238,752 bytes free)
+8 MB application: 1,480,956 bytes
+4 MB application: 1,480,956 bytes
+Global variables: 88,984 bytes (238,696 bytes free)
 8 MB OTA application slot: 3,145,728 bytes
-8 MB OTA application-slot margin: 1,677,578 bytes
+8 MB OTA application-slot margin: 1,664,772 bytes
 4 MB factory application slot: 3,538,944 bytes
-4 MB application-slot margin: 2,070,794 bytes
+4 MB application-slot margin: 2,057,988 bytes
 ```
 
 GitHub Actions explicitly copies `partitions-8mb-ota.csv` or
@@ -61,7 +61,12 @@ inverters in range. It verified:
   password, mismatched confirmation and shared role passwords without changing
   stored credentials; and
 - the read-only `user` account receiving the dashboard while being rejected
-  from the administrator menu.
+  from the administrator menu;
+- retrieval of a 12,196-byte ESP-IDF flash coredump from a field watchdog
+  failure and identification of the stalled `async_tcp` task; and
+- 656 authenticated API requests in 45 seconds while a deliberately
+  non-reading WebSocket client applied backpressure, with all three inverters
+  continuing to poll and at least 151 KB of free heap remaining.
 
 The boot-time AES known-answer test passes the published reverse-engineered
 vector. Hardware validation of an encrypted inverter remains open. A deliberate

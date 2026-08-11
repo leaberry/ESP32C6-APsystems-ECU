@@ -30,6 +30,7 @@ void setup() {
 
 
   SPIFFS_read();
+  flightRecorderBegin();
   // now we know the number of inverters we can find an interval between pollings
   //int pollintervall = 300/inverterCount;
   // takes care for the return to the last webpage after reboot
@@ -197,13 +198,19 @@ void loop() {
 
   energyHistoryLoop();
   systemTemperatureLoop();
+  flightRecorderLoop();
 
   // Operator work runs before the polite automatic poller. At most one
   // inverter transaction (2.5-second bounded wait) can delay an operator op.
   test_actionFlag();
   pollSchedulerLoop();
 
-   ws.cleanupClients();
+   consoleTransportLoop();
+   static uint32_t lastWebSocketCleanupMs = 0;
+   if ((uint32_t)(millis() - lastWebSocketCleanupMs) >= 5000UL) {
+     lastWebSocketCleanupMs = millis();
+     ws.cleanupClients();
+   }
    yield(); // to avoid wdt resets
 
   // SERIAL: *************** kijk of er data klaar staat op de seriele poort **********************

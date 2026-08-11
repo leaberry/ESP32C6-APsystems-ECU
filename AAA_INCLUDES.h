@@ -31,9 +31,13 @@
 #include "OTA.h"
 #include <Update.h>
 #include <esp_ota_ops.h>
+#include <esp_core_dump.h>
+#include <esp_flash.h>
+#include <esp_heap_caps.h>
+#include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_7"
+#define VERSION  "ESP32C6-ECU_v1_4_8"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -60,6 +64,8 @@
 
 #include <Preferences.h>
 Preferences preferences;
+extern volatile uint8_t lastWifiDisconnectReason;
+extern TaskHandle_t sunspecTaskHandle;
 // Forward declaration required by Arduino's generated .ino prototypes.
 struct SunSpecValues;
 struct EnergyDayRecord;
