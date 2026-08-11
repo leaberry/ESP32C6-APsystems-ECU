@@ -34,6 +34,9 @@ jobs:
           git clone --depth 1 https://github.com/ESP32Async/ESPAsyncWebServer.git "$HOME/Arduino/libraries/ESPAsyncWebServer"
           git clone --depth 1 https://github.com/ESP32Async/AsyncTCP.git "$HOME/Arduino/libraries/AsyncTCP"
           git clone --depth 1 https://github.com/sfrwmaker/sunMoon.git "$HOME/Arduino/libraries/sunMoon"
+          # sunMoon still includes the removed legacy Time.h alias. Windows
+          # resolves that mismatch case-insensitively; Linux runners do not.
+          sed -i '/#include <Time.h>/d' "$HOME/Arduino/libraries/sunMoon/sunMoon.h"
       - name: Select ${{ matrix.name }} layout
         run: cp "${{ matrix.partitions }}" partitions.csv
       - name: Compile ${{ matrix.name }}
