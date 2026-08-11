@@ -263,6 +263,14 @@ an ECU restart establishes energy/time baselines and reports zero power; this
 prevents accumulated inverter energy from becoming a false startup power spike
 or duplicate energy.
 
+The dashboard's **Lifetime Energy** value is therefore the durable production
+recorded by this ECU since its history was initialized (or last wiped), not the
+microinverter's factory lifetime production. Per-input **Inverter energy
+counter** values are separate raw, short-window counters reported by the
+inverter in Wh. They can reset or wrap and should not be interpreted as daily
+or lifetime totals; the ECU uses their deltas to build its authoritative daily
+and lifetime history.
+
 ## Output limiting and grid profiles
 
 The inverter output target is **watts per connected PV input**, not a percentage

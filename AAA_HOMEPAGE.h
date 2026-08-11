@@ -10,7 +10,7 @@ const char ECU_HOMEPAGE[] PROGMEM = R"=====(
 </head>
 <body>
 <header class="topbar">
-<a class="brand" href="/">APsystems ECU</a>
+<a class="brand" href="/">ESP32-C6 ECU</a>
 <nav class="nav">
 <a class="button secondary" href="/energy">Energy history</a>
 <a class="button secondary" href="/menu">Menu</a>

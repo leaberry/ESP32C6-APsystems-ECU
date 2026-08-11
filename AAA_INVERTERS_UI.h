@@ -10,7 +10,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 </head>
 <body onload="%LOADBAG%">
 <header class="topbar">
-<a class="brand" href="/">APsystems ECU</a>
+<a class="brand" href="/">ESP32-C6 ECU</a>
 <nav class="nav">
 <a class="button secondary" href="/menu">Menu</a>
 </nav>

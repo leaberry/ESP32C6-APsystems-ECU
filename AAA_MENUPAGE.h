@@ -1,6 +1,6 @@
 const char MENUPAGE[] PROGMEM = R"=====menu(
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>APsystems ECU menu</title><link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/stylesheet"></head>
-<body><header class="topbar"><a class="brand" href="/">APsystems ECU</a><nav class="nav"><a class="button secondary" href="/">Dashboard</a></nav></header><main class="page"><div class="eyebrow">Administration</div><h1>Menu</h1><p>Configure the ECU, inspect its status, and manage your inverters.</p><div class="menu-grid">
+<body><header class="topbar"><a class="brand" href="/">ESP32-C6 ECU</a><nav class="nav"><a class="button secondary" href="/">Dashboard</a></nav></header><main class="page"><div class="eyebrow">Administration</div><h1>Menu</h1><p>Configure the ECU, inspect its status, and manage your inverters.</p><div class="menu-grid">
 <a class="menu-item" href="/basicconfig"><strong>Polling and access</strong><span>Automatic polling, ECU ID, administrator and read-only accounts</span></a>
 <a class="menu-item" href="/time"><strong>Time and location</strong><span>Coordinates, time zone and daylight-aware polling</span></a>
 <a class="menu-item" href="/network"><strong>Network</strong><span>Hostname, DHCP, static addressing and Wi-Fi details</span></a>

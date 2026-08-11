@@ -118,7 +118,10 @@ void handleDataRequests(AsyncWebServerRequest *request)
       root["freq"] = round1(Inv_Data[i].freq);
       root["temp"] = round1(Inv_Data[i].heath);
       root["acv"] = round1(Inv_Data[i].acv);
-      root["sq"] = round1(Inv_Data[i].sigQ);     
+      root["sq"] = round1(Inv_Data[i].sigQ);
+      root["radio_lqi"] = Inv_Data[i].radioLqi;
+      root["radio_rssi_dbm"] = Inv_Data[i].radioRssi;
+      root["radio_valid"] = Inv_Data[i].radioMetricsValid;
       root["pw_total"] = round1(Inv_Data[i].pw_total);
       root["en_total"] = round2(Inv_Data[i].en_total/(float)1000); // rounded
       root["pwMax"] = desiredThrottle[i];

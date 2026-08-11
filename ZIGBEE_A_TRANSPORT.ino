@@ -28,6 +28,7 @@ struct ApsRxFrame {
   uint16_t source;
   uint8_t sourceEp;
   uint8_t destEp;
+  int8_t rssi;
   uint8_t lqi;
   uint16_t len;
   uint8_t data[300];
@@ -53,6 +54,8 @@ struct RawReassembly {
   uint8_t counter;
   uint8_t totalBlocks;
   uint8_t receivedMask;
+  int8_t rssi;
+  uint8_t lqi;
   uint8_t lengths[RAW_MAX_BLOCKS];
   uint8_t blocks[RAW_MAX_BLOCKS][RAW_BLOCK_BYTES];
   uint32_t updatedAt;
@@ -249,7 +252,8 @@ static void deliverAsdu(RawReassembly *session) {
   complete.source = session->nwkSource;
   complete.sourceEp = session->sourceEp;
   complete.destEp = session->destEp;
-  complete.lqi = 0;
+  complete.rssi = session->rssi;
+  complete.lqi = session->lqi;
   for (uint8_t block = 0; block < session->totalBlocks; ++block) {
     size_t room = sizeof(complete.data) - complete.len;
     size_t take = min(room, (size_t)session->lengths[block]);
@@ -329,6 +333,7 @@ static void processApsFrame(const RawRxFrame &rx) {
     frame.source = nwkSource;
     frame.sourceEp = sourceEp;
     frame.destEp = destEp;
+    frame.rssi = rx.rssi;
     frame.lqi = rx.lqi;
     frame.len = payloadLength;
     memcpy(frame.data, b + p, payloadLength);
@@ -355,6 +360,15 @@ static void processApsFrame(const RawRxFrame &rx) {
   }
   if (!session->totalBlocks || blockNumber >= session->totalBlocks) return;
   if (!(session->receivedMask & (1U << blockNumber))) {
+    // Preserve the weakest fragment's radio metadata. A reassembled APS
+    // response is only as reliable as its weakest received fragment.
+    if (!session->receivedMask) {
+      session->rssi = rx.rssi;
+      session->lqi = rx.lqi;
+    } else {
+      session->rssi = min(session->rssi, rx.rssi);
+      session->lqi = min(session->lqi, rx.lqi);
+    }
     memcpy(session->blocks[blockNumber], b + p, payloadLength);
     session->lengths[blockNumber] = payloadLength;
     session->receivedMask |= 1U << blockNumber;
@@ -621,6 +635,12 @@ char *readZB(char out[]) {
                which, (int)apsExpectedWhich);
       diagnosticsAppend(String(line));
       continue;
+    }
+    if (which >= 0 && which < inverterCount) {
+      Inv_Data[which].radioRssi = f.rssi;
+      Inv_Data[which].radioLqi = f.lqi;
+      Inv_Data[which].sigQ = (float)f.lqi * 100.0F / 255.0F;
+      Inv_Data[which].radioMetricsValid = true;
     }
 
     strcpy(out, "FE0164010064FE034480001400D3");

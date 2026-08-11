@@ -189,6 +189,9 @@ float dcv[4] = {0.0, 0.0, 0.0, 0.0};              // volt <100
 float power[4] = {0.0, 0.0, 0.0, 0.0};       //watt < 1000
 float pw_total = 0.0;
 float en_total = 0;
+int8_t radioRssi = 0;
+uint8_t radioLqi = 0;
+bool radioMetricsValid = false;
 char firmwareVersion[20] = "unknown";
 uint8_t modelCode = 0;
 } inverterdata;
