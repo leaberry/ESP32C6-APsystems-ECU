@@ -386,12 +386,23 @@ void gridProfileHandleAction(uint8_t action) {
   else if(action==72) gridRestoreBackup(gridProfileTarget);
 }
 
-void gridProfilePage(AsyncWebServerRequest *request) {
+static void gridProfileLegacyPage(AsyncWebServerRequest *request) {
   String page=F("<!doctype html><html><meta name='viewport' content='width=device-width'><body><h2>Grid protection profiles</h2>"
     "<p><b>Warning:</b> these settings control mandatory voltage/frequency disconnection behavior. Use only a profile required by your utility and inverter model.</p>"
     "<p>This accepts OpenAPS <code>invdriver.gridprofile/v1</code> JSON. Writes are per-inverter and only occur for parameters that can be read back first.</p><p>Status: ");
-  page+=gridProfileStatus; page+=F("</p><form method='post' action='/GRIDPROFILE_UPLOAD' enctype='multipart/form-data'><input type='file' name='profile' accept='.json,application/json' required><button>Upload profile</button></form><hr><form method='post' action='/GRIDPROFILE_ACTION'><label>Inverter <select name='inv'>");
+  page+=gridProfileStatus; page+=F("</p><form method='post' action='/grid-profile/upload' enctype='multipart/form-data'><input type='file' name='profile' accept='.json,application/json' required><button>Upload profile</button></form><hr><form method='post' action='/grid-profile/action'><label>Inverter <select name='inv'>");
   for(int i=0;i<inverterCount;++i){page+="<option value='"+String(i)+"'>"+String(i)+" — "+String(Inv_Prop[i].invSerial)+"</option>";}
-  page+=F("</select></label><button name='op' value='read'>Read current profile</button><button name='op' value='apply' onclick=\"return confirm('Apply this protection profile? Incorrect values may disconnect the inverter or violate grid rules.')\">Apply uploaded profile</button><button name='op' value='restore' onclick=\"return confirm('Restore the pre-change backup?')\">Restore backup</button></form><p><a href='/MENU'>Back</a></p></body></html>");
+  page+=F("</select></label><button name='op' value='read'>Read current profile</button><button name='op' value='apply' onclick=\"return confirm('Apply this protection profile? Incorrect values may disconnect the inverter or violate grid rules.')\">Apply uploaded profile</button><button name='op' value='restore' onclick=\"return confirm('Restore the pre-change backup?')\">Restore backup</button></form><p><a href='/menu'>Back</a></p></body></html>");
+  request->send(200,"text/html",page);
+}
+
+void gridProfilePage(AsyncWebServerRequest *request) {
+  String page=ecuPageStart(F("Grid protection profiles"), F("Read, apply and restore inverter voltage and frequency protection settings."));
+  page+=F("<div class=\"alert\"><strong>Safety warning:</strong> these values control mandatory grid disconnection behavior. Use only a profile required by your utility and supported by the exact inverter model. Every write is preceded by read-back and a backup.</div><section class=\"card section\"><h2>Current status</h2><p>");
+  page+=webEscape(gridProfileStatus);
+  page+=F("</p></section><div class=\"card-grid section\"><form class=\"form-card\" method=\"post\" action=\"/grid-profile/upload\" enctype=\"multipart/form-data\"><h2>Upload profile</h2><p>Accepts OpenAPS <code>invdriver.gridprofile/v1</code> JSON, up to 32 KB.</p><div class=\"field\"><label for=\"profile\">Profile JSON</label><input id=\"profile\" type=\"file\" name=\"profile\" accept=\".json,application/json\" required></div><button type=\"submit\">Upload profile</button></form><form class=\"form-card\" method=\"post\" action=\"/grid-profile/action\"><h2>Inverter operation</h2><div class=\"field\"><label for=\"inv\">Target inverter</label><select id=\"inv\" name=\"inv\">");
+  for(int i=0;i<inverterCount;++i){page+="<option value='"+String(i)+"'>Inverter "+String(i+1)+" - "+String(Inv_Prop[i].invSerial)+"</option>";}
+  page+=F("</select></div><div class=\"actions\"><button name=\"op\" value=\"read\">Read current profile</button><button name=\"op\" value=\"apply\" onclick=\"return confirm('Apply this protection profile? Incorrect values may disconnect the inverter or violate grid rules.')\">Apply uploaded profile</button><button class=\"secondary\" name=\"op\" value=\"restore\" onclick=\"return confirm('Restore the saved pre-change backup?')\">Restore backup</button></div></form></div>");
+  page+=ecuPageEnd();
   request->send(200,"text/html",page);
 }

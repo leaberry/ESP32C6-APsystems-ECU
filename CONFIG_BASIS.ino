@@ -1,7 +1,7 @@
 void zendPageBasis(AsyncWebServerRequest *request) {
   String page = ecuPageStart(F("Polling and access"),
       F("Configure normal data collection and local web access."));
-  page += F("<form class=\"form-card\" method=\"post\" action=\"/SETTINGS_SAVE\"><div class=\"form-grid\">");
+  page += F("<form class=\"form-card\" method=\"post\" action=\"/settings/save\"><div class=\"form-grid\">");
   page += F("<div class=\"field full\"><label for=\"ecuid\">ECU identifier</label><input id=\"ecuid\" name=\"ecuid\" maxlength=\"12\" minlength=\"12\" pattern=\"[0-9A-Fa-f]{12}\" value=\"");
   page += webEscape(ECU_ID);
   page += F("\" required><span class=\"help\">A 12-digit hexadecimal coordinator identifier. Keep the generated value unless replacing an existing ECU.</span></div>");
@@ -13,7 +13,7 @@ void zendPageBasis(AsyncWebServerRequest *request) {
   page += String(pollIntervalSeconds);
   page += F("\" required><span class=\"help\">Seconds between complete fleet rounds. Default: 300 seconds.</span></div><div class=\"field\"><label>Safe minimum now</label><input value=\"");
   page += String(pollingMinimumSeconds());
-  page += F(" seconds\" disabled><span class=\"help\">Three seconds per configured inverter, never below five seconds. Faster requests are automatically raised to this value.</span></div></div><div class=\"actions\"><button type=\"submit\">Save settings</button><a class=\"button secondary\" href=\"/MENU\">Cancel</a></div></form>");
+  page += F(" seconds\" disabled><span class=\"help\">Three seconds per configured inverter, never below five seconds. Faster requests are automatically raised to this value.</span></div></div><div class=\"actions\"><button type=\"submit\">Save settings</button><a class=\"button secondary\" href=\"/menu\">Cancel</a></div></form>");
   page += ecuPageEnd();
   request->send(200, "text/html", page);
 }
@@ -48,5 +48,5 @@ void handleBasisSave(AsyncWebServerRequest *request) {
       request->getParam("pollsec", true)->value().toInt());
   Polling = request->hasParam("polling", true);
   basisConfigsave();
-  request->redirect("/BASISCONFIG");
+  request->redirect("/basicconfig");
 }

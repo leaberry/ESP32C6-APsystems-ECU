@@ -1,3 +1,15 @@
+static uint8_t inverterPhysicalPanelCount(uint8_t inverter) {
+  return inverter < YC600_MAX_NUMBER_OF_INVERTERS && Inv_Prop[inverter].invType == 1 ? 4 : 2;
+}
+
+static String ecuApiTime(time_t value) {
+  if (!timeRetrieved || value == 0) return String();
+  char text[24];
+  snprintf(text, sizeof(text), "%04d-%02d-%02d %02d:%02d:%02d",
+           year(value), month(value), day(value), hour(value), minute(value), second(value));
+  return String(text);
+}
+
 void handleDataRequests(AsyncWebServerRequest *request) 
 
   {
@@ -19,6 +31,8 @@ void handleDataRequests(AsyncWebServerRequest *request)
      root["lifetime_wh"] = energyLifetimeWhFor(i);
      root["current_hour_wh"] = timeRetrieved ? energyHourWhFor(i, hour()) : 0;
      root["power_total"] = polled[i] ? round1(Inv_Data[i].pw_total) : 0;
+     root["panel_count"] = inverterPhysicalPanelCount(i);
+     root["last_success"] = ecuApiTime(inverterLastPollSuccess[i]);
      if(Inv_Data[i].en_total > 0) { // only possible when was polled this day
         root["eN"] = round2(Inv_Data[i].en_total/(float)1000); // rounded
      } else {
@@ -71,6 +85,9 @@ void handleDataRequests(AsyncWebServerRequest *request)
                                 year(), month(), day(), hour(), minute());
     root["local_time"] = localTime;
     root["timezone"] = timeZoneId;
+    root["last_poll_success"] = ecuApiTime(pollingLastSuccessfulEpoch());
+    root["next_poll"] = ecuApiTime(pollingNextEpoch());
+    root["poll_in_progress"] = pollingRoundInProgress();
     serializeJson(root, * response);
     request->send(response);
     return;
@@ -85,7 +102,7 @@ void handleDataRequests(AsyncWebServerRequest *request)
     JsonDocument doc;  // size was 768
     JsonObject root = doc.to<JsonObject>();
     int i;
-    i = (request->arg("Inverter").toInt()) | iKeuze;
+    i = request->arg("Inverter").toInt();
     if( i < inverterCount) { // check that this is a valid value
       root["inv"] = i;
       root["name"] = Inv_Prop[i].invLocation;
@@ -105,6 +122,8 @@ void handleDataRequests(AsyncWebServerRequest *request)
       root["pw_total"] = round1(Inv_Data[i].pw_total);
       root["en_total"] = round2(Inv_Data[i].en_total/(float)1000); // rounded
       root["pwMax"] = desiredThrottle[i];
+      root["panel_count"] = inverterPhysicalPanelCount(i);
+      root["last_success"] = ecuApiTime(inverterLastPollSuccess[i]);
       //if(Inv_Prop[i].throttled == true) root["throttled"] = 1; else root["throttled"] = 0;
       
       for(int z = 0; z < 4; z++ ) 

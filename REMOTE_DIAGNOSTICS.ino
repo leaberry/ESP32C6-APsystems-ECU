@@ -55,6 +55,43 @@ String diagnosticsText() {
   return output;
 }
 
+String diagnosticsReportText() {
+  String report;
+  report.reserve(18000);
+  report += F("ESP32-C6 APsystems ECU diagnostic report\n=========================================\n");
+  report += F("Firmware: "); report += VERSION;
+  report += F("\nBuild: "); report += __DATE__; report += ' '; report += __TIME__;
+  report += F("\nUptime seconds: "); report += millis() / 1000UL;
+  report += F("\nFree heap bytes: "); report += ESP.getFreeHeap();
+  report += F("\nFlash bytes: "); report += ESP.getFlashChipSize();
+  report += F("\nWi-Fi SSID: "); report += WiFi.SSID();
+  report += F("\nWi-Fi IP: "); report += WiFi.localIP().toString();
+  report += F("\nWi-Fi RSSI dBm: "); report += WiFi.RSSI();
+  report += F("\nWi-Fi MAC: "); report += WiFi.macAddress();
+  report += F("\nRadio state: "); report += zigbeeUp;
+  report += F("\nConfigured inverters: "); report += inverterCount;
+  report += F("\nAutomatic polling: "); report += Polling ? F("enabled") : F("disabled");
+  report += F("\nPoll interval seconds: "); report += pollIntervalSeconds;
+  report += F("\nLocal time: "); report += ecuClockText();
+  report += F("\nTimezone: "); report += timeZoneId;
+  report += F("\n\nINVERTERS\n---------\n");
+  for (uint8_t i = 0; i < inverterCount; ++i) {
+    uint16_t pan = 0, source = 0;
+    bool peer = apsRadioLoadPeer(Inv_Prop[i].invSerial, &pan, &source);
+    char line[220];
+    snprintf(line, sizeof(line),
+             "[%u] name=%s serial=%s model=%d id=%s paired=%s polled=%s encrypted=%s peer_pan=0x%04X peer_source=0x%04X firmware=%s\n",
+             i, Inv_Prop[i].invLocation, Inv_Prop[i].invSerial, Inv_Prop[i].invType,
+             Inv_Prop[i].invID, strcmp(Inv_Prop[i].invID, "0000") ? "yes" : "no",
+             polled[i] ? "yes" : "no", apsInverterUsesEncryption(i) ? "yes" : "no",
+             peer ? pan : 0, peer ? source : 0, Inv_Data[i].firmwareVersion);
+    report += line;
+  }
+  report += F("\nTRACE (bounded to the newest 96 entries)\n----------------------------------------\n");
+  report += diagnosticsText();
+  return report;
+}
+
 void diagnosticsDumpToSerial() {
   Serial.print(diagnosticsText());
 }

@@ -1,7 +1,7 @@
 void zendPageGEOconfig(AsyncWebServerRequest *request) {
   String page = ecuPageStart(F("Time and location"),
       F("Location and local time determine the optional daylight polling window and daily energy boundaries."));
-  page += F("<div class=\"alert info\">Latitude is positive north and negative south. Longitude is positive east and negative west. Example: Denver is approximately 39.739, -104.990.</div><form class=\"form-card section\" method=\"post\" action=\"/TIME_SAVE\"><div class=\"form-grid\">");
+  page += F("<div class=\"alert info\">Latitude is positive north and negative south. Longitude is positive east and negative west. Example: Denver is approximately 39.739, -104.990.</div><form class=\"form-card section\" method=\"post\" action=\"/time/save\"><div class=\"form-grid\">");
   page += F("<div class=\"field\"><label for=\"lat\">Latitude</label><input id=\"lat\" name=\"lat\" type=\"number\" min=\"-90\" max=\"90\" step=\"0.0001\" value=\"");
   page += String(lati, 4);
   page += F("\" required><span class=\"help\">Range -90 to 90 degrees.</span></div><div class=\"field\"><label for=\"lon\">Longitude</label><input id=\"lon\" name=\"lon\" type=\"number\" min=\"-180\" max=\"180\" step=\"0.0001\" value=\"");
@@ -14,7 +14,7 @@ void zendPageGEOconfig(AsyncWebServerRequest *request) {
   if (daylightPolling) page += F(" checked");
   page += F("><label for=\"daylight\">Use daylight-aware polling<span class=\"help\">Pauses automatic inverter requests outside the calculated sunrise-to-sunset window. If time retrieval or location is invalid, the ECU safely falls back to 24-hour polling.</span></label></div></div><div class=\"field\"><label for=\"offsetSun\">Sunrise/sunset margin</label><input id=\"offsetSun\" name=\"offsetSun\" type=\"number\" min=\"-15\" max=\"15\" value=\"");
   page += String(pollOffset);
-  page += F("\"><span class=\"help\">Positive values shorten polling after sunrise and before sunset; negative values extend it. Range ±15 minutes.</span></div></div><div class=\"actions\"><button type=\"submit\">Save time settings</button><a class=\"button secondary\" href=\"/MENU\">Cancel</a></div></form><script>function customZone(){document.getElementById('customField').style.display=document.getElementById('zone').value==='Custom'?'flex':'none'}customZone()</script>");
+  page += F("\"><span class=\"help\">Positive values shorten polling after sunrise and before sunset; negative values extend it. Range ±15 minutes.</span></div></div><div class=\"actions\"><button type=\"submit\">Save time settings</button><a class=\"button secondary\" href=\"/menu\">Cancel</a></div></form><script>function customZone(){document.getElementById('customField').style.display=document.getElementById('zone').value==='Custom'?'flex':'none'}customZone()</script>");
   page += ecuPageEnd();
   request->send(200, "text/html", page);
 }
@@ -54,5 +54,5 @@ void handleTimeSave(AsyncWebServerRequest *request) {
   wifiConfigsave();
   basisConfigsave();
   actionFlag = 25;
-  request->redirect("/GEOCONFIG");
+  request->redirect("/time");
 }

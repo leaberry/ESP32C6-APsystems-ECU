@@ -32,30 +32,27 @@ if ( intern ) {    //DebugPrintln("the request comes from inside the network");
 
   //say we have a request <ip of ecu>/TROTTLE?inv=1&val=500
   //say we have a request ip_of_ecu/TROTTLE0=300
-  if ( serverUrl.indexOf("THROTTLE") > -1) 
+  if ( serverUrl.indexOf("/api/throttle") == 0)
   {
 
     int Invert = request->arg("inv").toInt();
     int throtVal = request->arg("val").toInt();
 
-    if (Invert > inverterCount) Invert = 10;
-    if (throtVal == 0) throtVal = 800;
-  
     Serial.println("inv = " + String(Invert));
     Serial.println("val = " + String(throtVal));
-    desiredThrottle[Invert] = throtVal;
-    if(Invert > inverterCount || Invert < 0 || throtVal > 700 || throtVal < 20 )
+    if(Invert >= inverterCount || Invert < 0 || throtVal > 700 || throtVal < 20 )
     {
       request->send ( 200, "text/plain", "invalid value(s)" );
       return; 
     }
+    desiredThrottle[Invert] = throtVal;
     actionFlag = 240+Invert;
     String term = "attempt throttling inverter " + String(Invert) + " to " + String(throtVal);
     request->send ( 200, "text/plain", term );
     return;
   }
   
-  if ( serverUrl.indexOf("POLL=") > -1) 
+  if ( serverUrl.indexOf("/api/poll/") == 0)
   {
       if(Polling)
       {
@@ -63,10 +60,7 @@ if ( intern ) {    //DebugPrintln("the request comes from inside the network");
          return; 
       }
       if( diagNose != 0 ) consoleOut(F("handleNotFound found POLL="));
-      int x = serverUrl.indexOf("POLL=");
-      //DebugPrintln("serverUrl = " + serverUrl);
-      //DebugPrintln("sub = " + serverUrl.substring(6,7));
-      int inv = serverUrl.substring(6,7).toInt();
+      int inv = serverUrl.substring(String("/api/poll/").length()).toInt();
       //DebugPrintln("inv= " + String(inv));
       String teZenden = "polling inverternr " + String(inv);
       if(inv > inverterCount-1 || zigbeeUp != 1) {

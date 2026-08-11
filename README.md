@@ -85,7 +85,7 @@ If it says OTA is unavailable, use USB instead; an OTA upload cannot convert a
    testing unreleased changes, download the Actions artifact produced by the
    exact commit you intend to test.
 2. Open the ECU web interface, sign in as `admin`, and select **Menu > Firmware
-   update**. The page can also be opened directly at `http://ECU-IP/FWUPDATE`.
+   update**. The page can also be opened directly at `http://ECU-IP/firmware`.
 3. Select `ESP32C6_ECU-8MB-OTA.bin` and start the upload. Keep the ECU powered
    and on Wi-Fi until the page reports **UPDATE SUCCESS**.
 4. Select **REBOOT**, allow the ECU to reconnect, and open **Menu > System

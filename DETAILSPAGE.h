@@ -1,68 +1,13 @@
-//<script type="text/javascript" src="SECURITY"></script>
-//<link rel="icon" type="image/x-icon" href="/favicon.ico" />
-const char DETAILSPAGE [] PROGMEM = R"=====(
-<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" type="text/css" href="/STYLESHEET">
-<meta charset='utf-8'><title>ESP-ECU</title>
-<style>
-.l_s table, .l_s th, .l_s td {border: 1px solid blue; font-size:14px; text-align:center} 
-.l_s tr {height:30px;} 
-.l_s .pol {display:none;} 
-input {text-align: center;} 
-@media only screen and (max-width: 800px) {.l_s .l_s th, .l_s td { width:60px; font-size:12px; }} </style>
-<script type="text/javascript">
-function showSubmit() {
-document.getElementById("sub").style.display = "block";
-}
-function submitFunction(a) {
-console.log("submit throttle form");
-document.getElementById('formulier').submit();
-}
-function loadScript(){loadData(),setInterval((function(){loadData()}),9e4)}
-function loadData(){
-console.log("function loadData");
-var e=new XMLHttpRequest;
-e.onreadystatechange=function(){
-  if(4==this.readyState&&200==this.status){
-    var e=this.responseText,n=JSON.parse(e);
-    document.getElementById("INV").value=n.inv;
-    //pinput.value= n.inv;
-    console.log("INV value changed to " + n.inv );
-    document.getElementById("pMax").value = n.pwMax;
-    console.log("pMax value changed to " + n.pwMax );
-    document.getElementById("ivn").innerHTML=n.inv,document.getElementById("nm").innerHTML="<strong>"+n.name+"</strong>",document.getElementById("snr").innerHTML=n.serial,document.getElementById("fw").innerHTML=n.firmware,document.getElementById("sec").innerHTML=n.encrypted?"AES encrypted":"plain (not encrypted)",document.getElementById("today").innerHTML=(n.today_wh/1000).toFixed(3)+" kWh",document.getElementById("life").innerHTML=(n.lifetime_wh/1000).toFixed(3)+" kWh";var t=n.sid;document.getElementById("sid").innerHTML=t;var d=n.type,c="YC600";if("1"==d&&(c="QS1"),"2"==d&&(c="DS3"),document.getElementById("tp").innerHTML=c,"0000"!=t||""==t)if("1"==n.polled){document.getElementById("dcvc").style.display="block",document.getElementById("npo").style.display="none",document.getElementById("sq").innerHTML=n.sq+" %",document.getElementById("acv").innerHTML=n.acv+" V",document.getElementById("tmp").innerHTML=n.temp+" &#8451;",document.getElementById("fr").innerHTML=n.freq+" Hz";for(let e=0;e<4;e++)"n/e"!=n.dcv[e]&&"n/a"!=n.dcv[e]&&(n.dcv[e]=n.dcv[e].toFixed(1)),"n/e"!=n.dcc[e]&&"n/a"!=n.dcc[e]&&(n.dcc[e]=n.dcc[e].toFixed(1));document.getElementById("v0").innerHTML=n.dcv[0],document.getElementById("v1").innerHTML=n.dcv[1],document.getElementById("v2").innerHTML=n.dcv[2],document.getElementById("v3").innerHTML=n.dcv[3],document.getElementById("c0").innerHTML=n.dcc[0],document.getElementById("c1").innerHTML=n.dcc[1],document.getElementById("c2").innerHTML=n.dcc[2],document.getElementById("c3").innerHTML=n.dcc[3],paintCells()}else document.getElementById("npo").style.display="block",document.getElementById("dcvc").style.display="none";else document.getElementById("npa").style.display="block"}},
-    e.open("GET","get.Data?Inverter=0",!0),e.send()}
-  
-  function paintCells(){for(let e=0;e<4;e++)v="v"+e,c="c"+e,"n/e"==document.getElementById(v).innerHTML&&(document.getElementById(v).style="background-color:#a6a6a6"),"n/e"==document.getElementById(c).innerHTML&&(document.getElementById(c).style="background-color:#a6a6a6")}
-</script><script type="text/javascript" src="SECURITY"></script>
-</head><body onload='loadScript()'>
-<div class="l_s">
-<div id='msect'> 
-<div id='menu'>
-<a href='/' class='close'>&times;</a>
-<a href="#" id="sub" style='background:green; display: none' onclick='submitFunction()'>save</a><br>
-</div> 
-<h3>ESP-ECU INVERTER :&nbsp; <span id="ivn"></span></h3>
-<table><tr><td colspan="2" id="nm"></tr> <colgroup><col span="1" style="background:#00cc66; width:100px;"><col span="1" style="background:#99ffcc; width:120px;"></colgroup>
-<tr><td> Type <td id="tp">n/a</td></tr> 
-<tr><td> serialnr <td id="snr">n/a</td></tr>
-<tr><td> firmware <td id="fw">unknown</td></tr>
-<tr><td> ID <td id="sid">n/a</td></tr>
-<tr><td> transport <td id="sec">n/a</td></tr>
-<tr><td> energy today <td id="today">n/a</td></tr>
-<tr><td> recorded energy <td id="life">n/a</td></tr>
-<tr><td> signal quality <td id="sq">n/a</td></tr>
-<tr><td> ac voltage<td id="acv">n/a</td></tr>
-<tr><td> temperature<td id="tmp">n/a</td></tr> 
-<tr><td> frequency<td id="fr">n/a</td></tr>
-<tr><td> throttle<td><form id='formulier' method='get' action='submitform'><input id='pMax' name='pMax' value="" type='number' min='0' max='500' step='20' class="inp3" oninput='showSubmit()'></input><input type='hidden' id='INV' name='INV' value=""></input></tr></form>
-</table>
-
-<h4>INVERTER OUTPUT</h4><div id="dcvc" style="display:none;"><table>
-<tr style='background:#ccff33;'><td>unit</td><td>panel 0<td>panel 1<td>panel 2<td>panel 3</tr>
-<colgroup><col span='1' style='background:#00cc66; width:80px;'><col span='4' style='background:#99ffcc; width:80px;'></colgroup>
-<tr><td>dc voltage<td id="v0">n/a</td><td id="v1">n/a</td><td id="v2">n/a</td><td id="v3">n/a</td></tr>
-<tr><td>dc current<td id="c0">n/a</td><td id="c1">n/a</td><td id="c2">n/a</td><td id="c3">n/a</td></tr>
-</table></div><span id="npa" style="display:none;"><h2>this inverter is not paired!</h2></span><span id="npo" style="display:none;"><h2>this inverter is not polled!</h2></span><br><br></div></body></html> 
+const char DETAILSPAGE[] PROGMEM = R"=====(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inverter details · APsystems ECU</title><link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/stylesheet"></head>
+<body><header class="topbar"><a class="brand" href="/">APsystems ECU</a><nav class="nav"><a class="button secondary" href="/inverters">Inverters</a><a class="button secondary" href="/menu">Menu</a></nav></header><main class="page"><div class="eyebrow">Live inverter telemetry</div><div class="card-head"><div><h1 id="name">Inverter details</h1><p id="identity">Loading...</p></div><span id="state" class="badge">Loading</span></div>
+<div class="metrics"><div class="metric"><strong id="power">&mdash;</strong><span>Current output</span></div><div class="metric"><strong id="today">&mdash;</strong><span>Energy today</span></div><div class="metric"><strong id="life">&mdash;</strong><span>Lifetime Energy</span></div></div>
+<div class="card-grid section"><section class="card"><h2>Inverter</h2><dl class="kv"><dt>Model</dt><dd id="model">&mdash;</dd><dt>Firmware</dt><dd id="firmware">unknown</dd><dt>Network ID</dt><dd id="sid">&mdash;</dd><dt>Transport</dt><dd id="transport">&mdash;</dd><dt>Last response</dt><dd id="last">Not yet</dd></dl></section><section class="card"><h2>AC output</h2><dl class="kv"><dt>Voltage</dt><dd id="acv">&mdash;</dd><dt>Frequency</dt><dd id="freq">&mdash;</dd><dt>Temperature</dt><dd id="temp">&mdash;</dd><dt>Signal quality</dt><dd id="signal">&mdash;</dd></dl></section></div>
+<section class="section"><div class="card-head"><h2>PV inputs</h2><span class="muted">Only physical inputs for this model are shown.</span></div><div id="panels" class="card-grid"><div class="card empty">Waiting for telemetry...</div></div></section>
+<section class="form-card section"><h2>Output limit</h2><p>Set the inverter throttle target. Leave at 0 for normal unrestricted operation.</p><form method="get" action="/inverter/throttle"><input type="hidden" id="inv" name="INV"><div class="field"><label for="limit">Throttle target</label><input id="limit" name="pMax" type="number" min="0" max="500" step="20"></div><div class="actions"><button type="submit">Save limit</button><a class="button secondary" href="/">Cancel</a></div></form></section>
+</main><script>
+const params=new URLSearchParams(location.search),index=Number(params.get('inv')||0),el=id=>document.getElementById(id),val=(v,u='')=>Number.isFinite(Number(v))?Number(v).toFixed(1)+u:'—';
+async function load(){try{let n=await fetch('/api/data?Inverter='+index,{cache:'no-store'}).then(r=>r.json()),types=['YC600','QS1','DS3'];el('name').textContent=n.name||'Inverter '+(index+1);el('identity').textContent='Inverter '+(index+1)+' · Serial '+n.serial;el('state').textContent=n.sid==='0000'?'Not paired':(n.polled?'Online':'No recent data');el('state').className='badge '+(n.polled?'':'warn');el('power').textContent=val(n.pw_total,' W');el('today').textContent=(Number(n.today_wh||0)/1000).toFixed(3)+' kWh';el('life').textContent=(Number(n.lifetime_wh||0)/1000).toFixed(3)+' kWh';el('model').textContent=types[n.type]||'Unknown';el('firmware').textContent=n.firmware||'unknown';el('sid').textContent=n.sid;el('transport').textContent=n.encrypted?'AES encrypted':'Plain (not encrypted)';el('last').textContent=n.last_success||'Not yet';el('acv').textContent=val(n.acv,' V');el('freq').textContent=val(n.freq,' Hz');el('temp').textContent=val(n.temp,' °C');el('signal').textContent=val(n.sq,' %');el('inv').value=n.inv;el('limit').value=n.pwMax;let count=n.panel_count||2;el('panels').innerHTML=Array.from({length:count},(_,i)=>`<article class="card"><div class="eyebrow">Panel ${i+1}</div><h2>${val(n.pow[i],' W')}</h2><dl class="kv"><dt>DC voltage</dt><dd>${val(n.dcv[i],' V')}</dd><dt>DC current</dt><dd>${val(n.dcc[i],' A')}</dd><dt>Recorded energy</dt><dd>${val(n.en[i],' kWh')}</dd></dl></article>`).join('')}catch(e){el('state').textContent='Unavailable';el('state').className='badge warn'}}
+load();setInterval(load,30000);
+</script></body></html>
 )=====";
-

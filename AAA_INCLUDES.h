@@ -33,7 +33,7 @@
 #include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_3_1"
+#define VERSION  "ESP32C6-ECU_v1_4_0"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -86,9 +86,13 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org");
 const byte DNS_PORT = 53;
 DNSServer dnsServer;
 #include "HTML.h"
+#include "FAVICON_SUN.h"
 //#include "AAA_CONFIG_INVERTERS.H"
 #include "AAA_MENUPAGE.h"
 #include "DETAILSPAGE.h"
+#include "AAA_HOMEPAGE.h"
+#include "AAA_INVERTERS_UI.h"
+#include "AA_CONSOLE_UI.h"
 #include "eventSource.h"
 /*
  * if we define TEST we have a special environment to test the decoding of a string
@@ -173,6 +177,7 @@ typedef struct{
   bool encrypted       = false;
 } inverters;
 inverters Inv_Prop[9]; 
+time_t inverterLastPollSuccess[YC600_MAX_NUMBER_OF_INVERTERS] = {};
 
 typedef struct{ 
 float freq = 0.0;

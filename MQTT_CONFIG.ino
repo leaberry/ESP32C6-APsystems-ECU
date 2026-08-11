@@ -31,51 +31,16 @@ const char MQTTCONFIG[] PROGMEM = R"=====(
 
 </body></html>
 )=====";
-  //<li><a href='/MQTT_TEST' >test</a></ul>
+  //<li><a href='/mqtt/test' >test</a></ul>
 
 void zendPageMQTTconfig(AsyncWebServerRequest *request) {
-//DebugPrintln("we are at zendPageMQTTconfig");
-//webPage = FPSTR(HTML_HEAD);
-//webPage.replace("tieTel", swname );
-String webPage;
-webPage = FPSTR(HTML_HEAD);
-webPage += FPSTR(MQTTCONFIG);  
-
-  //altijd de mqtt gegevens terugzetten
- String Mqtt_inTopic=getChipId(false) + "/in";
-webPage.replace("{mqttAdres}",    String(Mqtt_Broker)   );
-webPage.replace("{mqttPort}",     String(Mqtt_Port)     );
-//webPage.replace("{mqttinTopic}",  String(Mqtt_inTopic)  );
-webPage.replace("{mqttoutTopic}", String(Mqtt_outTopic) );
-webPage.replace("{mqttinTopic}", String(Mqtt_inTopic) );
-webPage.replace("{mqtu}",         String(Mqtt_Username) );
-webPage.replace("{mqtp}",         String(Mqtt_Password) );
-webPage.replace("{idx}"          , String(Mqtt_stateIDX) ); 
-
-//String Mqtt_Clientid = getChipid(false);
-webPage.replace("{mqtc}"         , getChipId(false));
-switch (Mqtt_Format) {
- case 0:
-    webPage.replace("fm_0", "selected");
-    break;
- case 1:
-    webPage.replace("fm_1", "selected");
-    break;
- case 2:
-    webPage.replace("fm_2", "selected");
-    break;
- case 3:
-    webPage.replace("fm_3", "selected");
-    break;
- case 4:
-    webPage.replace("fm_4", "selected");
-    break;
- case 5:
-    webPage.replace("fm_5", "selected");
-    break;
-  }
-    request->send(200, "text/html", webPage);
-    webPage="";
+  String page = ecuPageStart(F("MQTT"), F("Publish inverter telemetry to an MQTT broker. Leave the format disabled when MQTT is not used."));
+  page += F("<form class=\"form-card\" method=\"get\" action=\"/mqtt/save\"><div class=\"form-grid\"><div class=\"field\"><label for=\"fm\">Message format</label><select id=\"fm\" name=\"fm\">");
+  const char *labels[] = {"Disabled", "Format 1", "Format 2", "Format 3", "Format 4", "Format 5"};
+  for (uint8_t i = 0; i < 6; ++i) { page += F("<option value=\""); page += i; page += '"'; if (Mqtt_Format == i) page += F(" selected"); page += '>'; page += labels[i]; page += F("</option>"); }
+  page += F("</select><span class=\"help\">Use the format expected by your existing subscriber. This is independent of Modbus/TCP.</span></div><div class=\"field\"><label for=\"broker\">Broker address</label><input id=\"broker\" name=\"mqtAdres\" maxlength=\"31\" value=\""); page += webEscape(Mqtt_Broker); page += F("\"></div><div class=\"field\"><label for=\"port\">Port</label><input id=\"port\" name=\"mqtPort\" inputmode=\"numeric\" maxlength=\"5\" value=\""); page += webEscape(Mqtt_Port); page += F("\"></div><div class=\"field\"><label for=\"idx\">State device ID</label><input id=\"idx\" name=\"mqidx\" type=\"number\" min=\"0\" max=\"65535\" value=\""); page += Mqtt_stateIDX; page += F("\"><span class=\"help\">Used by formats that publish to a numeric automation-system device ID.</span></div><div class=\"field full\"><label for=\"out\">Publish topic</label><input id=\"out\" name=\"mqtoutTopic\" maxlength=\"60\" value=\""); page += webEscape(Mqtt_outTopic); page += F("\"></div><div class=\"field\"><label for=\"user\">Username</label><input id=\"user\" name=\"mqtUser\" maxlength=\"31\" value=\""); page += webEscape(Mqtt_Username); page += F("\"></div><div class=\"field\"><label for=\"password\">Password</label><input id=\"password\" name=\"mqtPas\" type=\"password\" maxlength=\"31\" placeholder=\"Leave blank to keep current password\"></div></div><div class=\"actions\"><button type=\"submit\">Save MQTT settings</button><a class=\"button secondary\" href=\"/menu\">Cancel</a><a class=\"button secondary\" href=\"/mqtt/test\">Send test</a></div></form>");
+  page += ecuPageEnd();
+  request->send(200, "text/html", page);
 }
 
 //void handleMQTTconfig(AsyncWebServerRequest *request) {

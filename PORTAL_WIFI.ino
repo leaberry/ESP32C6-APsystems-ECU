@@ -94,7 +94,7 @@ String buildPortalPage(const String &message = String()) {
     page += htmlEscape(message);
     page += F("</p>");
   }
-  page += F("<form method='post' action='/wifiCon'>");
+  page += F("<form method='post' action='/wifi/save'>");
   page += F("<label for='s'>Wi-Fi network</label><input id='s' name='s' list='networks' maxlength='32' required>");
   page += F("<datalist id='networks'>");
   page += portalNetworkOptions;
@@ -237,10 +237,10 @@ void start_portal() {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(200, "text/html", buildPortalPage());
   });
-  server.on("/wifiForm", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->redirect("/");
   });
-  server.on("/wifiCon", HTTP_POST, [](AsyncWebServerRequest *request) {
+  server.on("/wifi/save", HTTP_POST, [](AsyncWebServerRequest *request) {
     String submittedSsid = request->arg("s");
     String submittedPassword = request->arg("p");
     String submittedHostname = normalizeWifiHostname(request->arg("hostname"));

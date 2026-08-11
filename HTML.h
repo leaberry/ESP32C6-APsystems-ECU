@@ -10,7 +10,7 @@ const char HTML_HEAD[] PROGMEM = R"=====(
 <!DOCTYPE html><html><head><meta charset='utf-8'>
 <title>ESP32-ECU</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" type="text/css" href="/STYLESHEET">
+<link rel="stylesheet" type="text/css" href="/stylesheet">
 
 <script type='text/javascript'>
 
@@ -22,7 +22,7 @@ document.getElementById('formulier').submit();
 }
 
 function cl() {
-window.location.href='/MENU';
+window.location.href='/menu';
 }
 </script>
 </head>
@@ -37,8 +37,8 @@ const char STYLESHEET[] PROGMEM = R"=====(
 *{box-sizing:border-box} :root{color-scheme:dark;--bg:#0b1220;--panel:#121c2e;--panel2:#17243a;--line:#2a3a55;--text:#e8eef8;--muted:#9fb0c8;--accent:#4ade80;--accent2:#22d3ee;--warn:#fbbf24;--bad:#fb7185}
 html{background:var(--bg)} body{margin:0;background:radial-gradient(circle at top,#17243a 0,#0b1220 42rem);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
 a{color:var(--accent2)} .page{width:min(1120px,calc(100% - 28px));margin:0 auto;padding:24px 0 48px}.topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px max(14px,calc((100vw - 1120px)/2));background:#0b1220e8;border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
-.brand{color:var(--text);font-weight:750;text-decoration:none;font-size:1.08rem}.nav{display:flex;gap:8px;flex-wrap:wrap}.button,button,input[type=submit]{display:inline-flex;align-items:center;justify-content:center;border:1px solid #43d47a;background:#249653;color:white;border-radius:9px;padding:9px 14px;text-decoration:none;font:inherit;font-weight:650;cursor:pointer}.button.secondary{background:var(--panel2);border-color:var(--line)}.button.danger{background:#9f2941;border-color:#e45b75}.button:hover,button:hover,input[type=submit]:hover{filter:brightness(1.12)}
-h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.7rem,4vw,2.5rem);margin-bottom:8px}h2{font-size:1.25rem}p,.muted,.help{color:var(--muted)}.eyebrow{color:var(--accent);font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.hero{padding:28px;background:linear-gradient(135deg,#17243a,#10253a);border:1px solid var(--line);border-radius:16px;margin-bottom:18px}.status-row,.metrics,.card-grid,.menu-grid{display:grid;gap:14px}.metrics{grid-template-columns:repeat(3,1fr);margin-top:22px}.metric,.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}.metric strong{display:block;font-size:clamp(1.5rem,4vw,2.35rem);font-variant-numeric:tabular-nums}.metric span{color:var(--muted);font-size:.88rem}.card-grid{grid-template-columns:repeat(auto-fit,minmax(270px,1fr));margin:18px 0}.card h2{margin-bottom:6px}.card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.badge{display:inline-block;padding:4px 9px;border-radius:999px;background:#173d2a;color:#82f2a8;font-size:.78rem;font-weight:750}.badge.warn{background:#493816;color:#ffd66c}.badge.bad{background:#4e1d2a;color:#ff9eb0}.kv{display:grid;grid-template-columns:1fr auto;gap:8px 14px;margin:14px 0}.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}.panel-powers{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.panel-power{background:var(--panel2);border-radius:8px;padding:8px;text-align:center;font-variant-numeric:tabular-nums}.menu-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}.menu-item{display:block;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:18px}.menu-item:hover{border-color:var(--accent2);transform:translateY(-1px)}.menu-item strong{display:block;margin-bottom:4px}.menu-item span{color:var(--muted);font-size:.9rem}
+.brand{color:var(--text);font-weight:750;text-decoration:none;font-size:1.08rem}.nav{display:flex;gap:8px;flex-wrap:wrap}.button,button,input[type=submit]{display:inline-flex;align-items:center;justify-content:center;border:1px solid #43d47a;background:#249653;color:white;border-radius:9px;padding:9px 14px;text-decoration:none;font:inherit;font-weight:650;cursor:pointer}.button.secondary,button.secondary{background:var(--panel2);border-color:var(--line)}.button.danger{background:#9f2941;border-color:#e45b75}.button:hover,button:hover,input[type=submit]:hover{filter:brightness(1.12)}
+h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.7rem,4vw,2.5rem);margin-bottom:8px}h2{font-size:1.25rem}p,.muted,.help{color:var(--muted)}code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.eyebrow{color:var(--accent);font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.hero{padding:28px;background:linear-gradient(135deg,#17243a,#10253a);border:1px solid var(--line);border-radius:16px;margin-bottom:18px}.status-row,.metrics,.card-grid,.menu-grid{display:grid;gap:14px}.metrics{grid-template-columns:repeat(3,1fr);margin-top:22px}.metric,.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}.metric strong{display:block;font-size:clamp(1.5rem,4vw,2.35rem);font-variant-numeric:tabular-nums}.metric span{color:var(--muted);font-size:.88rem}.card-grid{grid-template-columns:repeat(auto-fit,minmax(270px,1fr));margin:18px 0}.card h2{margin-bottom:6px}.card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.badge{display:inline-block;padding:4px 9px;border-radius:999px;background:#173d2a;color:#82f2a8;font-size:.78rem;font-weight:750}.badge.warn{background:#493816;color:#ffd66c}.badge.bad{background:#4e1d2a;color:#ff9eb0}.kv{display:grid;grid-template-columns:1fr auto;gap:8px 14px;margin:14px 0}.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}.panel-powers,.panel-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.panel-power{background:var(--panel2);border-radius:8px;padding:8px;text-align:center;font-variant-numeric:tabular-nums}.menu-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}.menu-item{display:block;color:var(--text);text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:18px}.menu-item:hover{border-color:var(--accent2);transform:translateY(-1px)}.menu-item strong{display:block;margin-bottom:4px}.menu-item span{color:var(--muted);font-size:.9rem}
 .section{margin-top:22px}.form-card{max-width:760px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-weight:700}input,select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:8px;background:#0c1627;color:var(--text);padding:8px 10px;font:inherit}input[type=checkbox]{width:20px;min-height:20px;accent-color:var(--accent)}.checkline{display:flex;gap:10px;align-items:flex-start}.checkline label{font-weight:600}.help{font-size:.85rem}.actions{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap}.alert{padding:12px 14px;border-left:4px solid var(--warn);background:#342b19;border-radius:8px;color:#ffe39a}.alert.info{border-color:var(--accent2);background:#122c38;color:#b9eef8}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}.data-table{width:100%;border-collapse:collapse;background:var(--panel)}.data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.data-table th{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}.bars{height:210px;display:flex;align-items:flex-end;gap:3px;padding:12px 5px 28px;border-bottom:1px solid var(--line)}.bar{position:relative;flex:1;min-width:5px;background:linear-gradient(var(--accent2),#197a91);border-radius:4px 4px 0 0}.bar span{position:absolute;bottom:-23px;left:50%;transform:translateX(-50%);font-size:.66rem;color:var(--muted)}.empty{padding:28px;text-align:center;color:var(--muted)}
 /* Compatibility for legacy inverter, MQTT, log and update pages. */
 #msect{display:flex;flex-direction:column;align-items:center;width:100%}#menu{width:min(900px,calc(100% - 24px));height:54px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:0 0 10px 10px}#menu a{display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 15px;color:white;text-decoration:none}#menu #sub{float:right;background:#249653}#menu2 a{display:inline-block;background:var(--panel2);color:white;padding:10px;border-radius:8px;text-decoration:none}.divstijl{width:min(900px,calc(100% - 24px));height:auto!important;min-height:200px;margin:0 auto;padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:12px}kop{display:block;font-size:1.5rem;font-weight:750;padding:18px}table{max-width:100%}td,th{padding:6px}tr{height:auto}.close{float:right!important;color:var(--bad)!important;font-size:34px!important;font-weight:bold}.fright{float:right}.inp1,.inp2,.inp3,.inp4,.inp5,.inp6{width:auto;min-width:80px}.bt,.bt_small{width:auto;height:auto;padding:10px 18px;margin:6px;border-radius:9px;background:var(--panel2);color:white;box-shadow:none;font-size:1rem}
@@ -46,17 +46,17 @@ h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.7rem,4vw,2.5rem);margin-bottom:8px}
 )=====";
 
 
-//<script type='text/javascript'>setTimeout(function(){ window.location.href='/SW=BACK';}, 3000 ); </script>
+//<script type='text/javascript'>setTimeout(function(){ window.location.href='/back';}, 3000 ); </script>
 
 //const char CONFIRM[] PROGMEM = R"=====(
 //<!DOCTYPE html><html><head><meta charset='utf-8'>
 //<title>ESP-ECU</title>
 //<meta name="viewport" content="width=device-width, initial-scale=1">
-//<link rel="stylesheet" type="text/css" href="/STYLESHEET">
+//<link rel="stylesheet" type="text/css" href="/stylesheet">
 //</head>
 //<body>
 //<script type='text/javascript'>setTimeout(function(){ 
-//  window.location.href='/SW=BACK';}, 3000 ); </script>
+//  window.location.href='/back';}, 3000 ); </script>
 //
 //<center><kop>PROCESSING YOUR REQUEST...</kop>
 //<br><br>
@@ -83,10 +83,10 @@ const char CONFIRM_IP[] PROGMEM = R"=====(
 //<!DOCTYPE html><html><head><meta charset='utf-8'>
 //<title>ESP-ECU</title>
 //<meta name="viewport" content="width=device-width, initial-scale=1">
-//<link rel="stylesheet" type="text/css" href="/STYLESHEET">
+//<link rel="stylesheet" type="text/css" href="/stylesheet">
 //</head>
 //<body style='font-size:16px;'>
-//<script type='text/javascript'>setTimeout(function(){ window.location.href='/INV_CONFIG';}, 6000 ); </script>
+//<script type='text/javascript'>setTimeout(function(){ window.location.href='/inverters';}, 6000 ); </script>
 //<center>
 //<h1>PROCESSING THE INVERTER DATA...</h1><div class='lijnstijl'></div><br><br>
 //<div class='divstijl'>
@@ -96,11 +96,11 @@ const char CONFIRM_IP[] PROGMEM = R"=====(
 //
 //<br><br>
 //</div>
-//<br><br> <a href='/SW=BACK'><span class='close'>&times;</span></a></body></html>
+//<br><br> <a href='/back'><span class='close'>&times;</span></a></body></html>
 //)=====";
 
 
-const char WAIT_PAIR[] PROGMEM = R"=====(
+const char WAIT_PAIR_LEGACY[] PROGMEM = R"=====(
 <!DOCTYPE html><html><head><meta charset='utf-8'>
 </head><body onload="loadScript()">
 <center><br><br><h2>PAIRING INVERTER {#}</h2>
@@ -110,11 +110,11 @@ const char WAIT_PAIR[] PROGMEM = R"=====(
 </div>
 <div id="hiddenSucc" style="display:none"<br><br><br>
 <h3>The pairing succeeded.
-<br><br><br><a href="/LOGPAGE">click here</a></h3>
+<br><br><br><a href="/journal">click here</a></h3>
 </div>
 <div id="hiddenFail" style="display:none"<br><br><br>
 <h3>The pairing failed.
-<br><br><br><a href="/LOGPAGE">click here</a></h3>
+<br><br><br><a href="/journal">click here</a></h3>
 </div>
 
 <script>
@@ -155,11 +155,18 @@ function getData() {
 </body></html>    
 )=====";
 
+const char WAIT_PAIR[] PROGMEM = R"=====(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pair inverter · APsystems ECU</title><link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/stylesheet"></head><body><header class="topbar"><a class="brand" href="/">APsystems ECU</a></header><main class="page"><div class="eyebrow">Radio setup</div><h1>Pairing inverter {#}</h1><section class="card section"><span id="badge" class="badge">Pairing</span><h2 id="title">Listening for the inverter...</h2><p id="message">This normally takes several seconds. Keep the ECU powered and near the inverter.</p><div class="actions"><a class="button secondary" href="/journal">Open journal</a><a class="button secondary" href="/inverters">Return to inverters</a></div></section></main><script>
+async function check(){try{let n=await fetch('/pair/status',{cache:'no-store'}).then(r=>r.json());if(n.invID==='1111')return;if(n.invID==='0000'){document.getElementById('badge').textContent='Failed';document.getElementById('badge').className='badge warn';document.getElementById('title').textContent='Pairing did not complete';document.getElementById('message').textContent='Move the ECU closer, confirm the serial number, and try again. Existing working pairing data is preserved.'}else{document.getElementById('badge').textContent='Paired';document.getElementById('title').textContent='Inverter paired successfully';document.getElementById('message').textContent='Assigned network ID: '+n.invID}}catch(e){document.getElementById('message').textContent='Unable to read pairing status.'}}
+check();setInterval(check,2500);
+</script></body></html>
+)=====";
+
 const char REQUEST_DENIED[] PROGMEM = R"=====(
 <!DOCTYPE html><html><head><meta charset='utf-8'>
 <title>ESP-ECU</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" type="text/css" href="/STYLESHEET_HOME">
+<link rel="stylesheet" type="text/css" href="/stylesheet">
 </head>
 <body style='font-size:16px;'>
 <script type='text/javascript'>setTimeout(function(){ window.location.href='/';}, 9000 ); </script>

@@ -16,7 +16,7 @@ events.onConnect([](AsyncEventSourceClient *client){
 // ***********************************************************************************
 //                                     homepage
 // ***********************************************************************************
-server.on("/SW=BACK", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/back", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!loginBoth(request, "both")) return;
     request->redirect( String(requestUrl) );
 });
@@ -26,17 +26,17 @@ server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send_P(200, "text/html", ECU_HOMEPAGE);
 });
 
-server.on("/STYLESHEET", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/stylesheet", HTTP_GET, [](AsyncWebServerRequest *request) {
    request->send_P(200, "text/css", STYLESHEET);
 });
 
 server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
     Serial.println("favicon requested");
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/x-icon", FAVICON, FAVICON_len);
+    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/png", SUN_FAVICON, SUN_FAVICON_LEN);
     request->send(response);
 });
 
-server.on("/details", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/inverter-details", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "both")) return;
 if (!request->hasParam("inv")) { request->send(400, "text/plain", "Missing inverter index"); return; }
 iKeuze = request->getParam("inv")->value().toInt();
@@ -49,7 +49,7 @@ request->send_P(200, "text/html", DETAILSPAGE);
 // ********************************************************************
 // very often called  XHT REQUESTS handled by handleDataRequests()
 //***********************************************************************
-server.on("/get.Data", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
   Serial.println("get.Data url = " + String(requestUrl));
@@ -58,49 +58,57 @@ server.on("/get.Data", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 
 
-server.on("/MENU", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/menu", HTTP_GET, [](AsyncWebServerRequest *request) {
 //Serial.println("requestUrl = " + request->url() ); // can we use this
-if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
 if (!loginBoth(request, "admin")) return;
 //toSend = FPSTR(HTML_HEAD);
 //toSend += FPSTR(MENUPAGE);
 request->send_P(200, "text/html", MENUPAGE);
 });
-server.on("/SECURITY", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/security", HTTP_GET, [](AsyncWebServerRequest *request) {
    request->send_P(200, "text/css", SECURITY);
 });
-server.on("/DENIED", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/denied", HTTP_GET, [](AsyncWebServerRequest *request) {
    request->send_P(200, "text/html", REQUEST_DENIED);
 });
 
 
-server.on("/CONSOLE", HTTP_GET, [](AsyncWebServerRequest *request){
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/console", HTTP_GET, [](AsyncWebServerRequest *request){
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
     if (!loginBoth(request, "admin")) return;
     diagNose=1;
     request->send_P(200, "text/html", CONSOLE_HTML);
   });
 
-server.on("/DIAGNOSTICS", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain; charset=utf-8", diagnosticsReportText());
+  response->addHeader("Content-Disposition", "attachment; filename=aps-ecu-diagnostics.txt");
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+});
+
+// Register the longer path first. ESPAsyncWebServer 3.12 can otherwise let
+// the page route shadow /diagnostics/download on ESP32-C6.
+server.on("/diagnostics", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) {
-    request->redirect("/DENIED");
+    request->redirect("/denied");
     return;
   }
   if (!request->authenticate("admin", pswd)) {
     request->requestAuthentication();
     return;
   }
-  AsyncWebServerResponse *response =
-      request->beginResponse(200, "text/plain; charset=utf-8", diagnosticsText());
-  response->addHeader("Cache-Control", "no-store");
-  request->send(response);
+  handleDiagnosticsPage(request);
 });
 
 // ***********************************************************************************
 //                                   basisconfig
 // ***********************************************************************************
-server.on("/BASISCONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/basicconfig", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
 if (!loginBoth(request, "admin")) return;
 //requestUrl = request->url();// remember this to come back after reboot
 strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
@@ -108,7 +116,7 @@ zendPageBasis(request);
 //request->send(200, "text/html", toSend);
 });
 
-server.on("/submitform", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/inverter/throttle", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "admin")) return;
 if (!handleForms(request)) return;
 confirm(); // puts a response in toSend
@@ -126,8 +134,8 @@ request->send(200, "text/html", toSend);
 //   handleIPconfig(request);
 // });
 
-server.on("/MQTT", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/mqtt", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
   //requestUrl = request->url();
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
@@ -135,8 +143,8 @@ server.on("/MQTT", HTTP_GET, [](AsyncWebServerRequest *request) {
   //request->send(200, "text/html", toSend);
 });
 
-server.on("/GEOCONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
   //requestUrl = request->url();
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
@@ -153,29 +161,35 @@ server.on("/GEOCONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
 //   //request->send(200, "text/html", toSend);
 // });
 
-server.on("/SETTINGS_SAVE", HTTP_POST, [](AsyncWebServerRequest *request) {
+server.on("/settings/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   handleBasisSave(request);
 });
 
-server.on("/TIME_SAVE", HTTP_POST, [](AsyncWebServerRequest *request) {
+server.on("/mqtt/save", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  if (!handleForms(request)) return;
+  request->redirect("/mqtt");
+});
+
+server.on("/time/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   handleTimeSave(request);
 });
 
-server.on("/NETWORK", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote(request->client()->remoteIP().toString())) { request->redirect("/DENIED"); return; }
+server.on("/network", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!loginBoth(request, "admin")) return;
   handleNetworkPage(request);
 });
 
-server.on("/NETWORK_SAVE", HTTP_POST, [](AsyncWebServerRequest *request) {
-  if(checkRemote(request->client()->remoteIP().toString())) { request->redirect("/DENIED"); return; }
+server.on("/network/save", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if(checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!loginBoth(request, "admin")) return;
   handleNetworkSave(request);
 });
 
-server.on("/ENERGY", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/energy", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   request->send_P(200, "text/html", ENERGY_PAGE);
 });
@@ -197,7 +211,7 @@ server.on("/api/energy/history.csv", HTTP_GET, [](AsyncWebServerRequest *request
   energySendHistoryCsv(request);
 });
 
-server.on("/REBOOT", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   actionFlag = 10;
   confirm(); 
@@ -205,35 +219,34 @@ server.on("/REBOOT", HTTP_GET, [](AsyncWebServerRequest *request) {
   request->send(200, "text/html", toSend);
 });
 
-server.on("/STARTAP", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/setup", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
-  String toSend = F("<!DOCTYPE html><html><head><script type='text/javascript'>setTimeout(function(){ window.location.href='/SW=BACK'; }, 5000 ); </script>");
+  String toSend = F("<!DOCTYPE html><html><head><script type='text/javascript'>setTimeout(function(){ window.location.href='/back'; }, 5000 ); </script>");
   toSend += F("</head><body><center><h2>OK the accesspoint is started.</h2>Wait unil the led goes on.<br><br>Then go to the wifi-settings on your pc/phone/tablet and connect to ESP32-ECU");
   request->send ( 200, "text/html", toSend ); //zend bevestiging
   actionFlag = 11;
 });
 
-server.on("/ABOUT", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
 Serial.println(F("/INFOPAGE requested"));
 if (!loginBoth(request, "both")) return;
 handleAbout(request);
 });
-server.on("/TEST", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/radio-test", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   actionFlag = 44;
-  request->send( 200, "text/html", "<center><br><br><h3>checking zigbee.. please wait a minute.<br>Then you can find the result in the log.<br><br><a href=\'/LOGPAGE\'>click here</a></h3>" );
+  request->send( 200, "text/html", "<center><br><br><h3>checking radio.. please wait a minute.<br>Then you can find the result in the journal.<br><br><a href=\'/journal\'>click here</a></h3>" );
 });
 
-server.on("/LOGPAGE", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/journal", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   //requestUrl = request->url();
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
-  //handleLogPage(request);
-  request->send_P(200, "text/html", LOGPAGE, putList);
+  handleJournalPage(request);
 });
 
-server.on("/MQTT_TEST", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/mqtt/test", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "admin")) return;
 char Mqtt_send[40] = {0};
 strlcpy(Mqtt_send, Mqtt_outTopic, sizeof(Mqtt_send));
@@ -253,12 +266,12 @@ request->send( 200, "text/plain", toSend  );
 //                    inverters
 // ******************************************************************
 
-server.on("/INVSCRIPT", HTTP_GET, [](AsyncWebServerRequest *request) {
-   request->send_P(200, "text/css", INV_SCRIPT);
+server.on("/inverter/script", HTTP_GET, [](AsyncWebServerRequest *request) {
+   request->send_P(200, "application/javascript", INV_SCRIPT);
 });
 
-server.on("/INV_CONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/inverters", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
   iKeuze=0;
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
@@ -266,13 +279,13 @@ server.on("/INV_CONFIG", HTTP_GET, [](AsyncWebServerRequest *request) {
   request->send_P(200, "text/html", INVCONFIG_START, processor);
 });
 
-server.on("/inverterconfig", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/inverter/save", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "admin")) return;
 handleInverterconfig(request);
 });
 
-server.on("/PAIR", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/inverter/pair", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
   //requestUrl = request->url();
   strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
@@ -280,13 +293,13 @@ server.on("/PAIR", HTTP_GET, [](AsyncWebServerRequest *request) {
   handlePair(request);
 });
 
-server.on("/INV_DEL", HTTP_GET, [](AsyncWebServerRequest *request) {
-  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+server.on("/inverter/delete", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
   handleInverterdel(request);
 });
 
-server.on("/INV", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/inverter/select", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!loginBoth(request, "admin")) return;
     if (!request->hasParam("welke")) { request->send(400, "text/plain", "Missing inverter index"); return; }
     strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
@@ -314,7 +327,7 @@ server.on("/INV", HTTP_GET, [](AsyncWebServerRequest *request) {
 //                    X H T  R E Q U E S T S
 //***********************************************************************
 
-server.on("/get.Paired", HTTP_GET, [](AsyncWebServerRequest *request) {
+server.on("/pair/status", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "both")) return;
 if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/json", "{\"error\":\"unknown inverter\"}"); return; }
 // set the array into a json object
@@ -328,12 +341,12 @@ if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/jso
 // ***************************************************************************************
 //                           Simple Firmware Update
 // ***************************************************************************************
-  server.on("/GRIDPROFILE", HTTP_GET, [](AsyncWebServerRequest *request){
+  server.on("/grid-profile", HTTP_GET, [](AsyncWebServerRequest *request){
     if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
     gridProfilePage(request);
   });
 
-  server.on("/GRIDPROFILE_ACTION", HTTP_POST, [](AsyncWebServerRequest *request){
+  server.on("/grid-profile/action", HTTP_POST, [](AsyncWebServerRequest *request){
     if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
     if (!request->hasParam("inv", true) || !request->hasParam("op", true)) {
       request->send(400, "text/plain", "missing inverter or operation"); return;
@@ -348,10 +361,10 @@ if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/jso
     else if (op == "read") actionFlag = 71;
     else if (op == "restore") actionFlag = 72;
     else { request->send(400, "text/plain", "invalid operation"); return; }
-    request->redirect("/GRIDPROFILE");
+    request->redirect("/grid-profile");
   });
 
-  server.on("/GRIDPROFILE_UPLOAD", HTTP_POST,
+  server.on("/grid-profile/upload", HTTP_POST,
     [](AsyncWebServerRequest *request){
       if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
       if (gridProfileUploadFile) gridProfileUploadFile.close();
@@ -360,7 +373,7 @@ if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/jso
         request->send(400, "text/plain", "profile must use invdriver.gridprofile/v1 and contain points"); return;
       }
       gridSetStatus(F("Profile uploaded. Read the current settings before applying."));
-      request->redirect("/GRIDPROFILE");
+      request->redirect("/grid-profile");
     },
     [](AsyncWebServerRequest *request, String filename, size_t index,
        uint8_t *data, size_t len, bool final){
@@ -378,31 +391,33 @@ if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/jso
       if (final && gridProfileUploadFile) gridProfileUploadFile.close();
     });
 
-  server.on("/FWUPDATE", HTTP_GET, [](AsyncWebServerRequest *request){
-    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  server.on("/firmware", HTTP_GET, [](AsyncWebServerRequest *request){
+    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
     strlcpy(requestUrl, "/", sizeof(requestUrl));
     if (!request->authenticate("admin", pswd) ) return request->requestAuthentication();
     if (esp_ota_get_next_update_partition(nullptr) == nullptr) {
-      request->send(409, "text/html", "<h2>OTA is disabled in the 4 MB USB-only build.</h2><p>Connect USB to install new firmware.</p><a href='/MENU'>Back</a>");
+      request->send(409, "text/html", "<h2>OTA is disabled in the 4 MB USB-only build.</h2><p>Connect USB to install new firmware.</p><a href='/menu'>Back</a>");
       return;
     }
     request->send_P(200, "text/html", otaIndex); 
     });
-  server.on("/handleFwupdate", HTTP_POST, [](AsyncWebServerRequest *request){
-    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/DENIED" ); return; }
+  server.on("/firmware/upload", HTTP_POST, [](AsyncWebServerRequest *request){
+    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
+    if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
     Serial.println("FWUPDATE requested");
     if( !Update.hasError() ) {
     toSend="<br><br><center><h2>UPDATE SUCCESS !!</h2><br><br>";
-    toSend +="click here to reboot<br><br><a href='/REBOOT'><input style='font-size:3vw;' type='submit' value='REBOOT'></a>";
+    toSend +="click here to reboot<br><br><a href='/reboot'><input style='font-size:3vw;' type='submit' value='REBOOT'></a>";
     } else {
     toSend="<br><br><center><kop>update failed<br><br>";
-    toSend +="click here to go back <a href='/FWUPDATE'>BACK</a></center>";
+    toSend +="click here to go back <a href='/firmware'>BACK</a></center>";
     }
     AsyncWebServerResponse *response = request->beginResponse(200, "text/html", toSend);
     response->addHeader("Connection", "close");
     request->send(response);
   
   },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
+    if (!request->authenticate("admin", pswd)) return;
     if (esp_ota_get_next_update_partition(nullptr) == nullptr) return;
     //Serial.println("filename = " + filename);
     if(filename != "") {
@@ -447,10 +462,11 @@ server.begin();
 }
 
 void confirm() {
-toSend="<html><body onload=\"setTimeout(function(){window.location.href='";
-toSend+=String(requestUrl);
-toSend+="';}, 3000 );\"><br><br><center><h3>processing<br>your request,<br>please wait</html>";
-//Serial.println(toSend);
+  String destination = String(requestUrl);
+  if (!destination.startsWith("/") || destination.indexOf("//") >= 0) destination = "/";
+  toSend = F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Applying changes · APsystems ECU</title><link rel=\"stylesheet\" href=\"/stylesheet\"></head><body><main class=\"page\"><section class=\"card\"><span class=\"badge\">Saved</span><h1>Applying your changes</h1><p>The ECU will return automatically in a moment.</p></section></main><script>setTimeout(()=>location.href='");
+  toSend += destination;
+  toSend += F("',1800)</script></body></html>");
 }
 
 double round2(double value) {

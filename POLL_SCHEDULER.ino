@@ -13,6 +13,8 @@ static bool pollRoundRequested = false;
 static uint8_t pollNextInverter = 0;
 static uint32_t pollLastRoundStartedMs = 0;
 static uint32_t pollNextSendMs = 0;
+static bool pollRoundAllSucceeded = false;
+static time_t pollLastSuccessfulEpoch = 0;
 
 uint32_t pollingMinimumSeconds() {
   uint8_t configured = 0;
@@ -57,6 +59,16 @@ uint32_t pollingSecondsUntilNextRound() {
   return elapsed >= intervalMs ? 0 : (intervalMs - elapsed + 999UL) / 1000UL;
 }
 
+time_t pollingLastSuccessfulEpoch() { return pollLastSuccessfulEpoch; }
+
+time_t pollingNextEpoch() {
+  if (!Polling || !pollingAllowedNow() || !timeRetrieved) return 0;
+  uint32_t intervalMs = pollIntervalSeconds * 1000UL;
+  uint32_t elapsed = millis() - pollLastRoundStartedMs;
+  uint32_t remaining = elapsed >= intervalMs ? 0 : (intervalMs - elapsed + 999UL) / 1000UL;
+  return now() + remaining;
+}
+
 static void pollSchedulerStartRound(bool manual) {
   // Re-evaluate the floor in case the inverter list changed since setup.
   pollIntervalSeconds = pollingClampSeconds(pollIntervalSeconds);
@@ -66,6 +78,7 @@ static void pollSchedulerStartRound(bool manual) {
   pollNextInverter = 0;
   pollNextSendMs = millis();
   pollLastRoundStartedMs = millis();
+  pollRoundAllSucceeded = inverterCount > 0;
   consoleOut("starting inverter poll round (interval " + String(pollIntervalSeconds) + " s)");
 }
 
@@ -99,6 +112,7 @@ void pollSchedulerLoop() {
   if (pollNextInverter >= YC600_MAX_NUMBER_OF_INVERTERS) {
     pollRoundActive = false;
     pollRoundManual = false;
+    if (pollRoundAllSucceeded && timeRetrieved) pollLastSuccessfulEpoch = now();
     eventSend(2);
     consoleOut(F("inverter poll round complete"));
     return;
@@ -107,6 +121,7 @@ void pollSchedulerLoop() {
   uint8_t which = pollNextInverter++;
   empty_serial2();
   polling(which); // bounded by the 2.5-second APS receive timeout
+  if (!polled[which]) pollRoundAllSucceeded = false;
   if (polled[which]) inverterInfoMaybeQuery(which);
   empty_serial2();
   pollNextSendMs = millis() + 250UL;
