@@ -23,6 +23,12 @@ contain different inverter versions. The Model 101 `WH` counter is the
 monotonic energy recorded since this firmware's history was initialized, not a
 factory lifetime value reported by the inverter.
 
+Restoring a production-history backup replaces the journal and may move `WH` to
+the value represented by that backup. Wiping history resets it. Clients using
+`total_increasing` semantics should treat either administrator operation as a
+deliberate counter reset. Volatile current-day energy is not part of the
+restorable binary backup.
+
 The server accepts normal 40000 addressing and clients that strip the 4xxxx
 reference and request address 0. It also detects clients that begin at 40001
 and applies their one-register offset for that TCP connection.
@@ -33,6 +39,6 @@ Home Assistant's built-in Modbus integration can read aggregate and per-inverter
 power and energy without HACS. See [HomeAssistant.md](HomeAssistant.md) for a
 complete `configuration.yaml` example and Energy dashboard instructions.
 
-The server does not implement SunSpec control models or Modbus writes. Inverter
+The server does not implement SunSpec control models or any Modbus writes. Inverter
 power limiting and grid-profile actions remain behind the existing authenticated
 web/API paths.

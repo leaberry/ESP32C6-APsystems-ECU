@@ -4,7 +4,7 @@
 
 The custom binary was compiled with TI Z-Stack security *capability*, but the APsystems exchange used by this project is not protected by a Zigbee application link key and the captured ZNP frames are marked unsecured. No APsystems-specific install code or compile-time Zigbee network key was found. This does **not** mean every inverter payload is plaintext: newer inverter families can use a separate APsystems L1 AES envelope above Zigbee. That proprietary layer is implemented in `APS_CRYPTO.ino`.
 
-Accordingly, the C6 port explicitly disables Zigbee network security and does not set the APS security transmit option. This matches the observed legacy behavior; enabling standard Zigbee 3.0 encryption would change the on-air frames and prevent these inverters from responding.
+Accordingly, the native C6 transport omits Zigbee network security and does not set the APS security transmit option. This matches the observed legacy behavior; enabling standard Zigbee 3.0 encryption would change the on-air frames and prevent these inverters from responding.
 
 ## Evidence
 
@@ -39,11 +39,14 @@ The implementation accepts plaintext and encrypted replies per inverter,
 supports the modem-gate variant defensively, uses the serial-number rule for
 outbound selection, and runs a fixed AES known-answer self-test at boot.
 
-The algorithm and framing come from static reverse engineering; the upstream
+The algorithm and framing come from OpenAPS and community static reverse engineering; the upstream
 authors explicitly note that they did not have a real encrypted-inverter golden
 capture. Physical testing with a `?2??????????` inverter therefore remains
 required before the encrypted transmit path can be called field-validated.
 
+The people and projects behind the protocol investigation are listed in
+[ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+
 ## Residual uncertainty
 
-The posted HEX files are binaries, not a reproducible source tree for the author's exact test build. Static inspection therefore cannot prove every compiler macro. It does establish the observable behavior relevant to this port: successful APsystems frames were unsecured, no key is provisioned by the host, and the documented DS3 customization was buffer sizing.
+The posted HEX files are binaries, not a reproducible source tree for the author's exact test build. Static inspection therefore cannot prove every compiler macro. It does establish the observable behavior relevant to this native implementation: successful APsystems frames were unsecured, no key is provisioned by the host, and the documented DS3 customization was buffer sizing.

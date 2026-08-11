@@ -1,378 +1,384 @@
-# ESP32-C6 ECU for APsystems inverters
+# ESP32-C6 APsystems ECU
+An inexpensive, single-board local ECU for YC600, QS1 and DS3 microinverters.
+It pairs and polls APsystems inverters directly with the ESP32-C6's integrated
+IEEE 802.15.4 radio, then presents production through a web interface, HTTP,
+MQTT and read-only SunSpec/Modbus TCP.
 
-This is a standalone ESP32-C6 port of
-[patience4711/ESP32-read-APS-inverters](https://github.com/patience4711/ESP32-read-APS-inverters).
-It replaces the external CC2530/CC2531 and TI ZNP firmware with the C6's
-integrated IEEE 802.15.4 radio and a native APsystems transport. ZBOSS is not
-linked: APsystems' nonstandard pairing, addressing and APS fragmentation are
-handled directly. No Zigbee UART or reset wiring is needed.
+This repository began at
+[`patience4711/ESP32-read-APS-inverters`](https://github.com/patience4711/ESP32-read-APS-inverters)
+commit `7b0ff63`. It retains proven APsystems command builders, telemetry
+decoders, MQTT formats and configuration concepts, but it is no longer merely a
+hardware port. The external CC2530/CC2531 and TI ZNP architecture was replaced
+with a native raw-radio transport, and the Wi-Fi setup, web application,
+scheduler, history, diagnostics, OTA/release process, Modbus service, security
+handling and many safety checks were substantially refactored or newly built.
 
-The project includes:
+This is an independent community project. It is not affiliated with or
+endorsed by APsystems, Espressif, the SunSpec Alliance or the upstream projects.
+See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md), [UPSTREAM.md](UPSTREAM.md) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for detailed provenance and
+credit.
 
-- YC600, QS1 and DS3 pairing, polling and telemetry decoding
-- automatic plaintext or APsystems AES application transport per inverter
-- cooperative fleet polling, defaulting to 300 seconds and configurable in seconds
-- Wi-Fi web UI, HTTP API, MQTT, scheduling and power limiting
-- inverter model and firmware-version query (`0xDC`)
-- read-only SunSpec Modbus/TCP on port 502
-- daily and current-hour energy history
-- RAM-only per-inverter daily runtime, operating window, peak output,
-  temperature range and grid-voltage range
-- cautious OpenAPS-compatible grid-protection profile apply and restore
-- one source tree for 4 MB USB-only and 8 MB OTA-capable boards
+## What it does
 
-> Hardware status: two plaintext DS3s on different PANs have been paired and
-> polled, including one that omits the legacy ID announcement. Two-block
-> telemetry reassembly, firmware-version reads and simultaneous Wi-Fi/802.15.4
-> operation have been validated on an 8 MB ESP32-C6 with three inverters in
-> range. Encrypted models and protection writes still require physical validation.
-> See [LIMITATIONS.md](LIMITATIONS.md).
+- pairs and polls up to nine YC600, QS1 or DS3 inverters;
+- uses the ESP32-C6 radio directly: no Zigbee module, UART wiring or CC25xx
+  firmware is required;
+- supports plaintext and the reverse-engineered APsystems L1 AES envelope per
+  inverter;
+- polls the fleet cooperatively, defaults to 300 seconds and enforces a safe
+  minimum based on fleet size;
+- provides a responsive local web dashboard, diagnostics and configuration;
+- queries inverter model and firmware information with APsystems command `0xDC`;
+- exposes cached telemetry through HTTP, MQTT and read-only SunSpec/Modbus TCP
+  on port 502;
+- keeps current-day hourly energy in RAM and appends one finalized daily record
+  to flash;
+- backs up, validates, restores or deliberately wipes finalized production
+  history;
+- records RAM-only daily runtime, operating window, peak output, temperature
+  range and grid-voltage range per inverter;
+- supports guarded OpenAPS-compatible grid-protection profile read, apply and
+  restore operations; and
+- builds for 8 MB boards with OTA by default, with a supported 4 MB USB-only
+  alternative.
 
-## Flash-size choices
+## Hardware status
 
-| Board flash | Application layout | Web OTA | SPIFFS |
-|---|---|---:|---:|
-| 4 MB | one 3.375 MB factory image | no; reflash over USB | 488 KB |
-| 8 MB | two 3 MB OTA slots | yes | about 1.85 MB |
+The native transport has been field-tested with three plaintext DS3 inverters,
+including two units on the same PAN and another on a different PAN. Pairing,
+two-fragment telemetry, firmware queries, repeated polling, Wi-Fi coexistence,
+OTA and the modern web interface have been exercised on an 8 MB ESP32-C6.
 
-The default `partitions.csv` is the 4 MB USB-only layout. It is identical to
-`partitions-4mb-noota.csv`. For an 8 MB board, replace `partitions.csv` with
-the contents of `partitions-8mb-ota.csv` before compiling and select an 8 MB
-flash size in the board menu. The application code is otherwise identical.
+YC600, QS1, encrypted inverter transport and grid-protection writes retain
+known protocol implementations but still need model-specific hardware testing.
+Read [LIMITATIONS.md](LIMITATIONS.md) before using control functions.
 
-Do not flash the 8 MB merged image onto a 4 MB module. A generic ESP32-C6 board
-is suitable when it has enough flash, exposes a usable USB/programming path,
-and the Arduino core supports its flash and pin configuration.
+## Fastest path: buy, flash, run
 
-## First-boot Wi-Fi setup
+### 1. Buy an ESP32-C6 board
 
-When no network is configured—or after the Wi-Fi settings are erased—the
-device starts an open setup access point named `aps-ecu-xxxxxx` and serves a
-captive setup page at `http://192.168.4.1/`. The page accepts:
+The recommended target is an **8 MB ESP32-C6 development board** with:
 
-- a 2.4 GHz Wi-Fi SSID and password (hidden SSIDs may be typed manually)
-- a DHCP hostname containing letters, numbers and hyphens
-- DHCP addressing, which is the default
-- or a static IPv4 address, netmask and gateway; the gateway is also used for DNS
+- 8 MB flash;
+- a USB connector that supports flashing;
+- a suitable 2.4 GHz antenna; and
+- a stable 5 V USB power supply.
 
-Saving restarts the device. The selected hostname is applied before the DHCP
-request. Wi-Fi settings are stored separately from the legacy application
-configuration, and the hardware MAC address is shown on the setup page.
+The ESP32-C6 is single-core plus a low-power core; that is sufficient because
+radio, Wi-Fi, web and Modbus work are event-driven. An 8 MB board is preferred
+because it supports safe dual-slot OTA updates and has more history/storage
+space. A 4 MB board runs the same application but must be updated over USB.
 
-## Install a prebuilt release (easiest)
+Keep the ECU reasonably close to the inverters and away from metal enclosures.
+The board is normally cool enough without a heatsink, but use a ventilated,
+UV- and moisture-resistant enclosure in a hot shed and keep it out of direct
+sunlight.
 
-Generated firmware is attached to the
-[latest GitHub Release](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases/latest),
-not committed to the Git repository. Download the merged image matching the
-physical flash capacity printed for the board or module:
+### 2. Download the firmware
 
-- `ESP32C6_ECU-4MB-noOTA.merged.bin` for a 4 MB board
-- `ESP32C6_ECU-8MB-OTA.merged.bin` for an 8 MB board
+Open the
+[latest GitHub Release](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases/latest)
+and download:
 
-Do not flash the 8 MB image onto a 4 MB device. The release also provides ZIP
-bundles, individual application images for later updates, SHA-256 checksums and
-the 8 MB ELF file used for debugging.
+- `ESP32C6_ECU-8MB-OTA.merged.bin` for the recommended 8 MB board; or
+- `ESP32C6_ECU-4MB-noOTA.merged.bin` only for a confirmed 4 MB board.
 
-### Upgrade an existing 8 MB installation over the air
+The merged image is the simplest first-install image and is flashed at address
+`0x0`. Firmware binaries are release assets, not files committed to this
+repository. Verify `BUILD-INFO.txt` and `SHA256SUMS.txt` when using an Actions
+artifact or release bundle.
 
-OTA updates are available only when the ECU is already running the 8 MB
-dual-slot layout. The System information page must show **OTA available: Yes**.
-If it says OTA is unavailable, use USB instead; an OTA upload cannot convert a
-4 MB or single-slot installation to the 8 MB partition layout.
+Do not flash the 8 MB image onto a 4 MB module. First installation or a full
+erase removes all previous settings, pairing records and production history.
 
-1. Download `ESP32C6_ECU-8MB-OTA.bin` from the
-   [latest GitHub Release](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases/latest).
-   Use the application `.bin`, **not** the `.merged.bin`, bootloader or
-   partition image. A published release can lag behind the `main` branch; when
-   testing unreleased changes, download the Actions artifact produced by the
-   exact commit you intend to test.
-2. Open the ECU web interface, sign in as `admin`, and select **Menu > Firmware
-   update**. The page can also be opened directly at `http://ECU-IP/firmware`.
-3. Select `ESP32C6_ECU-8MB-OTA.bin` and start the upload. Keep the ECU powered
-   and on Wi-Fi until the page reports **UPDATE SUCCESS**.
-4. Select **REBOOT**, allow the ECU to reconnect, and open **Menu > System
-   information** to confirm the new firmware version.
-5. Confirm that the inverter list, network configuration, polling settings and
-   energy history are still present before relying on the new installation.
+### 3. Flash over USB
 
-The application is written to the inactive OTA slot, so normal settings and
-SPIFFS energy history are preserved. Do not upload a merged image through the
-web page: merged images are for flashing at address `0x0` over USB and can
-replace partition/configuration data. Keep physical USB access available for
-recovery if power or connectivity is lost during the update.
-
-### Standalone Windows GUI flasher
+#### Windows graphical flasher
 
 Espressif's official
 [Flash Download Tool](https://docs.espressif.com/projects/esp-test-tools/en/latest/esp32c6/production_stage/tools/flash_download_tool.html)
-is a small Windows program and does not require ESP-IDF, Arduino IDE or Python.
+does not require ESP-IDF, Arduino IDE or Python.
 
-1. Connect the ESP32-C6 by USB and close any serial monitor using its COM port.
-2. Start Flash Download Tool and select **ESP32-C6**, **Develop** mode and the
-   applicable USB/UART load mode for the board.
+1. Connect the board by USB and close any serial monitor using its COM port.
+2. Start Flash Download Tool and select **ESP32-C6** and **Develop** mode.
 3. Select the downloaded `.merged.bin`, enable its row and enter address `0x0`.
-4. Select **DoNotChgBin**, the board's COM port and then **START**.
-5. If it cannot connect, hold **BOOT**, tap **RESET**, release **BOOT** and retry.
-6. After flashing, reset the board and complete the Wi-Fi setup portal.
+4. Select **DoNotChgBin**, choose the board's COM port and select **START**.
+5. If synchronization fails, hold **BOOT**, tap **RESET**, release **BOOT** and
+   retry.
+6. Reset the board when flashing completes.
 
-A merged image is intended for first installation and may erase settings,
-inverter configuration and stored energy history.
-
-### Standalone esptool
+#### Standalone esptool
 
 Espressif also publishes a
 [standalone esptool executable](https://github.com/espressif/esptool/releases/latest)
-for Windows, macOS and Linux. It does not require ESP-IDF or Python. After
-downloading it, open a terminal in the directory containing the release image:
+for Windows, macOS and Linux:
 
 ```text
 esptool --chip esp32c6 --port COM7 erase-flash
 esptool --chip esp32c6 --port COM7 write-flash 0x0 ESP32C6_ECU-8MB-OTA.merged.bin
 ```
 
-Replace `COM7` and the image name as appropriate. On Windows the downloaded
-program may be named `esptool.exe`; invoke that name if necessary.
+Replace `COM7` and the filename for your system. Some boards require the same
+BOOT/RESET sequence described above.
 
-## Build and upload with Arduino IDE
+### 4. Join Wi-Fi
+
+On first boot the ECU creates an open setup access point named
+`aps-ecu-xxxxxx`.
+
+1. Connect a phone or computer to that access point.
+2. If the captive page does not open, browse to `http://192.168.4.1/`.
+3. Enter the 2.4 GHz Wi-Fi SSID and password. Hidden SSIDs can be typed.
+4. Choose a DHCP hostname.
+5. Use DHCP unless you specifically need a static IPv4 address, netmask and
+   gateway. The gateway is also used for DNS in static mode.
+6. Set and record the administrator password. A fresh installation initially
+   offers `0000`; do not leave that default on an untrusted network.
+7. Save. The ECU restarts and requests an address using the selected hostname.
+
+Find the address in the router's DHCP leases and reserve it, or use the static
+settings. If the ECU cannot reconnect, it returns to the setup access point.
+
+### 5. Configure time and polling
+
+Open `http://ECU-IP/`, sign in as `admin`, and use **Menu**:
+
+1. **Time and location:** enter signed decimal latitude and longitude, such as
+   `39.7392` and `-104.9903`, then select the nearest named time zone. Regional
+   zones apply daylight-saving transitions automatically.
+2. **Polling and access:** automatic polling defaults to enabled at 300 seconds.
+   The minimum is three seconds per configured inverter and never below five
+   seconds. Start with the default until communication is proven.
+3. **Network:** confirm the hostname, address and Wi-Fi signal.
+
+Daylight-aware polling pauses inverter radio traffic outside the calculated
+sunrise/sunset window. HTTP, MQTT and Modbus continue serving cached values. If
+time or location is invalid, the scheduler deliberately falls back to 24-hour
+polling rather than silently stopping.
+
+### 6. Add and pair each inverter
+
+For each inverter:
+
+1. Open **Menu > Inverters > Add inverter**.
+2. Enter the 12-digit serial number printed on the inverter.
+3. Select the model, assign a useful name and mark the physically connected PV
+   inputs.
+4. Leave calibration empty/default unless a verified model-specific correction
+   is required. The Domoticz index is used only by the legacy Domoticz MQTT
+   format.
+5. Select **Save inverter**. Saving must happen first because pairing frames use
+   the serial number and the learned address is written to that inverter's
+   configuration.
+6. Select **Pair inverter** and wait for success.
+
+Pair near the array. Once all inverters are configured, confirm that the
+dashboard reports recent poll times, firmware versions and sensible per-input
+values. DS3 units show only their two physical PV inputs.
+
+## Updating an existing 8 MB installation
+
+OTA requires an existing 8 MB dual-slot installation. **Menu > System
+information** must show **OTA available: Yes**.
+
+1. Back up production history from **Menu > Energy history > Download
+   restorable backup**.
+2. Download `ESP32C6_ECU-8MB-OTA.bin` from the desired release. Use the
+   application `.bin`, not the merged image, bootloader or partition image.
+3. Open **Menu > Firmware update**, select the application image and install it.
+4. Keep power and Wi-Fi stable until the page reports success, then reboot.
+5. Verify the firmware version, network, inverter list, polling and history.
+
+OTA writes the inactive application slot and preserves NVS/SPIFFS. It cannot
+convert a 4 MB installation or change partition layouts. Use USB for those
+operations and keep physical USB access available for recovery.
+
+## Production history backup and recovery
+
+The Energy history page offers two downloads:
+
+- **Download CSV** includes finalized days plus the volatile current day and is
+  intended for people and spreadsheets.
+- **Download restorable backup** downloads the exact finalized binary journal.
+  This is the file accepted by Restore history.
+
+Restore first writes a temporary file, checks record size, magic, date range
+and CRC, preserves the current journal for rollback,
+then activates the validated backup. It replaces finalized history and resets
+the current day's volatile hourly/statistics RAM.
+
+Wipe is permanent and requires typing `WIPE` plus accepting a browser warning.
+Download a binary backup first. Changing partition layouts or flashing a merged
+image can erase history independently of the web controls.
+
+Only finalized daily records are restorable. The current day's hourly buckets
+and per-inverter operating statistics intentionally live only in RAM to avoid
+flash wear and reset after reboot, restore, wipe or local midnight.
+
+## Energy accounting
+
+Telemetry energy deltas are accumulated per inverter:
+
+- current-day 24-hour buckets remain in RAM;
+- one finalized record is appended to `/energy-days.bin` at local-day rollover;
+- recorded/lifetime energy is reconstructed from the validated journal at boot;
+- `/api/energy/hourly?inv=N` returns one inverter, and `inv=-1` returns the
+  fleet;
+- `/api/energy/days?limit=90` returns recent finalized records plus today;
+- `/api/energy/history.csv` streams CSV; and
+- `/energy/backup` downloads the lossless restorable journal.
+
+The recorded counter starts when this firmware's history is initialized. It is
+not the inverter's factory lifetime counter. The first telemetry response after
+an ECU restart establishes energy/time baselines and reports zero power; this
+prevents accumulated inverter energy from becoming a false startup power spike
+or duplicate energy.
+
+## Output limiting and grid profiles
+
+The inverter output target is **watts per connected PV input**, not a percentage
+or whole-inverter limit. For example, `100` requests about 100 W from each DS3
+input, approximately 200 W total. The web UI accepts 20-500 W per input; 500 W
+requests normal maximum output. Use low limits cautiously.
+
+Grid profiles use OpenAPS `invdriver.gridprofile/v1` JSON and change utility
+protection values such as voltage/frequency trip thresholds and timing. They do
+**not** install executable inverter firmware. Operations target one inverter,
+back up readable current values, enforce bounds and read every written value
+back. YC600 writes remain disabled because no verified encoder path is
+available. Use only utility-approved settings.
+
+## Home Assistant, Modbus and SunSpec
+
+The read-only server accepts Modbus functions 03 and 04 on TCP port 502. Unit 1
+is the fleet aggregate; units 2-10 map to inverter indexes 0-8. It exposes
+SunSpec Common Model 1 and single-phase Inverter Model 101.
+
+Home Assistant's built-in Modbus integration can create fleet and per-inverter
+power/energy sensors without HACS. Copy-ready YAML is in
+[HomeAssistant.md](HomeAssistant.md); the register map is in
+[SUNSPEC.md](SUNSPEC.md). Modbus serves the last completed telemetry snapshot,
+so a persistent client does not generate radio requests or contend with the
+poll scheduler.
+
+## MQTT and HTTP
+
+The project preserves the upstream MQTT formats and command topic. MQTT is
+disabled by default. Configure a broker reachable from the ECU's network,
+choose the required format and use **Send test**; the test reports actual
+connection or publish failure.
+
+The compatibility `get.Data` interface remains available. New UI/API code uses
+lowercase routes under `/api`. Do not expose the ECU directly to the Internet;
+place remote access behind a trusted VPN or authenticated reverse proxy.
+
+## Build from source
+
+### Default 8 MB build
+
+`partitions.csv` now defaults to the recommended 8 MB dual-OTA layout and is
+identical to `partitions-8mb-ota.csv`.
 
 1. Install Arduino IDE 2.x.
-2. Add this Boards Manager URL in Preferences:
-   `https://espressif.github.io/arduino-esp32/package_esp32_index.json`
+2. Add
+   `https://espressif.github.io/arduino-esp32/package_esp32_index.json` to Boards
+   Manager URLs.
 3. Install **esp32 by Espressif Systems 3.3.8**.
-4. Install these libraries: ArduinoJson, ESP Async WebServer by ESP32Async,
-   AsyncTCP by ESP32Async, PubSubClient, NTPClient, Time, sunMoon and PSACrypto.
-5. Open `ESP32C6-APsystems-ECU.ino` and select the specific C6 board, or **ESP32C6 Dev
-   Module** for a generic module.
-6. Leave **Zigbee Mode: Disabled** (the default), select **Partition Scheme:
-   Custom**, and select the actual 4 MB or 8 MB flash size. Enabling ZCZR links
-   ZBOSS and conflicts with the native APsystems radio callbacks.
-7. For 8 MB OTA, first replace `partitions.csv` with
-   `partitions-8mb-ota.csv`. Keep the default file for a 4 MB build.
-8. Enable **USB CDC On Boot** when using native USB, select the port and Upload.
-9. Open Serial Monitor at 115200 baud and complete the Wi-Fi setup portal.
+4. Install ArduinoJson 7.4.2, PubSubClient 2.8, NTPClient 3.2.1, Time 1.6.1,
+   PSACrypto 1.1.1, ESP Async WebServer, AsyncTCP and sunMoon. CI contains the
+   authoritative dependency commands.
+5. Open `ESP32C6-APsystems-ECU.ino` and select the board or **ESP32C6 Dev
+   Module**.
+6. Select **Flash size: 8 MB**, **Partition Scheme: Custom**, **USB CDC On Boot:
+   Enabled**, and leave **Zigbee Mode: Disabled/default**.
+7. Upload and monitor at 115200 baud.
 
-If upload does not start, hold BOOT, tap RESET, release BOOT and retry. Exact
-button behavior depends on the board.
+Do not enable ZCZR/ZBOSS. The native APsystems transport requires exclusive
+ownership of the C6's IEEE 802.15.4 callbacks.
 
-### Windows quick start with ESP-IDF tools
+### 4 MB USB-only build
 
-Developers who already have Espressif's ESP-IDF 5.5 tools installed under
-`C:\Espressif` can open the **ESP-IDF 5.5 PowerShell** desktop shortcut, change
-to this repository, download the matching release or GitHub Actions artifact,
-extract it under `artifacts`, and use:
+Before compiling for a 4 MB board, replace `partitions.csv` with
+`partitions-4mb-noota.csv` and select 4 MB flash. That layout has one factory
+application and no OTA slot. Restore the 8 MB default afterward by copying
+`partitions-8mb-ota.csv` back to `partitions.csv`.
+
+| Flash | Application layout | Web OTA | SPIFFS |
+|---|---|---:|---:|
+| 8 MB default | two 3 MB OTA slots | yes | about 1.85 MB |
+| 4 MB alternative | one 3.375 MB factory image | no | about 488 KB |
+
+CI explicitly substitutes each named partition file, compiles both variants and
+packages separate artifacts. See [BUILD-VERIFIED.md](BUILD-VERIFIED.md).
+
+### Local Windows helpers
+
+With Espressif's ESP-IDF 5.5 tools installed under `C:\Espressif`:
 
 ```powershell
 .\tools\Flash-Firmware.ps1 -Variant 8MB -Port COM7
 .\tools\Serial-Monitor.ps1 -Port COM7
 ```
 
-Omit `-Port` when the C6 is the only COM device. The flash helper erases the
-board by default, which is appropriate for its first installation. Add
-`-SkipErase` only for a same-layout replacement when retaining settings is
-intentional. The monitor exits with `Ctrl+]`.
-
-For source-level debugging through the C6's built-in USB-JTAG interface, connect
-the board's native USB/JTAG port and run:
+The flash helper erases by default. Add `-SkipErase` only for a same-layout
+replacement when retaining configuration is intentional. For built-in USB-JTAG
+source debugging, connect the native USB/JTAG port and run:
 
 ```powershell
 .\tools\Debug-ESP32C6.ps1
 ```
 
-This starts OpenOCD with `board/esp32c6-builtin.cfg` and opens the C6 RISC-V
-GDB using the ELF symbols from the 8 MB CI artifact. Boards with separate UART and native
-USB connectors must use the native USB connector for JTAG debugging.
+## Architecture
 
-### Release and CI artifact contents
-
-Every GitHub Actions build uploads temporary, separate `4mb-noota` and
-`8mb-ota` bundles containing the application, merged image, bootloader,
-partition image, checksums, `BUILD-INFO.txt` and 8 MB debugging ELF.
-`BUILD-INFO.txt` identifies the firmware version, full Git commit, ref, variant,
-build time, and which image is intended for OTA versus USB. Builds triggered by a tag
-whose name starts with `v` publish the same files as permanent GitHub Release
-assets. Neither kind of binary is stored in Git history.
-
-The local `artifacts` directory is only a downloaded snapshot. It is ignored by
-Git and is **not** refreshed by `git pull`, a commit, or a source-only build.
-Before flashing from that directory, open `BUILD-INFO.txt` and verify its
-version and commit. If an older bundle has no manifest, treat it as unverified
-and replace the entire variant directory with a newly downloaded artifact.
-
-For a later 4 MB same-layout USB update, flash only
-`ESP32C6_ECU-4MB-noOTA.bin` at `0x10000`. For an installed 8 MB build, upload
-`ESP32C6_ECU-8MB-OTA.bin` through its web OTA page so the inactive slot is
-selected safely.
-
-## Web interface and initial configuration
-
-The dashboard shows fleet power, current-day and recorded energy, polling/time
-status, and one responsive status card per inverter. **Menu** groups the
-configuration, energy, diagnostics and maintenance pages. **System
-information** reports the actual compiled firmware version plus live flash,
-heap, filesystem, network, polling, time, radio, MQTT and Modbus state.
-
-Automatic polling is enabled by default at 300 seconds. Version 1.3 also
-migrates an existing disabled default to enabled once; after saving the Basic
-configuration page, an operator can intentionally disable it again.
-
-On **Time and location**, enter latitude and longitude as signed decimal
-degrees, for example `39.7392` and `-104.9903` for Denver. Choose the nearest
-regional time zone from the list so daylight-saving transitions are applied
-automatically. **Custom fixed offset** remains available for locations that do
-not match a listed rule; enter its UTC offset in minutes.
-
-Daylight-aware polling pauses inverter radio queries outside the calculated
-sunrise/sunset window. Web, MQTT and Modbus continue serving cached values. If
-time synchronization or location is unavailable, the scheduler fails open to
-24-hour polling instead of silently pausing. Disable daylight-aware polling to
-query at the configured interval around the clock.
-
-The **Network** page displays the active SSID, signal and address, and can
-switch between DHCP and validated static IPv4 settings. A configurable
-hostname is included in DHCP requests. Saving network settings restarts the
-ECU; its setup access point remains the recovery path if it cannot reconnect.
-
-## Polling and bus arbitration
-
-The polling interval is configured in seconds on the Basic configuration page.
-Its default is 300 seconds. The firmware enforces a dynamic minimum of three
-seconds per configured inverter and never less than five seconds. One inverter
-is polled at a time, operator actions run between transactions, stale radio
-receive data is cleared, and consecutive sends are separated by 250 ms. If
-same-PAN reply contention interrupts a fragmented response, the poll receives
-one jittered retry rather than waiting for the next full polling interval.
-
-The Modbus server is independent and only reads the last completed telemetry
-snapshot. A persistent Home Assistant TCP session therefore does not issue
-Zigbee requests or contend for the inverter bus.
-
-## Firmware version
-
-After successful telemetry, the firmware sends APsystems L2 command `0xDC`.
-It understands the three reply layouts implemented by OpenAPS, including
-two-component and three-component software versions. A failed query is retried
-on up to three successful poll rounds. The result appears on the home and
-inverter-detail pages and in SunSpec Common Model 1 `Vr` for each inverter.
-
-## Energy history
-
-Energy deltas from decoded telemetry are accumulated per inverter:
-
-- the current day's 24 hourly buckets stay in RAM;
-- one finalized record per day is appended to `/energy-days.bin` in SPIFFS;
-- the recorded-energy total is reconstructed from that journal at boot;
-- the Energy history page graphs the current day's hourly production, displays
-  recent daily totals, and exports the journal as CSV;
-- `/api/energy/hourly?inv=N` returns 24 hourly values for one inverter, or use
-  `inv=-1` for the fleet total;
-- `/api/energy/days?limit=90` returns finalized daily records plus today, and
-  `/api/energy/history.csv` streams the full journal without loading it into
-  RAM;
-- the compatibility API `get.Data?Energy=N` remains available.
-
-This minimizes flash wear to one logical append per day. The total begins when
-this firmware is installed; it is not the inverter's factory lifetime counter.
-At 48 bytes per day, the 4 MB layout's energy journal has decades of capacity.
-Erasing flash or changing partition layouts erases the history unless it is
-backed up first.
-
-Per-inverter detail pages also summarize telemetry observed since the later of
-the ECU boot or local midnight. These RAM-only statistics include operating
-time, first/last output, peak AC output, temperature extremes and AC-voltage
-extremes. They intentionally reset after a reboot and are not written to flash.
-
-The inverter output-limit field is a **watts-per-connected-PV-input** target,
-not a percentage or whole-inverter limit. For example, `100` requests roughly
-100 W from each DS3 input. The web UI accepts 20-500 W per input; `500` requests
-normal maximum output.
-
-## Grid-protection profiles
-
-The Grid profile page accepts OpenAPS `invdriver.gridprofile/v1` JSON. This
-changes utility protection settings such as trip voltage, frequency and timing;
-it does **not** update the inverter's executable firmware.
-
-Safety behavior is deliberate:
-
-- applies to one selected inverter only; there is no broadcast write;
-- supports DS3 model codes 20/21/22/36 and QS1 codes 08/18;
-- reads the current values and writes a per-inverter backup first;
-- only writes parameters returned by that inverter and supported by its encoder;
-- enforces the profile's range and additional physical bounds;
-- reads every intended value back and reports verification failure;
-- restore also performs a full value-by-value read-back check.
-
-YC600 protection writes remain disabled because the available OpenAPS codec does
-not provide a verified YC600 encoder path. Incorrect protection values can make
-an inverter disconnect or violate local interconnection rules. Use only a profile
-required by the utility and keep the manufacturer's commissioning path available.
-
-## SunSpec and Home Assistant
-
-The read-only server implements Modbus functions 03 and 04 on TCP port 502.
-Unit 1 is the fleet aggregate; units 2 through 10 map to inverter indexes 0
-through 8. It exposes Common Model 1 and single-phase Inverter Model 101.
-
-Home Assistant's built-in Modbus integration can expose site-total and
-per-inverter power and energy without HACS. See
-[HomeAssistant.md](HomeAssistant.md) for copy-ready YAML and Energy dashboard
-instructions. The complete register model is documented in
-[SUNSPEC.md](SUNSPEC.md).
-
-## Architecture and repository files
-
-The original path was:
+The inherited architecture was:
 
 `application -> TI ZNP over UART -> CC2530/CC2531 -> Zigbee APS`
 
-This port is:
+The current architecture is:
 
-`application -> compatibility adapter -> native APsystems MAC/NWK/APS -> C6 radio`
+`refactored application/services -> compatibility adapter -> native APsystems MAC/NWK/APS -> ESP32-C6 radio`
 
-`ZIGBEE_A_TRANSPORT.ino` parses the legacy `AF_DATA_REQUEST` calls, creates raw
-802.15.4/NWK/APS frames, acknowledges and reassembles fragmented replies, and
-renders the result in the legacy in-memory format. Pairing learns and persists
-each inverter's PAN and short radio address. This preserves the upstream
-APsystems commands and decoders while bypassing ZBOSS's standards-only receive
-path. Key additions are:
+`ZIGBEE_A_TRANSPORT.ino` accepts the preserved `AF_DATA_REQUEST`-style calls,
+builds raw IEEE 802.15.4/NWK/APS frames, acknowledges and reassembles fragmented
+responses, and renders the subset of TI `AF_INCOMING_MSG` expected by the
+proven decoders. Pairing persists each inverter's PAN and short radio address.
 
-When an inverter omits the optional pairing-ID announcement, the pairing trace
-can infer its route only if subtracting positively identified existing peers
-leaves exactly one responder. The learned PAN/address is authoritative; a
-deterministic four-digit compatibility ID keeps the legacy UI and command
-builders working. Ambiguous inference fails safely.
+Important modules include:
 
-- `APS_CRYPTO.ino` - plaintext/AES application transport
-- `POLL_SCHEDULER.ino` - configurable cooperative polling
-- `INVERTER_INFO.ino` - model and software-version query
-- `ENERGY_HISTORY.ino` - RAM hourly and daily flash journal
-- `GRID_PROFILE.ino` - guarded profile read/apply/restore
-- `SUNSPEC_MODBUS.ino` and `SUNSPEC.md` - Modbus/TCP service and map
-- `SECURITY-AUDIT.md` - CC2530 firmware and security findings
+- `ZIGBEE_A_TRANSPORT.ino` and `ZIGBEE_COORDINATOR.ino` — native radio path;
+- `APS_CRYPTO.ino` — plaintext/APsystems AES envelope;
+- `POLL_SCHEDULER.ino` — cooperative fleet arbitration;
+- `INVERTER_INFO.ino` — model and firmware query;
+- `ENERGY_HISTORY.ino` — low-wear journal, statistics and backup/restore;
+- `GRID_PROFILE.ino` — guarded protection profile operations;
+- `SUNSPEC_MODBUS.ino` — read-only Modbus/SunSpec service; and
+- `PORTAL_WIFI.ino`, `WEB_UI.ino` and related pages — refactored local UI.
 
-## Publish to GitHub
+The ZNP-to-native operation map is in [PORTING-NOTES.md](PORTING-NOTES.md).
+Security analysis is in [SECURITY-AUDIT.md](SECURITY-AUDIT.md).
 
-This directory is a Git repository with the original project retained as the
-`upstream` remote. Create an empty GitHub repository, then run:
+## Release automation
 
-```text
-git remote add origin https://github.com/YOUR-NAME/YOUR-REPOSITORY.git
-git push -u origin main
-```
+Every push and pull request builds separate `4mb-noota` and `8mb-ota` bundles.
+Each contains application and merged images, bootloader, partition image,
+checksums and `BUILD-INFO.txt`; the 8 MB bundle also contains the ELF file.
+Artifacts are retained for 30 days. A pushed tag beginning with `v` publishes
+the same outputs as a permanent GitHub Release.
 
-Normal pushes and pull requests compile both flash layouts and retain their CI
-artifacts for 30 days. To publish a permanent release after the build is tested,
-create and push an annotated version tag:
+## Documentation map
 
-```text
-git tag -a v0.1.0 -m "ESP32C6 APsystems ECU v0.1.0"
-git push origin v0.1.0
-```
-
-The tag build creates one GitHub Release with both flash variants, ZIP bundles,
-debugging symbols, SHA-256 checksums and automatically generated release notes.
+- [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) — people, projects and ideas;
+- [UPSTREAM.md](UPSTREAM.md) — source lineage and retained/refactored areas;
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — licenses and dependencies;
+- [BUILD-VERIFIED.md](BUILD-VERIFIED.md) — current build/hardware evidence;
+- [LIMITATIONS.md](LIMITATIONS.md) — unvalidated and unsupported behavior;
+- [PORTING-NOTES.md](PORTING-NOTES.md) — native transport mapping;
+- [SECURITY-AUDIT.md](SECURITY-AUDIT.md) — CC25xx/Zigbee/AES findings;
+- [SUNSPEC.md](SUNSPEC.md) and [HomeAssistant.md](HomeAssistant.md) — integrations;
+- [DEFERRED-WORK.md](DEFERRED-WORK.md) — deliberately postponed improvements.
 
 ## License
 
-The application is derived from patience4711's MIT-licensed project; see [LICENSE](LICENSE).
-Espressif's IEEE 802.15.4 driver and installed libraries retain their own licenses.
+The application remains under the inherited MIT license in [LICENSE](LICENSE).
+Third-party components and referenced projects retain their own licenses.

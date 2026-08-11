@@ -129,6 +129,12 @@ initialized; it is not the inverter's factory lifetime production counter. The
 ECU stores finalized daily totals in flash and adds the current in-memory day to
 the value served over Modbus.
 
+An administrator restore or wipe on the ECU's Energy history page can move or
+reset this counter. Home Assistant's `total_increasing` handling normally treats
+a decrease as a new meter cycle, but review the Energy dashboard after an
+intentional history operation. A restorable backup contains finalized records
+only; the volatile current day begins again after restore.
+
 ## Per-inverter production
 
 Add the following entries beneath the same `sensors:` key to expose power and

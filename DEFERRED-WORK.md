@@ -1,44 +1,42 @@
 # Deferred work and field-test notes
 
-This file records issues intentionally deferred during ESP32-C6 hardware
-bring-up. Items here are observations, not completed changes.
+These are deliberate follow-up items, not descriptions of currently completed
+features. Confirm current behavior in the README and web UI before using this
+list as a roadmap.
 
 ## Pairing workflow
 
-- The current workflow requires **Save**, followed by **Pair**. Saving first is
-  required by the current implementation because the pairing frames use the
-  configured inverter serial number and the returned short ID is written back
-  to that inverter's file.
-- Consider a single **Save and pair** action that performs those two steps in
-  order and presents one progress/result page.
+- Pairing currently requires **Save inverter**, then **Pair inverter**. Saving
+  first is functionally required because pairing frames use the configured
+  serial number and the learned route is written to that inverter's file.
+- Consider a single **Save and pair** action that performs both operations and
+  presents one result page without hiding the underlying two-step transaction.
 
-## Inverter discovery
+## Read-only inverter discovery
 
-- Consider a read-only **Scan for inverters** action that lists inverter serial
-  numbers detected nearby and lets the operator select one instead of typing
-  its serial number manually.
-- Keep this separate from pairing: scanning should not automatically modify an
-  inverter, assign a short address, or migrate it to the ECU's operational PAN.
-- Investigate a fast scan on the current channel first. A complete scan may
-  need to park temporarily on the APsystems rendezvous PAN `0xFFFF`, listen for
-  inverter identity announcements, and optionally sweep Zigbee channels 11-26.
-- Restore the operational PAN and channel on every success, failure, timeout,
-  or cancellation path so normal polling cannot be stranded by a scan.
-- Pairing and polling are now proven on the three field-test DS3 units, but keep
-  discovery as a separate, carefully bounded feature.
+- Consider a bounded **Scan for inverters** action that lists observed serial
+  numbers and lets the operator select one instead of typing it.
+- Scanning must not pair, change a short address or migrate an inverter to an
+  operational PAN.
+- Investigate a current-channel scan first. A complete scan may need to enter
+  the APsystems rendezvous PAN `0xFFFF` and optionally sweep channels 11-26.
+- Restore operational PAN/channel on every success, failure, timeout and cancel
+  path so normal polling cannot be stranded.
 
-## Remote diagnostics
+## Service and protocol testing
 
-- The existing journal at `/LOGPAGE` retains coarse pairing success/failure
-  events in RAM.
-- The existing `/CONSOLE` page streams `consoleOut()` messages over WebSocket
-  when it is open and `diagNose == 1`; open it before starting a field pairing
-  attempt to capture all four commands and receive/decode results.
-- A bounded in-memory diagnostic ring buffer and authenticated read-only
-  `/DIAGNOSTICS` endpoint were added during basement pairing tests. Retain and
-  refine these while modernizing the web interface.
-- `/CONSOLE` and its `/ws` command channel now require administrator Basic
-  authentication. Consider replacing the command-capable console with separate
-  read-only diagnostics and narrowly scoped actions in a future rewrite.
-- Avoid a raw unauthenticated Telnet server. A secured WebSocket/log endpoint
-  can provide TCP-based remote debugging without exposing an interactive shell.
+- Complete a local-broker MQTT publish/subscribe test from a broker reachable
+  by the ECU VLAN. Route, settings and truthful failure reporting are tested;
+  the field network intentionally blocked the temporary desktop broker.
+- Exercise production-history rollover across local midnight and verify exactly
+  one finalized record. Then test binary backup, same-file restore and guarded
+  wipe on live hardware with a saved recovery copy.
+- Obtain encrypted, YC600 and QS1 hardware for model-specific validation.
+
+## Diagnostics hardening
+
+The modern authenticated `/diagnostics`, `/diagnostics/download` and `/console`
+routes now provide a bounded trace, downloadable report and live command
+console. A future security-focused rewrite could split the command-capable
+console into read-only streaming plus narrowly scoped authenticated actions.
+Do not add an unauthenticated Telnet shell.

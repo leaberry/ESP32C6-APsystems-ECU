@@ -1,4 +1,8 @@
-# ZNP-to-native-ESP32-C6 operation map
+# Native ESP32-C6 transport and legacy ZNP operation map
+
+The repository began as a ZNP-based ESP32 application, but the current project
+is a broader refactor. This document covers only the compatibility layer that
+allowed proven APsystems payloads and decoders to survive the radio replacement.
 
 | Legacy TI operation | Purpose | Native ESP32-C6 implementation |
 |---|---|---|
@@ -34,4 +38,6 @@ remain above this transport.
 The receive adapter reconstructs the subset of TI `AF_INCOMING_MSG` consumed by
 the original decoders. A dedicated worker owns parsing and fragment ACKs; the
 main application consumes completed messages through the original synchronous
-`readZB()` interface. Wi-Fi, web, MQTT and Modbus continue independently.
+`readZB()` interface. Wi-Fi, the refactored web application, MQTT and Modbus
+continue independently. See [UPSTREAM.md](UPSTREAM.md) for the larger retained
+and replaced boundary and [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for credit.
