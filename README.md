@@ -133,8 +133,9 @@ On first boot the ECU creates an open setup access point named
 4. Choose a DHCP hostname.
 5. Use DHCP unless you specifically need a static IPv4 address, netmask and
    gateway. The gateway is also used for DNS in static mode.
-6. Set and record the administrator password. A fresh installation initially
-   offers `0000`; do not leave that default on an untrusted network.
+6. Set and record an administrator password of 8 to 32 printable, non-space
+   characters. A fresh installation initially offers `0000`; do not leave that
+   default on an untrusted network.
 7. Save. The ECU restarts and requests an address using the selected hostname.
 
 Find the address in the router's DHCP leases and reserve it, or use the static
@@ -151,6 +152,33 @@ Open `http://ECU-IP/`, sign in as `admin`, and use **Menu**:
    The minimum is three seconds per configured inverter and never below five
    seconds. Start with the default until communication is proven.
 3. **Network:** confirm the hostname, address and Wi-Fi signal.
+
+### Administrator and read-only accounts
+
+The local web server has two fixed usernames with different privileges:
+
+- **`admin`** can open the administration menu, change settings, add or control
+  inverters, manage grid profiles and history, view diagnostics, restart the
+  ECU and install OTA firmware.
+- **`user`** is read-only. It can view the dashboard, inverter details, energy
+  history and telemetry APIs, but cannot open administrative pages or submit
+  control/configuration actions.
+
+A fresh installation starts with `admin` / `0000` and `user` / `1111` for
+compatibility with the original project. Replace both defaults before placing
+the ECU on any network that is not completely trusted.
+
+Use **Menu > Polling and access** while signed in as `admin` to change either
+password. Changing the administrator password requires the current password
+and matching confirmation. New passwords must contain 8 to 32 printable
+non-space characters, and the two accounts cannot share a password. The ECU
+never displays an existing password. HTTP Basic Authentication is stateless,
+so the browser may retry cached old credentials once before prompting after an
+administrator-password change.
+
+These accounts protect the web interface only. Modbus/TCP and MQTT use their
+own network/service configuration, so keep the ECU on a trusted IoT network and
+do not expose it directly to the Internet.
 
 Daylight-aware polling pauses inverter radio traffic outside the calculated
 sunrise/sunset window. HTTP, MQTT and Modbus continue serving cached values. If

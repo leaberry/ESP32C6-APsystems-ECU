@@ -113,9 +113,8 @@ String buildPortalPage(const String &message = String()) {
   page += F("'><label for='gateway'>Static gateway</label><input id='gateway' name='gateway' inputmode='decimal' value='");
   page += htmlEscape(portalGateway);
   page += F("'><p class='hint'>Static fields are ignored when DHCP is selected. The gateway is also used as DNS.</p>");
-  page += F("<label for='pw'>Administrator password</label><input id='pw' name='pw' type='password' minlength='4' maxlength='10' value='");
-  page += htmlEscape(String(pswd));
-  page += F("' required>");
+  page += F("<label for='pw'>New administrator password</label><input id='pw' name='pw' type='password' minlength='8' maxlength='32' autocomplete='new-password' placeholder='Leave blank to keep the current password'>");
+  page += F("<p class='hint'>Use 8 to 32 printable characters with no spaces. The existing password is never displayed.</p>");
   page += F("<label for='sl'>Local-network security level</label><input id='sl' name='sl' type='number' min='0' max='9' value='");
   page += String(securityLevel);
   page += F("'><button type='submit'>Save and restart</button></form></main></body></html>");
@@ -263,7 +262,7 @@ void start_portal() {
          parsedGateway.fromString(submittedGateway));
     if (submittedSsid.isEmpty() || submittedSsid.length() > 32 ||
         submittedPassword.length() > 63 ||
-        submittedAdminPassword.length() < 4 || submittedAdminPassword.length() > 10 ||
+        (!submittedAdminPassword.isEmpty() && !accessPasswordIsValid(submittedAdminPassword)) ||
         !staticAddressValid) {
       request->send(400, "text/html", buildPortalPage("Please check the submitted values."));
       return;
@@ -280,7 +279,8 @@ void start_portal() {
     wifiPrefs.putString(WIFI_PREF_GATEWAY, submittedGateway);
     wifiPrefs.end();
 
-    strlcpy(pswd, submittedAdminPassword.c_str(), sizeof(pswd));
+    if (!submittedAdminPassword.isEmpty())
+      strlcpy(pswd, submittedAdminPassword.c_str(), sizeof(pswd));
     securityLevel = constrain(request->arg("sl").toInt(), 0, 9);
     wifiConfigsave();
 

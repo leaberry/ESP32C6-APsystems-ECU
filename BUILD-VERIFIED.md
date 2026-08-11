@@ -15,21 +15,23 @@ Verified on 2026-08-10 with:
   PSACrypto 1.1.1; and
 - ESP Async WebServer 3.12.0 and AsyncTCP 3.5.0.
 
-Final v1.4.3 sizes for both layouts:
+Final v1.4.4 sizes for both layouts:
 
 ```text
-8 MB application: 1,448,992 bytes
-4 MB application: 1,448,892 bytes
-Global variables: 88,736 bytes (238,944 bytes free)
+8 MB application: 1,452,714 bytes
+4 MB application: 1,452,714 bytes
+Global variables: 88,784 bytes (238,896 bytes free)
 8 MB OTA application slot: 3,145,728 bytes
-8 MB OTA application-slot margin: 1,696,736 bytes
+8 MB OTA application-slot margin: 1,693,014 bytes
 4 MB factory application slot: 3,538,944 bytes
-4 MB application-slot margin: 2,090,052 bytes
+4 MB application-slot margin: 2,086,230 bytes
 ```
 
 GitHub Actions explicitly copies `partitions-8mb-ota.csv` or
 `partitions-4mb-noota.csv` before compiling, so changing the repository default
-to 8 MB does not make the 4 MB artifact ambiguous.
+to 8 MB does not make the 4 MB artifact ambiguous. Both variants were also
+compiled in a clean Ubuntu environment after applying the documented
+`sunMoon`/Time 1.6.1 header compatibility adjustment used by the workflow.
 
 ## Live hardware evidence
 
@@ -54,7 +56,12 @@ inverters in range. It verified:
 - rejection of malformed restore input and an incorrect wipe confirmation with
   HTTP 400 while preserving the journal; and
 - successful restore of that native journal with identical before/after
-  SHA-256 and unchanged daily totals.
+  SHA-256 and unchanged daily totals;
+- v1.4.4 administrator-password validation rejecting an incorrect current
+  password, mismatched confirmation and shared role passwords without changing
+  stored credentials; and
+- the read-only `user` account receiving the dashboard while being rejected
+  from the administrator menu.
 
 The boot-time AES known-answer test passes the published reverse-engineered
 vector. Hardware validation of an encrypted inverter remains open. A deliberate

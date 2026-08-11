@@ -33,7 +33,7 @@
 #include <esp_ota_ops.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_3"
+#define VERSION  "ESP32C6-ECU_v1_4_4"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -127,8 +127,8 @@ int testCounter = 0;
   uint8_t actionFlag = 0;
   uint8_t midnightFlag = 0;
  // variables wificonfig
-  char pswd[11] = "";
-  char userPwd[11] = "";  
+  char pswd[33] = "";
+  char userPwd[33] = "";
   float longi = 0;
   float lati = 0;
   char gmtOffset[5] = "";  //+5.30 GMT
