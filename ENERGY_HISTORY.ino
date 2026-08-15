@@ -2,11 +2,13 @@
  * Low-wear energy accounting.
  *
  * Poll deltas update RAM only. One finalized record is appended to SPIFFS per
- * local day, at the local calendar rollover. The current day's 24
- * hourly buckets deliberately remain volatile to avoid frequent flash writes.
+ * local day, at the local calendar rollover. An administrator can explicitly
+ * checkpoint today's totals before shutdown. The current day's 24 hourly
+ * buckets deliberately remain volatile to avoid frequent flash writes.
  */
 
 static const char ENERGY_HISTORY_FILE[] = "/energy-days.bin";
+static const char ENERGY_TODAY_CHECKPOINT_FILE[] = "/energy-today.bin";
 static const char ENERGY_HISTORY_RESTORE_FILE[] = "/energy-restore.tmp";
 static const char ENERGY_HISTORY_PREVIOUS_FILE[] = "/energy-days.previous";
 static const uint32_t ENERGY_RECORD_MAGIC = 0x41505345UL; // "APSE"
@@ -102,6 +104,47 @@ static bool energyValidRecord(const EnergyDayRecord &record) {
                                    offsetof(EnergyDayRecord, crc));
 }
 
+static bool energyAppendRecord(const EnergyDayRecord &record) {
+  File history = SPIFFS.open(ENERGY_HISTORY_FILE, FILE_APPEND);
+  if (!history) return false;
+  bool written = history.write((const uint8_t *)&record, sizeof(record)) ==
+      sizeof(record);
+  history.close();
+  return written;
+}
+
+static void energyLoadCheckpoint() {
+  if (!energyDateKey) return;
+  File checkpoint = SPIFFS.open(ENERGY_TODAY_CHECKPOINT_FILE, "r");
+  if (!checkpoint) return;
+  EnergyDayRecord record = {};
+  bool valid = checkpoint.read((uint8_t *)&record, sizeof(record)) ==
+      sizeof(record) && energyValidRecord(record);
+  checkpoint.close();
+  if (valid && record.dateKey == energyDateKey &&
+      record.dateKey != energyLastPersistedDateKey) {
+    // Any RAM accumulated while waiting for a valid network clock is newer
+    // than the saved shutdown snapshot and is added to it.
+    for (uint8_t i = 0; i < YC600_MAX_NUMBER_OF_INVERTERS; ++i)
+      energyTodayWh[i] += record.wh[i];
+    consoleOut("energy history: restored current-day checkpoint " +
+               String(record.dateKey));
+  } else if (valid && record.dateKey < energyDateKey &&
+             record.dateKey > energyLastPersistedDateKey &&
+             energyAppendRecord(record)) {
+    for (uint8_t i = 0; i < YC600_MAX_NUMBER_OF_INVERTERS; ++i)
+      energyPersistedWh[i] += record.wh[i];
+    energyLastPersistedDateKey = record.dateKey;
+    consoleOut("energy history: finalized shutdown checkpoint " +
+               String(record.dateKey));
+    SPIFFS.remove(ENERGY_TODAY_CHECKPOINT_FILE);
+  } else if (!valid || record.dateKey <= energyLastPersistedDateKey ||
+             record.dateKey > energyDateKey) {
+    consoleOut(F("energy history: removed stale or invalid current-day checkpoint"));
+    SPIFFS.remove(ENERGY_TODAY_CHECKPOINT_FILE);
+  }
+}
+
 void energyHistoryBegin() {
   memset(energyPersistedWh, 0, sizeof(energyPersistedWh));
   memset(energyTodayWh, 0, sizeof(energyTodayWh));
@@ -124,6 +167,10 @@ void energyHistoryBegin() {
     history.close();
   }
   energyDateKey = energyLocalDateKey();
+  // A user-requested current-day checkpoint survives an orderly shutdown
+  // without pretending the day has ended. If the ECU was off across midnight,
+  // promote that last snapshot to the finalized journal before starting today.
+  energyLoadCheckpoint();
 }
 
 void energyRecordDelta(uint8_t which, float deltaWh) {
@@ -161,21 +208,56 @@ bool energyFinalizeDay() {
   memcpy(record.wh, energyTodayWh, sizeof(record.wh));
   record.crc = energyCrc32((const uint8_t *)&record, offsetof(EnergyDayRecord, crc));
 
-  File history = SPIFFS.open(ENERGY_HISTORY_FILE, FILE_APPEND);
-  if (!history) {
+  if (!energyAppendRecord(record)) {
     consoleOut(F("energy history: cannot open daily journal"));
-    return false;
-  }
-  bool written = history.write((const uint8_t *)&record, sizeof(record)) == sizeof(record);
-  history.close();
-  if (!written) {
-    consoleOut(F("energy history: daily journal write failed"));
     return false;
   }
   for (uint8_t i = 0; i < YC600_MAX_NUMBER_OF_INVERTERS; ++i)
     energyPersistedWh[i] += energyTodayWh[i];
   energyLastPersistedDateKey = energyDateKey;
+  if (SPIFFS.exists(ENERGY_TODAY_CHECKPOINT_FILE))
+    SPIFFS.remove(ENERGY_TODAY_CHECKPOINT_FILE);
   consoleOut("energy history: stored day " + String(energyDateKey));
+  return true;
+}
+
+bool energySaveTodayCheckpoint(String &message) {
+  if (!energyDateKey || !timeRetrieved) {
+    message = F("The ECU clock is not valid yet, so today's record cannot be dated safely.");
+    return false;
+  }
+  bool hasEnergy = false;
+  EnergyDayRecord record = {};
+  record.magic = ENERGY_RECORD_MAGIC;
+  record.dateKey = energyDateKey;
+  memcpy(record.wh, energyTodayWh, sizeof(record.wh));
+  for (uint8_t i = 0; i < YC600_MAX_NUMBER_OF_INVERTERS; ++i)
+    hasEnergy = hasEnergy || record.wh[i] > 0;
+  if (!hasEnergy) {
+    message = F("There is no current-day production to save.");
+    return false;
+  }
+  record.crc = energyCrc32((const uint8_t *)&record,
+                           offsetof(EnergyDayRecord, crc));
+  File checkpoint = SPIFFS.open(ENERGY_TODAY_CHECKPOINT_FILE, "w");
+  if (!checkpoint) {
+    message = F("The current-day checkpoint file could not be opened.");
+    return false;
+  }
+  bool written = checkpoint.write((const uint8_t *)&record, sizeof(record)) ==
+      sizeof(record);
+  checkpoint.flush();
+  checkpoint.close();
+  if (!written) {
+    message = F("The current-day checkpoint could not be written completely.");
+    return false;
+  }
+  uint64_t total = 0;
+  for (uint8_t i = 0; i < inverterCount; ++i) total += record.wh[i];
+  consoleOut("energy history: saved current-day checkpoint " +
+             String(record.dateKey) + " total_wh=" + String((uint32_t)total));
+  message = "Saved " + String((uint32_t)total) +
+      F(" Wh for the current day. It will be restored after shutdown and finalized at the next local-day rollover.");
   return true;
 }
 
@@ -184,6 +266,7 @@ void energyHistoryLoop() {
   if (!today) return;
   if (!energyDateKey) {
     energyDateKey = today;
+    energyLoadCheckpoint();
     return;
   }
   if (today != energyDateKey) {
@@ -562,6 +645,8 @@ bool energyRestoreUploadFinish(String &message) {
     return false;
   }
 
+  if (SPIFFS.exists(ENERGY_TODAY_CHECKPOINT_FILE))
+    SPIFFS.remove(ENERGY_TODAY_CHECKPOINT_FILE);
   energyHistoryBegin();
   if (SPIFFS.exists(ENERGY_HISTORY_PREVIOUS_FILE))
     SPIFFS.remove(ENERGY_HISTORY_PREVIOUS_FILE);
@@ -578,6 +663,8 @@ bool energyWipeHistory(String &message) {
     SPIFFS.remove(ENERGY_HISTORY_RESTORE_FILE);
   if (SPIFFS.exists(ENERGY_HISTORY_PREVIOUS_FILE))
     SPIFFS.remove(ENERGY_HISTORY_PREVIOUS_FILE);
+  if (SPIFFS.exists(ENERGY_TODAY_CHECKPOINT_FILE))
+    SPIFFS.remove(ENERGY_TODAY_CHECKPOINT_FILE);
   if (SPIFFS.exists(ENERGY_HISTORY_FILE) && !SPIFFS.remove(ENERGY_HISTORY_FILE)) {
     message = F("The history journal could not be removed.");
     return false;

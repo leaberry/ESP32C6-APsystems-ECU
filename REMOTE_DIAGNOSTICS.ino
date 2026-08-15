@@ -66,6 +66,7 @@ String diagnosticsReportText() {
   report += F("\nMinimum free heap since boot: "); report += ESP.getMinFreeHeap();
   report += F("\nLargest free 8-bit block: "); report += heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   report += F("\nReset reason: "); report += (int)esp_reset_reason();
+  report += F("\nFlight recorder: "); report += flightRecorderIsEnabled() ? F("enabled") : F("disabled");
   report += F("\nFlight-recorder sequence: "); report += flightRecorderSequence();
   size_t coreAddress = 0, coreSize = 0;
   esp_err_t coreResult = esp_core_dump_image_get(&coreAddress, &coreSize);
@@ -85,6 +86,9 @@ String diagnosticsReportText() {
   report += F("\nWi-Fi IP: "); report += WiFi.localIP().toString();
   report += F("\nWi-Fi RSSI dBm: "); report += WiFi.RSSI();
   report += F("\nWi-Fi MAC: "); report += WiFi.macAddress();
+  report += F("\nWi-Fi disconnects since boot: "); report += wifiDisconnectsSinceBoot();
+  report += F("\nLast Wi-Fi disconnect: "); report += wifiLastDisconnectTimestamp();
+  report += F("\nLast Wi-Fi disconnect reason: "); report += wifiLastDisconnectReasonText();
   report += F("\nRadio state: "); report += zigbeeUp;
   report += F("\nConfigured inverters: "); report += inverterCount;
   report += F("\nAutomatic polling: "); report += Polling ? F("enabled") : F("disabled");

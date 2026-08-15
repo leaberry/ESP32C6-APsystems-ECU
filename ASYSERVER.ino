@@ -301,6 +301,16 @@ server.on("/energy/wipe", HTTP_POST, [](AsyncWebServerRequest *request) {
   request->redirect("/energy?status=wiped");
 });
 
+server.on("/energy/save-today", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+  String message;
+  if (!energySaveTodayCheckpoint(message)) {
+    request->send(409, "text/plain", message);
+    return;
+  }
+  request->redirect("/energy?status=saved");
+});
+
 server.on("/energy", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   request->send_P(200, "text/html", ENERGY_PAGE);

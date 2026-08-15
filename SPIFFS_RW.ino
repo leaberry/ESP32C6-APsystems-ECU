@@ -113,7 +113,8 @@ void basisConfigsave() {
     json["pollOffset"] = pollOffset;
     json["pollIntervalSeconds"] = pollIntervalSeconds;
     json["sunspecEnabled"] = sunspecEnabled;
-    json["schemaVersion"] = 2;
+    json["flightRecorderEnabled"] = flightRecorderEnabled;
+    json["schemaVersion"] = 3;
         
     File configFile = SPIFFS.open("/basisconfig.json", "w");
     if (!configFile) {
@@ -222,6 +223,9 @@ bool file_open_for_read(const char* bestand)
                     pollOffset = doc["pollOffset"] | 0;
                     pollIntervalSeconds = doc["pollIntervalSeconds"] | 300U;
                     sunspecEnabled = doc["sunspecEnabled"] | true;
+                    // Persistent diagnostics are deliberately opt-in. A
+                    // missing key also disables the recorder after upgrade.
+                    flightRecorderEnabled = doc["flightRecorderEnabled"] | false;
                     // Schema 1 defaulted automatic polling off. Migrate every
                     // existing installation to the new enabled default once;
                     // subsequent saves preserve an intentional user choice.

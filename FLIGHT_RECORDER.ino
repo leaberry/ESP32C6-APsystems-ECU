@@ -4,8 +4,10 @@
  * A real ESP-IDF panic is captured by the existing coredump partition. This
  * ring complements it for failures which do not panic (notably a dead Wi-Fi
  * connection while the main loop and radio continue running). One compact
- * record is written to SPIFFS each minute and immediately after a Wi-Fi event.
- * The fixed-size ring never grows with uptime.
+ * record is written to SPIFFS each minute and immediately after a Wi-Fi event
+ * only when the persisted opt-in setting is enabled. The fixed-size ring never
+ * grows with uptime. Wi-Fi reconnect supervision remains active when recording
+ * is disabled.
  */
 namespace {
 constexpr uint32_t FLIGHT_MAGIC = 0x46524331UL;  // "FRC1"
@@ -20,7 +22,9 @@ enum FlightEvent : uint8_t {
   FLIGHT_WIFI_LOST = 2,
   FLIGHT_WIFI_RESTORED = 3,
   FLIGHT_WIFI_RECONNECT = 4,
-  FLIGHT_LOW_MEMORY = 5
+  FLIGHT_LOW_MEMORY = 5,
+  FLIGHT_ENABLED = 6,
+  FLIGHT_DISABLED = 7
 };
 
 struct __attribute__((packed)) FlightRecord {
@@ -82,11 +86,14 @@ const char *flightEventName(uint8_t event) {
     case FLIGHT_WIFI_RESTORED: return "wifi-restored";
     case FLIGHT_WIFI_RECONNECT: return "wifi-reconnect";
     case FLIGHT_LOW_MEMORY: return "low-memory";
+    case FLIGHT_ENABLED: return "enabled";
+    case FLIGHT_DISABLED: return "disabled";
     default: return "heartbeat";
   }
 }
 
 void flightWrite(uint8_t event) {
+  if (!flightRecorderEnabled) return;
   FlightRecord record = {};
   record.magic = FLIGHT_MAGIC;
   record.version = FLIGHT_RECORD_VERSION;
@@ -175,6 +182,10 @@ void flightRecorderManageStation(bool enabled) {
 }
 
 void flightRecorderBegin() {
+  if (!flightRecorderEnabled) {
+    Serial.println(F("Flight recorder disabled (Wi-Fi recovery remains active)"));
+    return;
+  }
   flightStorageReady = flightEnsureFile();
   if (!flightStorageReady) {
     Serial.println(F("Flight recorder storage allocation failed"));
@@ -185,6 +196,29 @@ void flightRecorderBegin() {
   flightWrite(FLIGHT_BOOT);
   Serial.printf("Flight recorder ready: boot reset=%d prior records=%lu\n",
                 (int)esp_reset_reason(), (unsigned long)previousRecords);
+}
+
+void flightRecorderSetEnabled(bool enabled) {
+  if (enabled == flightRecorderEnabled && (!enabled || flightStorageReady)) return;
+  if (!enabled) {
+    // Capture the setting transition before closing the write gate.
+    flightWrite(FLIGHT_DISABLED);
+    flightRecorderEnabled = false;
+    Serial.println(F("Flight recorder disabled"));
+    return;
+  }
+
+  flightRecorderEnabled = true;
+  flightStorageReady = flightEnsureFile();
+  if (!flightStorageReady) {
+    flightRecorderEnabled = false;
+    Serial.println(F("Flight recorder storage allocation failed"));
+    return;
+  }
+  flightScanLatest();
+  flightWrite(FLIGHT_ENABLED);
+  Serial.printf("Flight recorder enabled: prior sequence=%lu\n",
+                (unsigned long)(flightSequence ? flightSequence - 1 : 0));
 }
 
 void flightRecorderLoop() {
@@ -261,3 +295,4 @@ String flightRecorderReport(size_t limit) {
 }
 
 uint32_t flightRecorderSequence() { return flightSequence; }
+bool flightRecorderIsEnabled() { return flightRecorderEnabled; }

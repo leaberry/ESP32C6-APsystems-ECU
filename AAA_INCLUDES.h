@@ -37,7 +37,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_8"
+#define VERSION  "ESP32C6-ECU_v1_4_9"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -65,6 +65,7 @@
 #include <Preferences.h>
 Preferences preferences;
 extern volatile uint8_t lastWifiDisconnectReason;
+bool flightRecorderEnabled = false; // opt-in persistent troubleshooting writes
 extern TaskHandle_t sunspecTaskHandle;
 // Forward declaration required by Arduino's generated .ino prototypes.
 struct SunSpecValues;

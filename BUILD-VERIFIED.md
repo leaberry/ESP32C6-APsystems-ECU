@@ -5,7 +5,7 @@ that every supported inverter model or control path has been field-tested.
 
 ## Reproducible build environment
 
-Verified on 2026-08-11 with:
+Verified on 2026-08-14 with:
 
 - Arduino CLI and Espressif Arduino core 3.3.8;
 - target `esp32:esp32:esp32c6`;
@@ -15,16 +15,16 @@ Verified on 2026-08-11 with:
   PSACrypto 1.1.1; and
 - ESP Async WebServer 3.12.0 and AsyncTCP 3.5.0.
 
-Final v1.4.8 sizes for both layouts:
+Final v1.4.9 sizes for both layouts:
 
 ```text
-8 MB application: 1,480,956 bytes
-4 MB application: 1,480,956 bytes
-Global variables: 88,984 bytes (238,696 bytes free)
+8 MB application: 1,487,638 bytes
+4 MB application: 1,487,638 bytes
+Global variables: 89,008 bytes (238,672 bytes free)
 8 MB OTA application slot: 3,145,728 bytes
-8 MB OTA application-slot margin: 1,664,772 bytes
+8 MB OTA application-slot margin: 1,658,090 bytes
 4 MB factory application slot: 3,538,944 bytes
-4 MB application-slot margin: 2,057,988 bytes
+4 MB application-slot margin: 2,051,306 bytes
 ```
 
 GitHub Actions explicitly copies `partitions-8mb-ota.csv` or

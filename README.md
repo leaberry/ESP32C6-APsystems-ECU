@@ -184,9 +184,12 @@ own network/service configuration, so keep the ECU on a trusted IoT network and
 do not expose it directly to the Internet.
 
 Daylight-aware polling pauses inverter radio traffic outside the calculated
-sunrise/sunset window. HTTP, MQTT and Modbus continue serving cached values. If
-time or location is invalid, the scheduler deliberately falls back to 24-hour
-polling rather than silently stopping.
+sunrise/sunset window. When Night Mode begins, all per-input and total power
+values are set to zero immediately; Modbus then serves zero watts and MQTT
+publishes one zero-output update per inverter. Energy counters are preserved,
+while non-power telemetry such as the last voltage and temperature remains the
+most recent observation. If time or location is invalid, the scheduler
+deliberately falls back to 24-hour polling rather than silently stopping.
 
 The application clock uses ESP-IDF's 64-bit monotonic timer behind a
 task-safe local-time wrapper. This avoids the 32-bit `millis()` rollover and
@@ -237,12 +240,16 @@ operations and keep physical USB access available for recovery.
 
 ## Production history backup and recovery
 
-The Energy history page offers two downloads:
+The Energy history page offers two downloads and an explicit shutdown save:
 
 - **Download CSV** includes finalized days plus the volatile current day and is
   intended for people and spreadsheets.
 - **Download restorable backup** downloads the exact finalized binary journal.
   This is the file accepted by Restore history.
+- **Save today to flash now** writes a CRC-protected snapshot of the current
+  day's per-inverter totals to `/energy-today.bin`. It does not end the day or
+  stop later production from accumulating. Use it immediately before an
+  intentional power-off when preserving today's total matters.
 
 Restore first writes a temporary file, checks record size, magic, date range
 and CRC, preserves the current journal for rollback,
@@ -253,9 +260,12 @@ Wipe is permanent and requires typing `WIPE` plus accepting a browser warning.
 Download a binary backup first. Changing partition layouts or flashing a merged
 image can erase history independently of the web controls.
 
-Only finalized daily records are restorable. The current day's hourly buckets
-and per-inverter operating statistics intentionally live only in RAM to avoid
-flash wear and reset after reboot, restore, wipe or local midnight.
+Only finalized daily records are included in the downloadable backup. A saved
+current-day checkpoint is restored automatically after a same-day restart and
+promoted to finalized history if the ECU next starts on a later local date.
+Hourly buckets and per-inverter operating statistics intentionally live only
+in RAM to avoid flash wear; the manual save preserves totals, not those
+fine-grained observations.
 
 ## Energy accounting
 
@@ -263,6 +273,8 @@ Telemetry energy deltas are accumulated per inverter:
 
 - current-day 24-hour buckets remain in RAM;
 - one finalized record is appended to `/energy-days.bin` at local-day rollover;
+- an optional administrator-requested `/energy-today.bin` checkpoint is the
+  only normal current-day energy write;
 - recorded/lifetime energy is reconstructed from the validated journal at boot;
 - `/api/energy/hourly?inv=N` returns one inverter, and `inv=-1` returns the
   fleet;
@@ -334,11 +346,22 @@ place remote access behind a trusted VPN or authenticated reverse proxy.
 - the ESP-IDF crash dump stored in the dedicated flash partition, when a panic
   or watchdog failure has created one.
 
-The flight recorder is a circular file and cannot grow until storage is
-exhausted. Wi-Fi loss/restoration events are recorded immediately. A crash dump
-must be decoded with the exact `.elf` file from the firmware build that
-crashed, so retain the release ELF when reporting a failure. Download all three
-files before installing another build whenever possible.
+The flight recorder is **disabled by default** and can be enabled under
+**Menu > Polling and access** for intermittent-failure investigation. Enabling
+it creates or reuses `/flight-recorder.bin`, a preallocated 720-record circular
+file (74 bytes per record, 53,280 bytes total). While enabled it overwrites one
+slot each minute and also records Wi-Fi loss, restoration and reconnect events.
+Each record captures uptime and local time, free/minimum heap, largest free
+block, task stack margins, Wi-Fi state/RSSI/reason, die temperature and current
+poll activity. It retains roughly twelve hours and never grows with uptime.
+
+Disabling it stops all recorder flash writes immediately but retains existing
+records for download. Wi-Fi reconnect supervision is independent and remains
+active. The bounded live trace shown in the diagnostic report is RAM-only. An
+ESP-IDF crash dump is written only after a qualifying panic/watchdog failure.
+A crash dump must be decoded with the exact `.elf` from the firmware build that
+crashed, so retain the release ELF and download all three diagnostic files
+before installing another build whenever possible.
 
 ## Build from source
 

@@ -703,6 +703,10 @@ void inverterReboot(int which) {
 void resetValues(bool energy, bool mustSend) {
   for (int z = 0; z < inverterCount; z++) {
     for (int y = 0; y < 4; y++) Inv_Data[z].power[y] = 0.0;
+    // pw_total is stored independently from the per-input values. Clear both
+    // before publishing so SunSpec and every MQTT format report zero output
+    // when Night Mode begins instead of retaining the final daytime sample.
+    Inv_Data[z].pw_total = 0.0;
     if (energy) Inv_Data[z].en_total = 0;
     if (mustSend) mqttPoll(z);
   }

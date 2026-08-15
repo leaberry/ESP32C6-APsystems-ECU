@@ -28,6 +28,9 @@ void zendPageBasis(AsyncWebServerRequest *request) {
   page += F("<div class=\"field full\"><div class=\"checkline\"><input id=\"sunspec\" name=\"sunspec\" type=\"checkbox\"");
   if (sunspecEnabled) page += F(" checked");
   page += F("><label for=\"sunspec\">Enable SunSpec/Modbus TCP server<span class=\"help\">Listens on TCP port 502 and serves cached telemetry. Enabled by default. Disable it when Modbus is not used or the installation network should not expose the service.</span></label></div></div>");
+  page += F("<div class=\"field full\"><div class=\"checkline\"><input id=\"flightrecorder\" name=\"flightrecorder\" type=\"checkbox\"");
+  if (flightRecorderEnabled) page += F(" checked");
+  page += F("><label for=\"flightrecorder\">Enable persistent flight recorder<span class=\"help\">Off by default. For troubleshooting only: keeps a fixed 12-hour circular flash log with one health snapshot per minute plus Wi-Fi events. It never grows beyond about 53 KB, but it does cause regular flash writes.</span></label></div></div>");
   page += F("<div class=\"field\"><label for=\"pollsec\">Fleet poll interval</label><input id=\"pollsec\" name=\"pollsec\" type=\"number\" min=\"5\" max=\"86400\" value=\"");
   page += String(pollIntervalSeconds);
   page += F("\" required><span class=\"help\">Seconds between complete fleet rounds. Default: 300 seconds.</span></div><div class=\"field\"><label>Safe minimum now</label><input value=\"");
@@ -103,6 +106,7 @@ void handleBasisSave(AsyncWebServerRequest *request) {
       request->getParam("pollsec", true)->value().toInt());
   Polling = request->hasParam("polling", true);
   sunspecEnabled = request->hasParam("sunspec", true);
+  flightRecorderSetEnabled(request->hasParam("flightrecorder", true));
   basisConfigsave();
   if (administratorChanged) {
     wifiConfigsave();
