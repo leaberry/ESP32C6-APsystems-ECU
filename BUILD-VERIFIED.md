@@ -5,7 +5,7 @@ that every supported inverter model or control path has been field-tested.
 
 ## Reproducible build environment
 
-Verified on 2026-08-14 with:
+Verified on 2026-08-15 with:
 
 - Arduino CLI and Espressif Arduino core 3.3.8;
 - target `esp32:esp32:esp32c6`;
@@ -15,7 +15,7 @@ Verified on 2026-08-14 with:
   PSACrypto 1.1.1; and
 - ESP Async WebServer 3.12.0 and AsyncTCP 3.5.0.
 
-Final v1.4.9 sizes for both layouts:
+Final v1.4.10 sizes for both layouts:
 
 ```text
 8 MB application: 1,487,638 bytes

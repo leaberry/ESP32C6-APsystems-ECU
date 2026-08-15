@@ -37,7 +37,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_9"
+#define VERSION  "ESP32C6-ECU_v1_4_10"
 
 #include <TimeLib.h>
 #include <time.h>

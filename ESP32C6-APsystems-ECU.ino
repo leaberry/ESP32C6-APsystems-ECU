@@ -52,7 +52,6 @@ void setup() {
   preferences.end();
 
   start_wifi(); // start wifi and server
-  sunspecBegin();
 
 // we set inverterCount to the number of inverterfiles we find
   inverterCount = readInverterfiles();
@@ -62,6 +61,10 @@ void setup() {
 
   getTijd(); // retrieve time from the timeserver
   energyHistoryBegin();
+  // Do not accept Modbus clients until inverter configuration and persistent
+  // counters are loaded. Starting the listener earlier briefly exported a
+  // syntactically valid zero lifetime counter during every reboot.
+  sunspecBegin();
   Update_Log(1, "boot up");
 
   // ****************** mqtt init *********************
