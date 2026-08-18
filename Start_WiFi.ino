@@ -100,11 +100,13 @@ void start_wifi() {
       },
       WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
-  WiFi.begin(storedSsid.c_str(), storedPassword.c_str());
-  uint32_t startedAt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < 20000UL) {
-    delay(250);
-    Serial.print('.');
+  for(uint8_t t=0;t<2 && WiFi.status() != WL_CONNECTED;t++){
+    WiFi.begin(storedSsid.c_str(), storedPassword.c_str());
+    uint32_t startedAt = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startedAt < 20000UL) {
+      delay(250);
+      Serial.print('.');
+    }
   }
 
   if (WiFi.status() != WL_CONNECTED) {

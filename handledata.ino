@@ -1,5 +1,5 @@
 static uint8_t inverterPhysicalPanelCount(uint8_t inverter) {
-  return inverter < YC600_MAX_NUMBER_OF_INVERTERS && Inv_Prop[inverter].invType == 1 ? 4 : 2;
+  return inverter < YC600_MAX_NUMBER_OF_INVERTERS && (Inv_Prop[inverter].invType == 1 || Inv_Prop[inverter].invType == 3) ? 4 : 2;
 }
 
 static String ecuApiTime(time_t value) {
@@ -122,7 +122,9 @@ void handleDataRequests(AsyncWebServerRequest *request)
       root["lifetime_wh"] = energyLifetimeWhFor(i);
       root["freq"] = round1(Inv_Data[i].freq);
       root["temp"] = round1(Inv_Data[i].heath);
-      root["acv"] = round1(Inv_Data[i].acv);
+      root["acv0"] = round1(Inv_Data[i].acv[0]);
+      root["acv1"] = round1(Inv_Data[i].acv[1]);
+      root["acv2"] = round1(Inv_Data[i].acv[2]);
       root["sq"] = round1(Inv_Data[i].sigQ);
       root["radio_lqi"] = Inv_Data[i].radioLqi;
       root["radio_rssi_dbm"] = Inv_Data[i].radioRssi;

@@ -204,7 +204,7 @@ typedef struct{
 float freq = 0.0;
 float sigQ = 0.0;
 float heath = 0.0;
-float acv = 0.0;
+float acv[3] = {0.0, 0.0, 0.0};
 float dcc[4] = {0.0, 0.0, 0.0, 0.0};              // ampere <100 
 float dcv[4] = {0.0, 0.0, 0.0, 0.0};              // volt <100
 float power[4] = {0.0, 0.0, 0.0, 0.0};       //watt < 1000
