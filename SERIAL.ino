@@ -169,7 +169,7 @@ void handle_Serial () {
                    polled[z] = true; 
                    sprintf(Inv_Prop[z].invID, "%s", id);
                       
-                   Inv_Data[z].acv = 220.1 + z*1.1 ;
+                   Inv_Data[z].acv[0] = 220.1 + z*1.1 ;
                    Inv_Data[z].heath = 16.2 + z*2;
                    Inv_Data[z].sigQ = 79+z;
                    Inv_Data[z].freq = 50.1;
