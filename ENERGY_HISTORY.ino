@@ -292,7 +292,7 @@ void energyRecordTelemetry(uint8_t which) {
   const time_t sampleTime = ecuNow();
   const float power = Inv_Data[which].pw_total;
   const float temperature = Inv_Data[which].heath;
-  const float voltage = Inv_Data[which].acv;
+  const float voltage = Inv_Data[which].acv[0];
   const bool producing = isfinite(power) && power >= 1.0f;
 
   ++stats.samples;

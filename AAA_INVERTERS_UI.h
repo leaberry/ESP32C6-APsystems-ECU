@@ -58,6 +58,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <option value="0" invtype_0>YC600</option>
 <option value="2" invtype_2>DS3</option>
 <option value="1" invtype_1>QS1</option>
+<option value="3" invtype_3>QT2</option>
 </select>
 <span class="help">The model controls decoding and how many PV inputs are displayed.</span>
 </div>
@@ -89,7 +90,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <input type="checkbox" name="pan4" #4check> Input 4</label>
 </span>
 </div>
-<span class="help">Disable an input only when no panel is connected. DS3 and YC600 expose two inputs; QS1 exposes four.</span>
+<span class="help">Disable an input only when no panel is connected. DS3 and YC600 expose two inputs; QS1 and QT2 exposes four.</span>
 </div>
 </div>
 )=====";
@@ -110,7 +111,7 @@ function hideFunction() {
 }
 
 function myFunction(){
- if(document.getElementById("sel").value == 1 ) {
+ if(document.getElementById("sel").value == 1 || document.getElementById("sel").value == 3 ) {
     showFunction();
  } else {
    hideFunction();

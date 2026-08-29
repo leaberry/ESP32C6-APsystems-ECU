@@ -78,7 +78,7 @@ static bool ssValuesForUnit(uint8_t unit, SunSpecValues &v) {
       v.energyWh += energyLifetimeWhFor(i);
       if (polled[i]) {
         ++online;
-        volts += Inv_Data[i].acv;
+        volts += Inv_Data[i].acv[0];
         hz += Inv_Data[i].freq;
         if (Inv_Data[i].heath > temp) temp = Inv_Data[i].heath;
       }
@@ -99,7 +99,7 @@ static bool ssValuesForUnit(uint8_t unit, SunSpecValues &v) {
   v.firmware = Inv_Data[i].firmwareVersion;
   v.watts = Inv_Data[i].pw_total;
   v.energyWh = energyLifetimeWhFor(i);
-  v.voltage = Inv_Data[i].acv;
+  v.voltage = Inv_Data[i].acv[0];
   v.frequency = Inv_Data[i].freq;
   v.temperature = Inv_Data[i].heath;
   v.online = polled[i];

@@ -27,7 +27,10 @@ bool setMaxPower(int which)
         consoleOut("The raw sendCommand for DS3 = " + String(sendCommand));
         
     
-  }  else
+  }  else if(Inv_Prop[which].invType == 3) //QT2
+  {
+    return false;
+  }  else 
   {
     consoleOut("preparing the throttle command for YC600 / QS1");
     int calibrated = desiredThrottle[which] + Inv_Prop[which].calib;
