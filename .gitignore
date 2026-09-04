@@ -1,5 +1,8 @@
 .vscode/
 .idea/
+.tooling/
+.arduino-data/
+.arduino-user/
 build/
 dist/
 artifacts/

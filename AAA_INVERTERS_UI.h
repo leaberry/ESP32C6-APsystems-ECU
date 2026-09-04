@@ -6,7 +6,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Inverters · APsystems ECU</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/stylesheet">
+<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.11">
 </head>
 <body onload="%LOADBAG%">
 <header class="topbar">
@@ -22,14 +22,14 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <div class="actions">
 %INVERTER_NAV%
 </div>
-<form id="formulier" class="form-card section" method="get" action="/inverter/save" onsubmit="return confirm('Save these inverter settings?')">%<FORMPAGE>%<div class="actions">
+<form id="formulier" class="form-card section" method="get" action="/inverter/save" onsubmit="return confirm('Save these inverter settings?')"><input type="hidden" name="inv" value="%INVERTER_INDEX%">%<FORMPAGE>%<div class="actions">
 <button type="submit">Save inverter</button>
 <a class="button secondary" href="/menu">Cancel</a>
 </div>
 </form>
 <div class="actions" style="display:%PAIR_ACTION_STYLE%">
-<a class="button" href="/inverter/pair" onclick="return confirm('Pair this inverter now?')">Pair inverter</a>
-<a class="button danger" href="/inverter/delete" onclick="return confirm('Delete this inverter?')">Delete inverter</a>
+<a class="button" href="/inverter/pair?inv=%INVERTER_INDEX%" onclick="return confirm('Pair this inverter now?')">Pair inverter</a>
+<a class="button danger" href="/inverter/delete?inv=%INVERTER_INDEX%" onclick="return confirm('Delete this inverter?')">Delete inverter</a>
 </div>
 </main>
 <script src="/inverter/script">

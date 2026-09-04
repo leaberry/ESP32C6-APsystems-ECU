@@ -96,6 +96,7 @@ String diagnosticsReportText() {
   report += F("\nSunSpec/Modbus TCP: "); report += sunspecEnabled ? F("enabled on port 502") : F("disabled");
   report += F("\nLocal time: "); report += ecuClockText();
   report += F("\nTimezone: "); report += timeZoneId;
+  report += F("\nEffective UTC offset: "); report += ecuUtcOffsetText();
   report += F("\n\nINVERTERS\n---------\n");
   for (uint8_t i = 0; i < inverterCount; ++i) {
     uint16_t pan = 0, source = 0;

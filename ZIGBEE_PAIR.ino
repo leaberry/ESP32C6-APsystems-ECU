@@ -1,25 +1,41 @@
 void pairOnActionflag() {
 //start with setup the coordinator
 //can we pair when the radio is up for normal operation
-   
+   const int which = pendingPairInverter;
+   if (which < 0 || which >= inverterCount) {
+     pendingPairInverter = -1;
+     pendingPairPreviousId[0] = '\0';
+     Update_Log(4, "invalid inverter");
+     consoleOut("pairing rejected: invalid pending inverter");
+     return;
+   }
+
    char term[20];
-   snprintf(term, sizeof(term), "inverter %.10s", Inv_Prop[iKeuze].invSerial);
+   snprintf(term, sizeof(term), "inverter %.10s", Inv_Prop[which].invSerial);
    Update_Log(4, term);
     if( !coordinator(false) ) {
       //term="pairing failed, zb down";
       Update_Log(4, "failed");
       consoleOut("pairing failed, zb down");
+      strlcpy(Inv_Prop[which].invID,
+              pendingPairPreviousId[0] ? pendingPairPreviousId : "0000",
+              sizeof(Inv_Prop[which].invID));
+      writeStruct("/Inv_Prop" + String(which) + ".str", which);
+      pendingPairInverter = -1;
+      pendingPairPreviousId[0] = '\0';
        return;
     }
 
-   consoleOut("trying pair inv " + String(iKeuze));
+   consoleOut("trying pair inv " + String(which));
    char previousId[5] = {};
-   strlcpy(previousId, Inv_Prop[iKeuze].invID, sizeof(previousId));
+   strlcpy(previousId,
+           pendingPairPreviousId[0] ? pendingPairPreviousId : "0000",
+           sizeof(previousId));
   // now that we know that the radio is up, we don't need to test this in the pairing routine
 
-  if( pairing(iKeuze) ) {
+  if( pairing(which) ) {
     //DebugPrintln("pairing success, saving configfile");
-    String term = "success, inverter got id " + String(Inv_Prop[iKeuze].invID);
+    String term = "success, inverter got id " + String(Inv_Prop[which].invID);
     Update_Log(2, "success");
     consoleOut(term);
     //} else if(diagNose==2){ws.textAll(term);}  
@@ -27,28 +43,32 @@ void pairOnActionflag() {
   } else {
     // A failed retry must not destroy a previously working pairing.
     if (strcmp(previousId, "0000") && strcmp(previousId, "1111"))
-      strlcpy(Inv_Prop[iKeuze].invID, previousId,
-              sizeof(Inv_Prop[iKeuze].invID));
+      strlcpy(Inv_Prop[which].invID, previousId,
+              sizeof(Inv_Prop[which].invID));
     else
-      strlcpy(Inv_Prop[iKeuze].invID, "0000",
-              sizeof(Inv_Prop[iKeuze].invID));
-    String term = "failed, inverter got id " + String(Inv_Prop[iKeuze].invID);
+      strlcpy(Inv_Prop[which].invID, "0000",
+              sizeof(Inv_Prop[which].invID));
+    String term = "failed, inverter got id " + String(Inv_Prop[which].invID);
     Update_Log(4, "failed");
     consoleOut(term);
       
   }
-    String bestand = "/Inv_Prop" + String(iKeuze) + ".str"; // /Inv_Prop0.str
-    writeStruct(bestand, iKeuze); // alles opslaan in SPIFFS   
+    String bestand = "/Inv_Prop" + String(which) + ".str"; // /Inv_Prop0.str
+    writeStruct(bestand, which); // alles opslaan in SPIFFS
    
    //after successfull pairing we issue the command for normal ops
    sendNO();
    checkCoordinator(); // updates the log
+   pendingPairInverter = -1;
+   pendingPairPreviousId[0] = '\0';
 }
 
 void handlePair(AsyncWebServerRequest *request) {
 
+     strlcpy(pendingPairPreviousId, Inv_Prop[iKeuze].invID,
+             sizeof(pendingPairPreviousId));
      strncpy(Inv_Prop[iKeuze].invID, "1111", 4); // this value makes the pairing page visable
-     
+     pendingPairInverter = iKeuze;
      actionFlag = 60; // we do this because no delay is alowed within an async request
      toSend=FPSTR(WAIT_PAIR);
      toSend.replace("{#}", String(iKeuze));

@@ -37,7 +37,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_10"
+#define VERSION  "ESP32C6-ECU_v1_4_11"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -243,6 +243,8 @@ long  mqtt_lastConnect = 0;
 
   int dst;
   int iKeuze;
+  int pendingPairInverter = -1;
+  char pendingPairPreviousId[5] = {};
 //  int inverterTopoll = 0;
   bool timeRetrieved = false;
   int networksFound = 0; // used in the portal

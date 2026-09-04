@@ -100,15 +100,33 @@ void start_wifi() {
       },
       WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
-  WiFi.begin(storedSsid.c_str(), storedPassword.c_str());
-  uint32_t startedAt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < 20000UL) {
-    delay(250);
-    Serial.print('.');
+  constexpr uint8_t connectAttempts = 2;
+  constexpr uint32_t connectTimeoutMs = 20000UL;
+  for (uint8_t attempt = 0;
+       attempt < connectAttempts && WiFi.status() != WL_CONNECTED;
+       ++attempt) {
+    Serial.println("Wi-Fi connection attempt " + String(attempt + 1) +
+                   "/" + String(connectAttempts));
+    WiFi.begin(storedSsid.c_str(), storedPassword.c_str());
+    const uint32_t startedAt = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           (uint32_t)(millis() - startedAt) < connectTimeoutMs) {
+      delay(250);
+      Serial.print('.');
+    }
+    Serial.println();
+    if (WiFi.status() != WL_CONNECTED && attempt + 1 < connectAttempts) {
+      Serial.println("Wi-Fi attempt failed, reason " +
+                     String(lastWifiDisconnectReason) + " (" +
+                     WiFi.STA.disconnectReasonName(
+                         (wifi_err_reason_t)lastWifiDisconnectReason) +
+                     "); retrying");
+      WiFi.disconnect(false, false);
+      delay(750);
+    }
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println();
     Serial.println("Wi-Fi connection failed, reason " +
                    String(lastWifiDisconnectReason) + " (" +
                    WiFi.STA.disconnectReasonName(

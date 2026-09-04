@@ -94,3 +94,12 @@ bool ecuSetLocalTimeFromUtc(time_t utcEpoch) {
 const char *ecuTimeZoneLabel() {
   return ecuTimeZoneById(timeZoneId)->label;
 }
+
+String ecuUtcOffsetText() {
+  const int minutes = currentUtcOffsetMinutes;
+  const int magnitude = abs(minutes);
+  char text[16];
+  snprintf(text, sizeof(text), "UTC%c%02d:%02d", minutes < 0 ? '-' : '+',
+           magnitude / 60, magnitude % 60);
+  return String(text);
+}

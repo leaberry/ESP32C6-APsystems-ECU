@@ -88,6 +88,7 @@ void handleDataRequests(AsyncWebServerRequest *request)
                                 ecuHour(current), ecuMinute(current));
     root["local_time"] = localTime;
     root["timezone"] = timeZoneId;
+    root["utc_offset_minutes"] = currentUtcOffsetMinutes;
     root["last_poll_success"] = ecuApiTime(pollingLastSuccessfulEpoch());
     root["next_poll"] = ecuApiTime(pollingNextEpoch());
     root["poll_in_progress"] = pollingRoundInProgress();

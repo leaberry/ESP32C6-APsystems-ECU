@@ -3,6 +3,12 @@ void handleInverterconfig(AsyncWebServerRequest *request)
   // form action = handleInverterconfig
   // we only collect the data for this specific inverter
   // collect the serverarguments
+   int requestedIndex = -1;
+   if (!inverterRequestIndex(request, "inv", true, requestedIndex)) {
+     request->send(400, "text/plain", "Missing or invalid inverter index");
+     return;
+   }
+   iKeuze = requestedIndex;
    if (iKeuze < 0 || iKeuze >= YC600_MAX_NUMBER_OF_INVERTERS ||
        !request->hasParam("il") || !request->hasParam("iv") ||
        !request->hasParam("invt") || !request->hasParam("mqidx") ||
@@ -60,8 +66,7 @@ void handleInverterconfig(AsyncWebServerRequest *request)
    consoleOut("\ninverterCount after edit (saved) = " + String(inverterCount));  
    consoleOut("list of the files we have after edit");
    printInverters();
-   confirm();
-   request->send(200, "text/html", toSend);
+   request->redirect("/inverter/select?welke=" + String(iKeuze) + "&status=saved");
 }
 
 //*******************************************************************************************
@@ -73,10 +78,12 @@ void handleInverterdel(AsyncWebServerRequest *request)
   // we only collect the data for this specific inverter
   // read the serverargs and copy the values into the variables
 
-   if (iKeuze < 0 || iKeuze >= inverterCount) {
-     request->send(400, "text/plain", "Invalid inverter index");
+   int requestedIndex = -1;
+   if (!inverterRequestIndex(request, "inv", false, requestedIndex)) {
+     request->send(400, "text/plain", "Missing or invalid inverter index");
      return;
    }
+   iKeuze = requestedIndex;
    String bestand = "/Inv_Prop" + String(iKeuze) + ".str"; // /Inv_Prop0.str
    consoleOut("remove file " + bestand ); 
  
@@ -95,8 +102,27 @@ void handleInverterdel(AsyncWebServerRequest *request)
     
     consoleOut("inverterCount after removal = " + String(inverterCount));
 
-    confirm();
-    request->send(200, "text/html", toSend);
+    if (inverterCount > 0) {
+      const int nextIndex = min(iKeuze, inverterCount - 1);
+      request->redirect("/inverter/select?welke=" + String(nextIndex) + "&status=deleted");
+    } else {
+      request->redirect("/inverters?status=deleted");
+    }
+}
+
+bool inverterRequestIndex(AsyncWebServerRequest *request, const char *parameter,
+                          bool allowNew, int &result) {
+  if (!request || !parameter || !request->hasParam(parameter)) return false;
+  const String text = request->getParam(parameter)->value();
+  if (text.isEmpty()) return false;
+  for (size_t i = 0; i < text.length(); ++i)
+    if (!isdigit((unsigned char)text[i])) return false;
+  const long parsed = text.toInt();
+  const long maximum = allowNew ? inverterCount : inverterCount - 1;
+  if (parsed < 0 || parsed > maximum ||
+      parsed >= YC600_MAX_NUMBER_OF_INVERTERS) return false;
+  result = (int)parsed;
+  return true;
 }
 
 void printInverters() { 
@@ -205,7 +231,8 @@ String processor(const String& var)
   if (var == "INVERTER_NAV") {
     String navigation;
     for (int x = 0; x < inverterCount && x < YC600_MAX_NUMBER_OF_INVERTERS; ++x) {
-      navigation += F("<a class=\"button secondary\" href=\"/inverter/select?welke=");
+      navigation += iKeuze == x ? F("<a class=\"button\" aria-current=\"page\" href=\"/inverter/select?welke=")
+                               : F("<a class=\"button secondary\" href=\"/inverter/select?welke=");
       navigation += String(x);
       navigation += F("\">");
       const char *name = Inv_Prop[x].invLocation;
@@ -213,10 +240,15 @@ String processor(const String& var)
           ? String(name) : "Inverter " + String(x + 1);
       navigation += F("</a>");
     }
-    if (inverterCount < YC600_MAX_NUMBER_OF_INVERTERS)
-      navigation += F("<a class=\"button\" href=\"/inverter/select?welke=99\">Add inverter</a>");
+    if (inverterCount < YC600_MAX_NUMBER_OF_INVERTERS) {
+      navigation += iKeuze == inverterCount
+          ? F("<a class=\"button\" aria-current=\"page\" href=\"/inverter/select?welke=99\">Add inverter</a>")
+          : F("<a class=\"button secondary\" href=\"/inverter/select?welke=99\">Add inverter</a>");
+    }
     return navigation;
   }
+
+  if (var == "INVERTER_INDEX") return String(iKeuze);
   
   if(var == "<FORMPAGE>"){
     consoleOut(F("found FORMPAGE"));
@@ -234,25 +266,14 @@ return String(); //return empty when no match
 
 // construct the form and write in a file toSend
 void inverterForm() {
-    int verklikker = 0;
-    if (inverterCount >= 88 ) // if we add this = 99
-    { 
-        verklikker = 88;
-        inverterCount -= verklikker; // restore the original inverterCount
+    if (iKeuze < 0 || iKeuze > inverterCount ||
+        iKeuze >= YC600_MAX_NUMBER_OF_INVERTERS) {
+      toSend = F("<section class=\"alert\">Invalid inverter selection.</section>");
+      return;
     }
-    inverterCount += verklikker; // add 88 again
-    // now we have 3 situations
-    // inverterCount == 0, show the page currently no inverters
-    // iKeuze < invertercount, we have an existing inverter
-    // iKeuze == invertercount, we are adding a new inverter
-    // if we clicked the add button then invertercount is at least 88
-    if( inverterCount != 0 ) {
-   
-    // **********************************************************************
-    //        construct the inverterpage with actual data
-    // **********************************************************************
-        if (inverterCount >= 88 ) inverterCount -= 88; // restore inverterCount
-        toSend = FPSTR(INVERTER_GENERAL);  
+
+    toSend = FPSTR(INVERTER_GENERAL);
+    if (iKeuze < inverterCount) {
         // is there a file iKeuze then
         String bestand = "/Inv_Prop" + String(iKeuze) + ".str";
         if(SPIFFS.exists(bestand)) 
@@ -292,18 +313,22 @@ void inverterForm() {
         }
 
         } else {
-        // the file does not exist so we show an empty page
-        consoleOut("File does not exist");
-        toSend.replace("invtype_2", "selected");
-        toSend.replace("000000", "");
-        toSend.replace("{location}", "");
-        toSend.replace("{idx}", "0");
-        toSend.replace("{cal}", "0");
-        toSend.replace("{heading}", "NEW INVERTER");
+          toSend = F("<section class=\"alert\">The selected inverter configuration is missing.</section>");
         }
-
-    } else { // so if inverterCount == 0 we present this page
-     toSend = "<br><br><br><h3>currently no inverters</h3>"; 
+    } else {
+      // The slot is not persistent until Save is pressed. Reset it so an
+      // abandoned or previously deleted entry cannot leak into a new form.
+      Inv_Prop[iKeuze] = inverters{};
+      Inv_Data[iKeuze] = inverterdata{};
+      Inv_Prop[iKeuze].invType = 2;
+      Inv_Prop[iKeuze].conPanels[2] = false;
+      Inv_Prop[iKeuze].conPanels[3] = false;
+      toSend.replace("invtype_2", "selected");
+      toSend.replace("000000", "");
+      toSend.replace("{location}", "");
+      toSend.replace("{idx}", "0");
+      toSend.replace("{cal}", "0");
+      toSend.replace("{heading}", "NEW INVERTER");
     }
 // now we have toSend ready to include in the inverterpage
 }

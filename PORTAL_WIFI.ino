@@ -207,7 +207,16 @@ void start_portal() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_OFF);
   delay(300);
-  WiFi.mode(WIFI_AP_STA);
+
+  // Complete the all-channel station scan before advertising the setup AP.
+  // An ESP32-C6 has one Wi-Fi radio; scanning after softAP() makes that radio
+  // leave the AP channel and phones can see the SSID but fail association.
+  WiFi.mode(WIFI_STA);
+  delay(200);
+  scanPortalNetworks();
+  WiFi.mode(WIFI_OFF);
+  delay(200);
+  WiFi.mode(WIFI_AP);
   delay(200);
 
   IPAddress apIP(192, 168, 4, 1);
@@ -227,8 +236,6 @@ void start_portal() {
   }
   Serial.println("Setup AP: " + portalHostname);
   Serial.println("Setup URL: http://" + WiFi.softAPIP().toString() + "/");
-
-  scanPortalNetworks();
 
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer.start(DNS_PORT, "*", apIP);

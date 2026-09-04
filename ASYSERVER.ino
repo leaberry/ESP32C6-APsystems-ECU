@@ -1,6 +1,16 @@
 /*
  * changed the order of the handlers
 */
+static void sendStylesheet(AsyncWebServerRequest *request) {
+  AsyncWebServerResponse *response = request->beginResponse_P(
+      200, "text/css; charset=utf-8", STYLESHEET);
+  // Revalidate after firmware changes so phones cannot retain a stale or
+  // previously failed stylesheet response under the stable asset URL.
+  response->addHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
+  response->addHeader("X-Content-Type-Options", "nosniff");
+  request->send(response);
+}
+
 void start_server() {
 if( diagNose != 0 ) consoleOut("starting server");
 //server.addHandler(&ws);
@@ -27,7 +37,13 @@ server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
 });
 
 server.on("/stylesheet", HTTP_GET, [](AsyncWebServerRequest *request) {
-   request->send_P(200, "text/css", STYLESHEET);
+   sendStylesheet(request);
+});
+
+// Old pages and browser caches used this uppercase path. HTTP paths are case
+// sensitive, so retain it as an alias while all current pages use lowercase.
+server.on("/STYLESHEET", HTTP_GET, [](AsyncWebServerRequest *request) {
+   sendStylesheet(request);
 });
 
 server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -38,11 +54,12 @@ server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 server.on("/inverter-details", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "both")) return;
-if (!request->hasParam("inv")) { request->send(400, "text/plain", "Missing inverter index"); return; }
-iKeuze = request->getParam("inv")->value().toInt();
-if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "text/plain", "Unknown inverter"); return; }
-//requestUrl = request->url();
-strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
+int requestedIndex = -1;
+if (!inverterRequestIndex(request, "inv", false, requestedIndex)) {
+  request->send(400, "text/plain", "Missing or invalid inverter index"); return;
+}
+String detailsReturnUrl = "/inverter-details?inv=" + String(requestedIndex);
+strlcpy(requestUrl, detailsReturnUrl.c_str(), sizeof(requestUrl));
 //Serial.println("details url = " + String(requestUrl));
 request->send_P(200, "text/html", DETAILSPAGE);
 });
@@ -335,10 +352,11 @@ server.on("/api/energy/history.csv", HTTP_GET, [](AsyncWebServerRequest *request
 
 server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
-  actionFlag = 10;
-  confirm(); 
   strlcpy(requestUrl, "/", sizeof(requestUrl));
-  request->send(200, "text/html", toSend);
+  static const char rebootPage[] PROGMEM =
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"refresh\" content=\"8;url=/\"><title>Restarting ECU</title><style>body{margin:0;background:#0b1220;color:#e8eef8;font:16px/1.45 system-ui,sans-serif}.card{max-width:620px;margin:12vh auto;padding:24px;background:#121c2e;border:1px solid #2a3a55;border-radius:14px}p{color:#9fb0c8}</style></head><body><main class=\"card\"><h1>Restarting ECU</h1><p>The controller is restarting. This page will return to the dashboard when it is available again.</p></main></body></html>";
+  request->send_P(200, "text/html; charset=utf-8", rebootPage);
+  actionFlag = 10;
 });
 
 server.on("/setup", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -393,8 +411,14 @@ handleInverterconfig(request);
 server.on("/inverter/pair", HTTP_GET, [](AsyncWebServerRequest *request) {
   if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
-  //requestUrl = request->url();
-  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
+  int requestedIndex = -1;
+  if (!inverterRequestIndex(request, "inv", false, requestedIndex)) {
+    request->send(400, "text/plain", "Missing or invalid inverter index"); return;
+  }
+  if (actionFlag != 0 || pendingPairInverter >= 0) {
+    request->send(409, "text/plain", "The ECU is already processing another operation"); return;
+  }
+  iKeuze = requestedIndex;
   //DebugPrintln(F("pairing requested"));
   handlePair(request);
 });
@@ -410,14 +434,18 @@ server.on("/inverter/select", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!request->hasParam("welke")) { request->send(400, "text/plain", "Missing inverter index"); return; }
     strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
     //bool nothing = false;
-    int i = atoi(request->arg("welke").c_str()) ;
-    if (i != 99 && (i < 0 || i >= inverterCount)) { request->send(404, "text/plain", "Unknown inverter"); return; }
-    iKeuze = i;
+    const String selection = request->arg("welke");
+    int selectedIndex = -1;
+    if (selection == "99") {
+      if (inverterCount >= YC600_MAX_NUMBER_OF_INVERTERS) {
+        request->send(409, "text/plain", "Maximum inverter count reached"); return;
+      }
+      selectedIndex = inverterCount;
+    } else if (!inverterRequestIndex(request, "welke", false, selectedIndex)) {
+      request->send(404, "text/plain", "Unknown inverter"); return;
+    }
+    iKeuze = selectedIndex;
     consoleOut("?INV iKeuze at enter = " + String(iKeuze));
-    if( iKeuze == 99 ) {
-        iKeuze = inverterCount; //indicate this is an adition
-        inverterCount += 88;
-        }
      String bestand = "/Inv_Prop" + String(iKeuze) + ".str";
      consoleOut("iKeuze = " + String(iKeuze));
      if (!SPIFFS.exists(bestand)) Inv_Prop[iKeuze].invType = 2;
@@ -435,10 +463,11 @@ server.on("/inverter/select", HTTP_GET, [](AsyncWebServerRequest *request) {
 
 server.on("/pair/status", HTTP_GET, [](AsyncWebServerRequest *request) {
 if (!loginBoth(request, "both")) return;
-if (iKeuze < 0 || iKeuze >= inverterCount) { request->send(404, "application/json", "{\"error\":\"unknown inverter\"}"); return; }
+int requestedIndex = -1;
+if (!inverterRequestIndex(request, "inv", false, requestedIndex)) { request->send(404, "application/json", "{\"error\":\"unknown inverter\"}"); return; }
 // set the array into a json object
   String json="{";
-  json += "\"invID\":\"" + String(Inv_Prop[iKeuze].invID) + "\"";
+  json += "\"invID\":\"" + String(Inv_Prop[requestedIndex].invID) + "\"";
   json += "}";
   request->send(200, "text/json", json);
   json = String();
@@ -570,7 +599,7 @@ server.begin();
 void confirm() {
   String destination = String(requestUrl);
   if (!destination.startsWith("/") || destination.indexOf("//") >= 0) destination = "/";
-  toSend = F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Applying changes · APsystems ECU</title><link rel=\"stylesheet\" href=\"/stylesheet\"></head><body><main class=\"page\"><section class=\"card\"><span class=\"badge\">Saved</span><h1>Applying your changes</h1><p>The ECU will return automatically in a moment.</p></section></main><script>setTimeout(()=>location.href='");
+  toSend = F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Applying changes · APsystems ECU</title><link rel=\"stylesheet\" type=\"text/css\" href=\"/stylesheet?v=1.4.11\"></head><body><main class=\"page\"><section class=\"card\"><span class=\"badge\">Saved</span><h1>Applying your changes</h1><p>The ECU will return automatically in a moment.</p></section></main><script>setTimeout(()=>location.href='");
   toSend += destination;
   toSend += F("',1800)</script></body></html>");
 }
