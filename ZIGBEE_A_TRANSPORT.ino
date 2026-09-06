@@ -593,7 +593,7 @@ void sendZB(char command[]) {
     return;
   }
 
-  if (!strncmp(command, "2402", 4) && chars >= 46) {
+  if (!strncmp(command, "2402", 4) && chars >= 44) {
     const char *p = command + 4;
     p += 2 + 16;
     uint8_t dstEp = hexByte(p); p += 2;
@@ -603,9 +603,15 @@ void sendZB(char command[]) {
     p += 2;
     uint8_t options = hexByte(p); p += 2;
     uint8_t radius = hexByte(p); p += 2;
-    uint8_t length = hexByte(p); p += 2;
+    // AF_DATA_REQUEST_EXT uses a little-endian uint16 length, unlike
+    // AF_DATA_REQUEST's uint8. Consuming only the low byte prepends the
+    // high byte (usually 00) to the ASDU and drops its final serial/ECU byte.
+    uint16_t length = hexLe16(p); p += 4;
     uint8_t payload[300];
-    length = min((size_t)length, min(sizeof(payload), strlen(p) / 2));
+    if (length > sizeof(payload) || length != strlen(p) / 2) {
+      diagnosticsAppend("invalid AF_DATA_REQUEST_EXT payload length");
+      return;
+    }
     for (uint16_t i = 0; i < length; ++i) payload[i] = hexByte(p + 2 * i);
     apsExpectedWhich = -1;
     submitRawAps(0xFFFF, dstEp, srcEp, cluster, payload, length,
