@@ -65,30 +65,8 @@ String ecuTimeZoneOptionsHtml() {
 
 bool ecuSetLocalTimeFromUtc(time_t utcEpoch) {
   const EcuTimeZone *zone = ecuTimeZoneById(timeZoneId);
-  if (!strcmp(zone->id, "Custom")) {
-    currentUtcOffsetMinutes = constrain(atoi(gmtOffset), -720, 840);
-    ecuSetTime(utcEpoch + (time_t)currentUtcOffsetMinutes * 60);
-    dst = 0;
-    return true;
-  }
-
-  setenv("TZ", zone->rule, 1);
-  tzset();
-  struct tm local = {};
-  if (!localtime_r(&utcEpoch, &local)) return false;
-
-  tmElements_t elements = {};
-  elements.Second = local.tm_sec;
-  elements.Minute = local.tm_min;
-  elements.Hour = local.tm_hour;
-  elements.Day = local.tm_mday;
-  elements.Month = local.tm_mon + 1;
-  elements.Year = CalendarYrToTm(local.tm_year + 1900);
-  time_t localEpoch = makeTime(elements);
-  currentUtcOffsetMinutes = (int16_t)((localEpoch - utcEpoch) / 60);
-  dst = strchr(zone->rule, ',') ? (local.tm_isdst > 0 ? 1 : 2) : 0;
-  ecuSetTime(localEpoch);
-  return true;
+  return ecuConfigureTime(zone->rule, constrain(atoi(gmtOffset), -720, 840),
+                          utcEpoch);
 }
 
 const char *ecuTimeZoneLabel() {
@@ -96,6 +74,7 @@ const char *ecuTimeZoneLabel() {
 }
 
 String ecuUtcOffsetText() {
+  ecuNow(); // Refresh the offset even if a web request is first across DST.
   const int minutes = currentUtcOffsetMinutes;
   const int magnitude = abs(minutes);
   char text[16];

@@ -1,5 +1,6 @@
 // deze functie berekent de zonsopkomst en zonsondergangstijden
 void sun_setrise() {
+  const time_t current = ecuNow(); // Keep the solar offset current across DST.
 
 //float OUR_longtitude = atof(lengte);
 //float OUR_latitude = atof(breedte);
@@ -28,7 +29,6 @@ sunMoon  sm;
 // if (mDay == 13 || mDay == 14 || mDay == 15){maan = "full moon";}
 // if (mDay == 0 || mDay == 1 || mDay == 28){maan = "new moon";} 
 
-      const time_t current = ecuNow();
       time_t sunrise = ecuSunRise(sm, current);
       time_t sunset  = ecuSunSet(sm, current);
       
