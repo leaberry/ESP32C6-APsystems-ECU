@@ -599,7 +599,7 @@ server.begin();
 void confirm() {
   String destination = String(requestUrl);
   if (!destination.startsWith("/") || destination.indexOf("//") >= 0) destination = "/";
-  toSend = F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Applying changes · APsystems ECU</title><link rel=\"stylesheet\" type=\"text/css\" href=\"/stylesheet?v=1.4.11\"></head><body><main class=\"page\"><section class=\"card\"><span class=\"badge\">Saved</span><h1>Applying your changes</h1><p>The ECU will return automatically in a moment.</p></section></main><script>setTimeout(()=>location.href='");
+  toSend = F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Applying changes · APsystems ECU</title><link rel=\"stylesheet\" type=\"text/css\" href=\"/stylesheet?v=1.4.12\"></head><body><main class=\"page\"><section class=\"card\"><span class=\"badge\">Saved</span><h1>Applying your changes</h1><p>The ECU will return automatically in a moment.</p></section></main><script>setTimeout(()=>location.href='");
   toSend += destination;
   toSend += F("',1800)</script></body></html>");
 }

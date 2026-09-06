@@ -6,7 +6,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Inverters · APsystems ECU</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.11">
+<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.12">
 </head>
 <body onload="%LOADBAG%">
 <header class="topbar">
