@@ -57,9 +57,9 @@ bool pollingNightModeActive() {
 
 time_t pollingNextResumeEpoch() {
   if (!pollingNightModeActive()) return 0;
+  const time_t current = ecuNow(); // Refresh any DST change before using its offset.
   sunMoon solar;
   if (!solar.init(currentUtcOffsetMinutes, lati, longi)) return 0;
-  const time_t current = ecuNow();
   time_t candidate = ecuSunRise(solar, current) + (time_t)pollOffset * 60;
   if (candidate <= current)
     candidate = ecuSunRise(solar, current + 86400UL) + (time_t)pollOffset * 60;

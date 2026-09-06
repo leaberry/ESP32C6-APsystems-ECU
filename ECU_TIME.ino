@@ -3,39 +3,114 @@
  *
  * TimeLib's now() uses shared 32-bit millis bookkeeping without a lock. The
  * web, Modbus and scheduler tasks can call it concurrently, allowing a race
- * that looks exactly like a 49.7-day millis wrap. Keep the synchronized local
- * epoch against ESP-IDF's 64-bit monotonic timer instead. TimeLib is still set
- * for library compatibility, but application code reads time through here.
+ * that looks exactly like a 49.7-day millis wrap. Keep synchronized UTC against
+ * ESP-IDF's 64-bit monotonic timer and convert on reads, so DST changes do not
+ * depend on NTP. The public clock remains a local epoch for existing consumers.
  */
 
 static SemaphoreHandle_t ecuTimeMutex = nullptr;
 static time_t ecuTimeBaseEpoch = 0;
 static int64_t ecuTimeBaseMicros = 0;
+static bool ecuClockFixedOffset = false;
+static int ecuClockFixedMinutes = 0;
+static bool ecuClockHasDst = false;
+static bool ecuLocalCacheValid = false;
+static time_t ecuCachedUtc = 0;
+static time_t ecuCachedLocal = 0;
+static bool ecuSolarUpdatePending = false;
 
 void ecuTimeBegin() {
-  if (!ecuTimeMutex) ecuTimeMutex = xSemaphoreCreateMutex();
+  if (ecuTimeMutex) return;
+  ecuTimeMutex = xSemaphoreCreateMutex();
   ecuTimeBaseMicros = esp_timer_get_time();
 }
 
-time_t ecuNow() {
-  if (!ecuTimeMutex) return 0;
-  xSemaphoreTake(ecuTimeMutex, portMAX_DELAY);
+// All helpers ending in Locked require ecuTimeMutex, including TZ changes.
+static time_t ecuUtcNowLocked() {
   time_t value = ecuTimeBaseEpoch;
   if (value) {
     int64_t elapsed = esp_timer_get_time() - ecuTimeBaseMicros;
     if (elapsed > 0) value += (time_t)(elapsed / 1000000LL);
   }
+  return value;
+}
+
+static time_t ecuLocalNowLocked() {
+  const time_t utc = ecuUtcNowLocked();
+  if (!utc) return 0;
+  if (ecuLocalCacheValid && ecuCachedUtc == utc) return ecuCachedLocal;
+
+  time_t localEpoch;
+  int localDst = 0;
+  if (ecuClockFixedOffset) {
+    localEpoch = utc + (time_t)ecuClockFixedMinutes * 60;
+  } else {
+    struct tm local = {};
+    if (!localtime_r(&utc, &local)) return 0;
+    tmElements_t elements = {};
+    elements.Second = local.tm_sec;
+    elements.Minute = local.tm_min;
+    elements.Hour = local.tm_hour;
+    elements.Day = local.tm_mday;
+    elements.Month = local.tm_mon + 1;
+    elements.Year = CalendarYrToTm(local.tm_year + 1900);
+    localEpoch = makeTime(elements);
+    localDst = ecuClockHasDst ? (local.tm_isdst > 0 ? 1 : 2) : 0;
+  }
+  const int16_t offset = (int16_t)((localEpoch - utc) / 60);
+  if (!ecuLocalCacheValid || offset != currentUtcOffsetMinutes) {
+    // sunMoon uses TimeLib internally. Rebase it at sync/zone/offset changes.
+    setTime(localEpoch);
+    ecuSolarUpdatePending = true;
+  }
+  currentUtcOffsetMinutes = offset;
+  dst = localDst;
+  ecuCachedUtc = utc;
+  ecuCachedLocal = localEpoch;
+  ecuLocalCacheValid = true;
+  return localEpoch;
+}
+
+time_t ecuNow() {
+  if (!ecuTimeMutex) return 0;
+  xSemaphoreTake(ecuTimeMutex, portMAX_DELAY);
+  const time_t value = ecuLocalNowLocked();
   xSemaphoreGive(ecuTimeMutex);
   return value;
 }
 
-void ecuSetTime(time_t value) {
+// A zero UTC value changes only the zone, preserving the UTC instant and
+// subsecond monotonic base. A null rule selects a fixed offset without DST.
+bool ecuConfigureTime(const char *rule, int fixedMinutes, time_t utc) {
   if (!ecuTimeMutex) ecuTimeBegin();
   xSemaphoreTake(ecuTimeMutex, portMAX_DELAY);
-  ecuTimeBaseEpoch = value;
-  ecuTimeBaseMicros = esp_timer_get_time();
-  setTime(value); // Retained for sunMoon/TimeLib compatibility.
+  if (rule && setenv("TZ", rule, 1) != 0) {
+    xSemaphoreGive(ecuTimeMutex);
+    return false;
+  }
+  if (rule) tzset();
+  ecuClockFixedOffset = !rule;
+  ecuClockFixedMinutes = fixedMinutes;
+  ecuClockHasDst = rule && strchr(rule, ',');
+  if (utc) {
+    ecuTimeBaseEpoch = utc;
+    ecuTimeBaseMicros = esp_timer_get_time();
+  }
+  ecuLocalCacheValid = false;
+  const bool ok = !ecuTimeBaseEpoch || ecuLocalNowLocked() != 0;
   xSemaphoreGive(ecuTimeMutex);
+  return ok;
+}
+
+void ecuTimeLoop() {
+  if (!ecuTimeMutex) return;
+  xSemaphoreTake(ecuTimeMutex, portMAX_DELAY);
+  ecuLocalNowLocked();
+  const bool recalculate = ecuSolarUpdatePending;
+  ecuSolarUpdatePending = false;
+  xSemaphoreGive(ecuTimeMutex);
+  // Solar helpers acquire the same mutex; run them outside the critical section.
+  if (recalculate) sun_setrise();
 }
 
 static tmElements_t ecuTimeElements(time_t value) {

@@ -112,6 +112,7 @@ void setup() {
 //*                         LOOP
 //*****************************************************************************
 void loop() {
+  ecuTimeLoop(); // Apply DST and update solar windows before day/night decisions.
 
 // ***************************************************************************
 //                       day or night mode

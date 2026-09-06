@@ -3,9 +3,11 @@ void zendPageGEOconfig(AsyncWebServerRequest *request) {
       F("Location and local time determine the optional daylight polling window and daily energy boundaries."));
   page += F("<div class=\"alert info\">Latitude is positive north and negative south. Longitude is positive east and negative west. Example: Denver is approximately 39.739, -104.990.</div><form class=\"form-card section\" method=\"post\" action=\"/time/save\"><div class=\"form-grid\">");
   if (timeRetrieved) {
-    page += F("<div class=\"alert info\">Current effective offset: <strong>");
+    page += F("<div class=\"alert info\">Saved time zone: <strong>");
+    page += ecuTimeZoneLabel();
+    page += F("</strong>. Current effective offset: <strong>");
     page += ecuUtcOffsetText();
-    page += F("</strong>. Regional zones automatically include daylight saving; Berlin is UTC+01:00 in winter and UTC+02:00 in summer.</div>");
+    page += F("</strong>. Regional zones follow their daylight-saving rules; custom offsets stay fixed. Changes below take effect after Save.</div>");
   }
   page += F("<div class=\"field\"><label for=\"lat\">Latitude</label><input id=\"lat\" name=\"lat\" type=\"number\" min=\"-90\" max=\"90\" step=\"0.0001\" value=\"");
   page += String(lati, 4);
@@ -47,17 +49,13 @@ void handleTimeSave(AsyncWebServerRequest *request) {
     request->send(400, "text/plain", "Custom UTC offset must be -720 to 840 minutes");
     return;
   }
-  // ecuNow() intentionally stores wall-clock time. Recover the corresponding
-  // UTC instant before changing zones so the displayed clock can switch to
-  // the new offset immediately, without waiting for a reboot or NTP retry.
-  const time_t currentUtc = timeRetrieved
-      ? ecuNow() - (time_t)currentUtcOffsetMinutes * 60 : 0;
   lati = submittedLat;
   longi = submittedLon;
   locationConfigured = true;
   strlcpy(timeZoneId, submittedZone.c_str(), sizeof(timeZoneId));
   snprintf(gmtOffset, sizeof(gmtOffset), "%d", submittedOffset);
-  if (currentUtc) ecuSetLocalTimeFromUtc(currentUtc);
+  // Keep the synchronized UTC base, including during the repeated DST hour.
+  ecuSetLocalTimeFromUtc(0);
   daylightPolling = request->hasParam("daylight", true);
   pollOffset = request->hasParam("offsetSun", true)
       ? constrain(request->getParam("offsetSun", true)->value().toInt(), -15, 15) : 0;
