@@ -1,4 +1,5 @@
 void querying(int which) {
+    if (!inverterSupportsThrottle(which)) return;
     //polled[which]=false; //nothing is displayed on webpage
 
     consoleOut("query inverter " + String(which));
@@ -40,6 +41,7 @@ void querying(int which) {
 // ******************************************************************
 int decodeQueryAnswer(int welke)
 {
+    if (!inverterSupportsThrottle(welke)) return 15;
     char messageToDecode[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
       char s_d[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
     uint8_t Message_begin_offset = 0;    

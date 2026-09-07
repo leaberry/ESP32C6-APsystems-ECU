@@ -40,6 +40,11 @@ jobs:
           python3 tools/test_pairing_fallback.py
           python3 tools/test_pairing_audit.py
           node tools/test_pairing_status.js
+      - name: Test QT2 captures and telemetry integration
+        run: |
+          python3 tools/test_qt2.py
+          python3 tools/test_qt2_capture.py
+          node tools/test_qt2_ui.js
       - uses: arduino/setup-arduino-cli@v2
       - name: Install ESP32 platform
         run: |

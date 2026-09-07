@@ -1,5 +1,31 @@
 # Build and hardware verification
 
+## QT2 rebase and voltage review (2026-10-25)
+
+`ESP32C6-ECU_v1_4_19-qt2-dev` builds on `main` at `17d8a79` with Arduino
+core 3.3.8 for both 8 MB OTA and 4 MB USB-only layouts. Each build uses
+1,645,808 bytes of program storage and 110,024 bytes of static globals,
+leaving 217,656 bytes before runtime allocations. Both generated partition
+tables match their source layouts, and both application images fit their slots.
+
+All 27 Python and eight JavaScript suites listed in CI pass locally. The QT2
+decoder and capture-storage tests use AddressSanitizer and UndefinedBehaviorSanitizer.
+New integration coverage exercises QT2 through the fleet collector, including
+rejected-frame and timeout capture, four-input Home Assistant discovery,
+command refusal after model changes, settings backup/restore, and SunSpec
+not-implemented voltage registers. Existing DS3/YC600/QS1, pairing, control,
+settings, logging and UI regressions pass.
+
+TobiasTTM's October 25 measurements support the DC voltage scale and suggest
+that the AC fields contain line-to-line voltage divided by sqrt(3). Their
+reference and phase order remain unverified, so the old L1/L2/L3 labels are
+removed without changing numerical scales. See [QT2.md](QT2.md) for the
+measurements, interpretation and capture procedure.
+
+This firmware still needs physical QT2 testing. Current/energy calibration,
+input and phase mapping, actual SPIFFS power-loss behavior and capture downloads
+on hardware remain unverified. No device was flashed during this work.
+
 ## Issue #30 follow-up: DS3 readback metadata (2026-10-14)
 
 The reporter says the plain `DS3_pergola` still applies power limits without
@@ -636,7 +662,6 @@ At that initial review, physical antenna switching, reception quality and a
 real private NTP server had not been tested. The Issue #11 report above now
 confirms those functions on the reporter's setup. Advanced GPIO/polarity choices
 and other boards remain unverified. No device was flashed during this review.
-
 This document records evidence for the current source tree. It is not a claim
 that every supported inverter model or control path has been field-tested.
 

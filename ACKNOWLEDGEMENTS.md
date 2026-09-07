@@ -24,6 +24,13 @@ broad; an omission should be treated as a documentation bug and corrected.
 
 ## APsystems radio and protocol research
 
+- **TobiasTTM** proposed QT2 support in
+  [PR #1](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/1), supplied
+  annotated QT2 captures and the initial field mapping/scale factors, and
+  reported tests with two QT2 inverters. His data and idea underpin this
+  project's QT2 monitoring implementation and repeatable decoder fixtures.
+  See [QT2.md](QT2.md) for the analysis and remaining calibration work.
+
 - **kadzsol** developed the custom CC2530/CC2531 firmware used by the predecessor
   projects and explained important DS3 serial-buffer behavior. Although this
   repository no longer ships or requires that binary, it was essential to the

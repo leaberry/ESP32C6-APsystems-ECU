@@ -2,6 +2,7 @@
 from pathlib import Path
 import subprocess
 import re
+import json
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
@@ -31,6 +32,7 @@ code = r'''
 #include <string>
 #include <vector>
 #include "POLL_TELEMETRY.h"
+#include "QT2_PROTOCOL.h"
 using std::min;
 #define F(x) x
 constexpr int YC600_MAX_NUMBER_OF_INVERTERS=9, CC2530_MAX_SERIAL_BUFFER_SIZE=1024;
@@ -44,7 +46,7 @@ struct String: std::string {
 struct Prop {char invID[5],invSerial[13];int invType;bool conPanels[4]={true,true,false,false};};
 Prop Inv_Prop[9]={{"0100","000000000001",2},{"0200","000000000002",0},
  {"0300","000000000003",0},{"0400","000000000004",1},{"0500","000000000005",2}};
-struct {int radioRssi,radioLqi;bool radioMetricsValid;float sigQ,acv,freq,heath,dcv[4],dcc[4],power[4],en_total,pw_total;} Inv_Data[9];
+struct {int radioRssi,radioLqi;bool radioMetricsValid;float sigQ,acv,acvL2,acvL3,freq,heath,dcv[4],dcc[4],power[4],en_total,pw_total;} Inv_Data[9];
 int t_saved[9]={};float en_saved[9][4]={};
 void energyRecordDelta(int,float){} float round1(float n){return std::round(n*10)/10;}
 void delayMicroseconds(int){}
@@ -69,6 +71,10 @@ bool apsDecryptIncoming(uint16_t,const uint8_t* a,size_t n,uint8_t* out,size_t,s
  if(n<8||a[6]!=0xfb||a[7]!=0xfb)return false;memcpy(out,a,n);*len=n;return true;
 }
 void pollPublishTelemetry(int);
+int capturedFrames=0,capturedTimeouts=0;
+void qt2CaptureObserve(int which,const uint8_t* data,size_t,uint16_t,uint16_t,int8_t,uint8_t){
+ if(Inv_Prop[which].invType==3){if(data)++capturedFrames;else ++capturedTimeouts;}
+}
 #include "POLL_DIAGNOSTICS.h"
 uint32_t diagCounts[PD_COUNT]={};uint16_t diagSeen=0,diagAccepted=0;
 void pollDiagnosticsCount(PollDiagCounter c,uint32_t n){diagCounts[c]+=n;}
@@ -116,6 +122,8 @@ captures = re.findall(r'[0-9A-Fa-f]{12}FBFB51[0-9A-Fa-f]+?FEFE',
                       (root/'test.ino').read_text(encoding='utf-8'))
 assert len(captures) == 2
 code += '\nconst char* legacyCaptures[] = {' + ','.join('"'+s+'"' for s in captures) + '};\n'
+qt2 = json.loads((root/'tools/fixtures/qt2.json').read_text())['captures'][0]['hex'][:-8]
+code += '\nconst char* qt2Capture = '+json.dumps(qt2)+';\n'
 code += r'''
 ApsRxFrame capturedReply(int i){
  ApsRxFrame f={};f.receivedAt=now;f.pan=pans[i];f.cluster=0x0106;
@@ -217,6 +225,22 @@ int main(){
  reset();now=0xfffffff0;pollingRoundBegin();now=5;
  onSend=[](int){auto f=reply(1);f.receivedAt=0xffffffe0;queue.push_back(f);queue.push_back(reply(1));};
  polling(1);assert(published[1]==1);
+ // Replay a real QT2 ASDU through the fleet collector and production decoder.
+ reset();Inv_Prop[0].invType=3;
+ auto qt2Reply=[](){
+  ApsRxFrame f={};f.receivedAt=now;f.pan=pans[0];f.cluster=0x0106;
+  f.sourceEp=f.destEp=0x14;f.lqi=200;f.rssi=-60;f.len=strlen(qt2Capture)/2;
+  for(size_t j=0;j<f.len;++j){unsigned b;sscanf(qt2Capture+2*j,"%2x",&b);f.data[j]=b;}
+  apsSerialToBcd(Inv_Prop[0].invSerial,f.data);checksum(f);return f;
+ };
+ onSend=[&](int){auto f=qt2Reply();f.data[10]=0xde;checksum(f);queue.push_back(f);queue.push_back(qt2Reply());};
+ pollingForRound(0);assert(polled[0]&&published[0]==1&&decodedCount[0]==1);
+ assert(Inv_Data[0].acv==234&&std::abs(Inv_Data[0].acvL3-236.7)<0.01);
+ assert(capturedFrames==2&&capturedTimeouts==0);
+ reset();onSend=[&](int){auto f=qt2Reply();f.data[40]^=1;queue.push_back(f);};
+ polling(0);assert(!polled[0]&&published[0]==0&&decodedCount[0]==0);
+ assert(capturedFrames==4&&capturedTimeouts==2);
+ std::cout<<"PASS QT2 fleet polling, rejected-frame capture and timeout capture\n";
  std::cout<<"PASS telemetry collection: captured YC600/QS1 decoding, DS3 checksum rejection, all responders, duplicates, validation, stale frames, late recovery, retries, PAN isolation, manual polls and TX failures\n";
 }
 '''

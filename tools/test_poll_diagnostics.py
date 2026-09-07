@@ -91,6 +91,7 @@ void delayMicroseconds(int){} void delay(int n){tick+=n;}
 void consoleOut(String){} void diagnosticsAppend(String){} void empty_serial2(){}
 bool sendZB(char*){return sendOk;}
 void pollPublishTelemetry(int);
+void qt2CaptureObserve(int,const uint8_t*,size_t,uint16_t,uint16_t,int8_t,uint8_t){}
 uint16_t readPollReplies(uint16_t,uint16_t accepted,uint32_t){
  if(decodes++<failDecodes)return accepted;
  pollDiagnosticsReply(0);pollDiagnosticsAccepted(0);pollPublishTelemetry(0);return accepted|1;

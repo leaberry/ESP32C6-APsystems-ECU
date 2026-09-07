@@ -102,7 +102,7 @@ inline bool settingsFormatValid(JsonDocument &doc, int button, int led) {
       !p["peers"].is<JsonArrayConst>() || p["peers"].size()>64) return false;
   for (JsonVariantConst inv:p["inverters"].as<JsonArrayConst>()) {
     if (!settingsHex(inv["serial"],12) || !settingsHex(inv["id"],4) ||
-        !settingsText(inv["name"],12) || !settingsInt(inv["type"],0,2) ||
+        !settingsText(inv["name"],12) || !settingsInt(inv["type"],0,3) ||
         !settingsInt(inv["mqttIdx"],0,65535) || !settingsInt(inv["calibration"],-15,15) ||
         !settingsInt(inv["powerLimit"],-1,10000) || !inv["panels"].is<JsonArrayConst>() ||
         inv["panels"].size()!=4) return false;
