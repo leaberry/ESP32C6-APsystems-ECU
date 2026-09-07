@@ -165,6 +165,7 @@ static void gridDecodeQS1Page(const uint8_t *f, size_t len, GridProtectionSnapsh
 }
 
 static uint8_t gridModelFor(uint8_t which) {
+  if (Inv_Prop[which].invType == 3) return 0x30;
   if (Inv_Data[which].modelCode) return Inv_Data[which].modelCode;
   return Inv_Prop[which].invType == 2 ? 0x20 : Inv_Prop[which].invType == 1 ? 0x08 : 0x07;
 }

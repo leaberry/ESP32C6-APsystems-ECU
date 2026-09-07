@@ -1,3 +1,5 @@
+#include "QT2_PROTOCOL.h"
+#include "QT2_CAPTURE.h"
 #include <ArduinoJson.h>
 
 #include <ESPAsyncWebServer.h>
@@ -37,7 +39,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_12"
+#define VERSION  "ESP32C6-ECU_v1_4_13-qt2-dev"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -205,7 +207,9 @@ typedef struct{
 float freq = 0.0;
 float sigQ = 0.0;
 float heath = 0.0;
-float acv = 0.0;
+float acv = 0.0; // Single-phase voltage; QT2 phase L1 for legacy consumers.
+float acvL2 = 0.0;
+float acvL3 = 0.0;
 float dcc[4] = {0.0, 0.0, 0.0, 0.0};              // ampere <100 
 float dcv[4] = {0.0, 0.0, 0.0, 0.0};              // volt <100
 float power[4] = {0.0, 0.0, 0.0, 0.0};       //watt < 1000

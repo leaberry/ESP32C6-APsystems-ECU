@@ -1,7 +1,14 @@
+// QT2 control commands and reply validation have not been established.
+bool inverterSupportsThrottle(int which) {
+  return which >= 0 && which < inverterCount &&
+         Inv_Prop[which].invType >= 0 && Inv_Prop[which].invType <= 2;
+}
+
 // this file is called when the form for throttle is edited
 
 bool setMaxPower(int which) 
 {
+  if (!inverterSupportsThrottle(which)) return false;
   // if there is no coordinator, this command fails
 
   int Scaled;

@@ -54,6 +54,10 @@ static uint16_t ssS16(float value, float multiplier, uint16_t notImplemented = 0
 struct SunSpecValues {
   float watts;
   float voltage;
+  float voltageL2;
+  float voltageL3;
+  bool threePhase;
+  bool unknownAcCurrent;
   float frequency;
   float temperature;
   float dcCurrent;
@@ -75,6 +79,7 @@ static bool ssValuesForUnit(uint8_t unit, SunSpecValues &v) {
     int online = 0, dcVoltageSamples = 0;
     for (int i = 0; i < inverterCount; ++i) {
       v.watts += Inv_Data[i].pw_total;
+      if (Inv_Prop[i].invType == 3) v.unknownAcCurrent = true;
       v.energyWh += energyLifetimeWhFor(i);
       if (polled[i]) {
         ++online;
@@ -100,6 +105,10 @@ static bool ssValuesForUnit(uint8_t unit, SunSpecValues &v) {
   v.watts = Inv_Data[i].pw_total;
   v.energyWh = energyLifetimeWhFor(i);
   v.voltage = Inv_Data[i].acv;
+  v.threePhase = Inv_Prop[i].invType == 3;
+  v.unknownAcCurrent = v.threePhase;
+  v.voltageL2 = Inv_Data[i].acvL2;
+  v.voltageL3 = Inv_Data[i].acvL3;
   v.frequency = Inv_Data[i].freq;
   v.temperature = Inv_Data[i].heath;
   v.online = polled[i];
@@ -130,15 +139,17 @@ static bool ssBuildBank(uint8_t unit, uint16_t *bank) {
   ssPutString(bank, p, v.serial, 16);
   ssPut16(bank, p, unit); ssPut16(bank, p, 0);
 
-  ssPut16(bank, p, 101); ssPut16(bank, p, 50);        // Inverter Model 101
-  float amps = v.voltage > 1 ? v.watts / v.voltage : 0;
+  ssPut16(bank, p, v.threePhase ? 103 : 101); ssPut16(bank, p, 50);        // Inverter Model 101
+  // QT2 captures do not establish AC current or power factor.
+  float amps = v.unknownAcCurrent ? NAN : v.voltage > 1 ? v.watts / v.voltage : 0;
   ssPut16(bank, p, ssU16(amps, 10));                  // A
   ssPut16(bank, p, ssU16(amps, 10));                  // AphA
   ssPut16(bank, p, 0xFFFF); ssPut16(bank, p, 0xFFFF);// AphB/C
   ssPut16(bank, p, (uint16_t)(int16_t)-1);            // A_SF
   ssPut16(bank, p, 0xFFFF); ssPut16(bank, p, 0xFFFF); ssPut16(bank, p, 0xFFFF); // line-line V
   ssPut16(bank, p, ssU16(v.voltage, 1));              // PhVphA
-  ssPut16(bank, p, 0xFFFF); ssPut16(bank, p, 0xFFFF);// PhVphB/C
+  ssPut16(bank, p, v.threePhase ? ssU16(v.voltageL2, 1) : 0xFFFF);
+  ssPut16(bank, p, v.threePhase ? ssU16(v.voltageL3, 1) : 0xFFFF); // PhVphB/C
   ssPut16(bank, p, 0);                                // V_SF
   ssPut16(bank, p, ssS16(v.watts, 1)); ssPut16(bank, p, 0); // W, W_SF
   ssPut16(bank, p, ssU16(v.frequency, 100)); ssPut16(bank, p, (uint16_t)(int16_t)-2);

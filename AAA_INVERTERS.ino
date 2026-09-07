@@ -27,12 +27,13 @@ void handleInverterconfig(AsyncWebServerRequest *request)
        return;
      }
    }
+   const inverters previousProperties = Inv_Prop[iKeuze];
    strlcpy(Inv_Prop[iKeuze].invLocation, request->arg("il").c_str(),
            sizeof(Inv_Prop[iKeuze].invLocation));
    strlcpy(Inv_Prop[iKeuze].invSerial, submittedSerial.c_str(),
            sizeof(Inv_Prop[iKeuze].invSerial));
    Inv_Prop[iKeuze].encrypted = apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial);
-   Inv_Prop[iKeuze].invType = constrain(request->arg("invt").toInt(), 0, 2);
+   Inv_Prop[iKeuze].invType = constrain(request->arg("invt").toInt(), 0, 3);
    Inv_Prop[iKeuze].invIdx = constrain(request->arg("mqidx").toInt(), 0, 65535);
    Inv_Prop[iKeuze].calib = constrain(request->arg("cal").toInt(), -15, 15);
 
@@ -44,11 +45,19 @@ void handleInverterconfig(AsyncWebServerRequest *request)
    Inv_Prop[iKeuze].conPanels[2] = false;
    Inv_Prop[iKeuze].conPanels[3] = false;
    //we only collect this when type = 1
-   if(Inv_Prop[iKeuze].invType == 1) {
+   if(inverterPhysicalPanelCount(iKeuze) == 4) {
    if(request->hasParam("pan3")) { Inv_Prop[iKeuze].conPanels[2] = true;}    
    if(request->hasParam("pan4")) { Inv_Prop[iKeuze].conPanels[3] = true;}    
    }
-   //DebugPrintln("checked panels are : " + String(Inv_Prop[iKeuze].conPanels[0])+ String(Inv_Prop[iKeuze].conPanels[2])+ String(Inv_Prop[iKeuze].conPanels[2])+ String(Inv_Prop[iKeuze].conPanels[3]));
+   // A different model, serial or input selection needs a fresh energy baseline.
+   if (previousProperties.invType != Inv_Prop[iKeuze].invType ||
+       strcmp(previousProperties.invSerial, Inv_Prop[iKeuze].invSerial) ||
+       memcmp(previousProperties.conPanels, Inv_Prop[iKeuze].conPanels,
+              sizeof(previousProperties.conPanels))) {
+     t_saved[iKeuze] = 0;
+     polled[iKeuze] = false;
+     Inv_Data[iKeuze].acvL2 = Inv_Data[iKeuze].acvL3 = 0;
+   }
    //is this a addition?
    String bestand = "/Inv_Prop" + String(iKeuze) + ".str"; // /Inv_Prop0.str
    consoleOut("going to write " + bestand ); 
@@ -221,7 +230,7 @@ String processor(const String& var)
   if(var == "LOADBAG") 
   {
     consoleOut(F("found LOADBAG"));
-    if(Inv_Prop[iKeuze].invType == 1) 
+    if(inverterPhysicalPanelCount(iKeuze) == 4)
       {
       return F("showFunction()"); 
       } else {
@@ -290,23 +299,12 @@ void inverterForm() {
         if (Inv_Prop[iKeuze].conPanels[0]) { toSend.replace("#1check", "checked");}
         if (Inv_Prop[iKeuze].conPanels[1]) { toSend.replace("#2check", "checked");}
                 
-        if(Inv_Prop[iKeuze].invType != 1 ) { // when the type = yc600 (0) or ds3 (2)
-              
-            toSend.replace("onload='showFunction()", "onload='hideFunction()" );
-            if(Inv_Prop[iKeuze].invType == 0) 
-            { 
-              toSend.replace("invtype_0", "selected");
-            } else {
-             toSend.replace("invtype_2", "selected");  
-           }
-        } else { // inv type == 1 
-          
-          //Serial.println(" inverter type = 1");
-          toSend.replace("invtype_1", "selected");
-           if (Inv_Prop[iKeuze].conPanels[2]) { toSend.replace("#3check", "checked");}
-           if (Inv_Prop[iKeuze].conPanels[3]) { toSend.replace("#4check", "checked");}
+        toSend.replace("invtype_" + String(Inv_Prop[iKeuze].invType), "selected");
+        if (inverterPhysicalPanelCount(iKeuze) == 4) {
+          if (Inv_Prop[iKeuze].conPanels[2]) toSend.replace("#3check", "checked");
+          if (Inv_Prop[iKeuze].conPanels[3]) toSend.replace("#4check", "checked");
         }
-        
+
         if(String(Inv_Prop[iKeuze].invID) != "0000") 
         {
            toSend.replace("unpaired", String(Inv_Prop[iKeuze].invID) );

@@ -37,6 +37,13 @@ and applies their one-register offset for that TCP connection.
 
 ## Home Assistant
 
+QT2 per-inverter units expose three-phase Model 103, using the same register
+offsets as Model 101. Phase-to-neutral voltages occupy zero-based registers
+80/81/82 (L1/L2/L3, volts). AC current and line-to-line voltage are unavailable
+for QT2. Unit 1 remains the aggregate Model 101; when QT2 is present, its AC
+current is unavailable and representative voltage averages online L1 values.
+QT2 power and energy use provisional calibration; see [QT2.md](QT2.md).
+
 Home Assistant's built-in Modbus integration can read aggregate and per-inverter
 power and energy without HACS. See [HomeAssistant.md](HomeAssistant.md) for a
 complete `configuration.yaml` example and Energy dashboard instructions.

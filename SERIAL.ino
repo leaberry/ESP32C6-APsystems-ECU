@@ -121,23 +121,18 @@ void handle_Serial () {
             if (strncasecmp(InputBuffer_Serial+3,"THROTTLE=",9) == 0) {
             //input can be 10;EDIT=0-AABB; 
             char *first = InputBuffer_Serial + 12;
-            char *second = strchr(first, '-'); // find dash
-            int kz;
-            if (second) {
-                *second = '\0'; // terminate first number
-                kz = atoi(first);
-                int watt = atoi(second + 1);
-            Serial.println("inverter = " + String(kz));
-            Serial.println("watt = " + String(watt));
-            Serial.println("inverterCount =" + String(inverterCount));
-            desiredThrottle[kz] = watt;
-            }  
-              if ( kz > inverterCount-1 ) {
-              Serial.println("error, no such inverter");
-              return;  
-              }
-             actionFlag = 240 + kz; 
+            char *second = strchr(first, '-');
+            if (!second) return;
+            *second = '\0';
+            int kz = atoi(first);
+            int watt = atoi(second + 1);
+            if (!inverterSupportsThrottle(kz) || watt < 20 || watt > 500) {
+              Serial.println("invalid or unsupported throttle request");
               return;
+            }
+            desiredThrottle[kz] = watt;
+            actionFlag = 240 + kz;
+            return;
           } else 
           //  Serial.println("checking the buffer ");
           //  for (int i = 0; i < 15; i++) {

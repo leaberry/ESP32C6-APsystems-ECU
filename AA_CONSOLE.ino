@@ -56,23 +56,19 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
           if (strncasecmp(txBuffer+3,"THROTTLE=",9) == 0) {
             //input can be 10;EDIT=0-AABB; 
             char *first = txBuffer + 12;
-            char *second = strchr(first, '-'); // find dash
-            int kz; 
-            if (second) {
-                *second = '\0'; // terminate first number
-                kz = atoi(first);
-                int watt = atoi(second + 1);
-            consoleOut("inverter = " + String(kz));
-            consoleOut("watt = " + String(watt));
-            desiredThrottle[kz] = watt;
-            }  
-              if ( kz > inverterCount-1 ) {
-              consoleQueueText("error, no such inverter");
-              return;  
-              }
-             actionFlag = 240 + kz; 
-              consoleQueueText("actionFlag=" + String(actionFlag));
+            char *second = strchr(first, '-');
+            if (!second) return;
+            *second = '\0';
+            int kz = atoi(first);
+            int watt = atoi(second + 1);
+            if (!inverterSupportsThrottle(kz) || watt < 20 || watt > 500) {
+              consoleQueueText("invalid or unsupported throttle request");
               return;
+            }
+            desiredThrottle[kz] = watt;
+            actionFlag = 240 + kz;
+            consoleQueueText("actionFlag=" + String(actionFlag));
+            return;
           } else  
           if (strncasecmp(txBuffer+3,"EDIT=",5) == 0) {
             //input can be 10;EDIT=0-AABB; 
