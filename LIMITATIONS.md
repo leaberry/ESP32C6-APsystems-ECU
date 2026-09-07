@@ -22,6 +22,12 @@ SPIFFS. The 4 MB alternative has about 488 KB SPIFFS and no OTA slot.
 
 ## Still requiring validation or intentionally unsupported
 
+**QT2 is experimental:** captured-frame decoder/integration tests pass, but
+physical QT2 testing of this implementation, DC current/energy calibration,
+input/phase ordering and negative-temperature encoding remain open. QT2
+control writes are disabled. Automatic capture and reference-measurement
+instructions are in [QT2.md](QT2.md).
+
 1. **Encrypted transport:** key derivation and the known-answer test pass, but
    no physical AES-enabled inverter has been tested.
 2. **Other models:** YC600 and QS1 retain known payload builders/decoders but

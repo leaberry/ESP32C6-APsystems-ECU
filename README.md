@@ -1,5 +1,6 @@
 # ESP32-C6 APsystems ECU
-An inexpensive, single-board local ECU for YC600, QS1 and DS3 microinverters.
+An inexpensive, single-board local ECU for YC600, QS1 and DS3 microinverters,
+with experimental QT2 monitoring.
 It pairs and polls APsystems inverters directly with the ESP32-C6's integrated
 IEEE 802.15.4 radio, then presents production through a web interface, HTTP,
 MQTT and read-only SunSpec/Modbus TCP.
@@ -21,7 +22,7 @@ credit.
 
 ## What it does
 
-- pairs and polls up to nine YC600, QS1 or DS3 inverters;
+- pairs and polls up to nine YC600, QS1, DS3 or QT2 inverters;
 - uses the ESP32-C6 radio directly: no Zigbee module, UART wiring or CC25xx
   firmware is required;
 - supports plaintext and the reverse-engineered APsystems L1 AES envelope per
@@ -46,6 +47,13 @@ credit.
   alternative.
 
 ## Hardware status
+
+QT2 support is based on **TobiasTTM's** captured data and original proposal in
+[PR #1](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/1). It adds four
+PV inputs, three phase voltages and automatic downloadable diagnostic capture.
+Current/energy calibration and this integration still need QT2 hardware tests;
+QT2 output limiting and grid-profile writes are disabled. See [QT2.md](QT2.md)
+for the analysis, capture instructions and remaining measurements.
 
 The native transport has been field-tested with three plaintext DS3 inverters,
 including two units on the same PAN and another on a different PAN. Pairing,

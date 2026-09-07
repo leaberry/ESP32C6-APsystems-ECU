@@ -98,6 +98,12 @@ server.on("/console", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", CONSOLE_HTML);
   });
 
+server.on("/diagnostics/qt2", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  qt2CaptureDownload(request);
+});
+
 server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }

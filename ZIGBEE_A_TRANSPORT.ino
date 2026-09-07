@@ -646,6 +646,7 @@ char *readZB(char out[]) {
       diagnosticsAppend(String(line));
       continue;
     }
+    qt2CaptureObserve(which, f.data, f.len, f.source, f.cluster, f.rssi, f.lqi);
     if (which >= 0 && which < inverterCount) {
       Inv_Data[which].radioRssi = f.rssi;
       Inv_Data[which].radioLqi = f.lqi;

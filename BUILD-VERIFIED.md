@@ -1,5 +1,20 @@
 # Build and hardware verification
 
+## QT2 development integration (2026-09-06)
+
+`ESP32C6-ECU_v1_4_13-qt2-dev` builds locally with the existing Arduino core
+3.3.8 toolchain for both 8 MB OTA and 4 MB USB-only layouts. Each application
+uses 1,506,806 bytes of program storage; static globals use 90,816 bytes,
+leaving 236,864 bytes before runtime allocations. The generated partition
+tables are checked against the intended layouts; the Arduino custom-board
+summary's generic maximum is not used as the partition-size limit.
+
+QT2 decoder, energy, MQTT, SunSpec, capture storage and embedded UI regressions
+pass, along with the existing pairing and timezone suites. C++ QT2 tests use
+AddressSanitizer and UndefinedBehaviorSanitizer. The capture tests simulate
+flash storage; physical QT2 operation, calibration, SPIFFS endurance/power-loss
+behavior and a live capture download remain field-test work. See [QT2.md](QT2.md).
+
 This document records evidence for the current source tree. It is not a claim
 that every supported inverter model or control path has been field-tested.
 

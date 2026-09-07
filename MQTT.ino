@@ -84,6 +84,10 @@ void MQTT_Receive_Callback(char *topic, byte *payload, unsigned int length)
          consoleOut("invalid value(s), skipping");
          return; 
          }
+      if (!inverterSupportsThrottle(invert)) {
+        consoleOut("output limiting is not supported for this inverter");
+        return;
+      }
       desiredThrottle[invert] = throtVal;
       actionFlag = 240 + invert;  
     }  

@@ -56,6 +56,10 @@ bool handleForms(AsyncWebServerRequest *request)
        }
        Serial.println("the form is for inverter " + String(Inv));
        
+       if (!inverterSupportsThrottle(Inv)) {
+         request->send(400, "text/plain", "Output limiting is not supported for this inverter model");
+         return false;
+       }
        desiredThrottle[Inv] = throttle;
        
        //Inv_Prop[Inv].maxPower = request->getParam("pMax")->value().toInt();

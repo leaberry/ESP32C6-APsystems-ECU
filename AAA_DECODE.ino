@@ -1,8 +1,13 @@
+#include "QT2_PROTOCOL.h"
+
 // ******************************************************************
 //                    decode polling answer
 // ******************************************************************
 int decodePollAnswer(int which)
 {
+    if (which < 0 || which >= inverterCount) return 15;
+    Qt2Telemetry qt2 = {};
+    const bool qt2WasOnGrid = Inv_Data[which].freq > 0;
     char messageToDecode[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
   
     char s_d[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
@@ -20,6 +25,7 @@ int decodePollAnswer(int which)
     //retrieve the poll answer
     strcpy(messageToDecode, readZB(s_d));
     if (readCounter == 0) {
+        qt2CaptureObserve(which, nullptr, 0, 0, 0x0106, 0, 0);
         consoleOut(F("no answer on poll request"));  
         return 50; //no answer
       }
@@ -64,7 +70,19 @@ int decodePollAnswer(int which)
         
     //shorten the message by removing everything before 4481
 
-    tail = split(messageToDecode, "44810000"); // remove the 0000 as well
+    tail = strstr(messageToDecode, "44810000");
+    if (!tail) return 15;
+    tail += 8;
+    if (strlen(tail) < 30) return 15;
+    if (Inv_Prop[which].invType == 3) {
+      // Validate the stripped ASDU, not the length of its transport wrapper.
+      const int hi = qt2Nibble(tail[28]), lo = qt2Nibble(tail[29]);
+      if (hi < 0 || lo < 0 || ((hi << 4) | lo) != 105 ||
+          !decodeQt2(tail + 30, strlen(tail + 30), Inv_Prop[which].invSerial, qt2)) {
+        consoleOut("invalid QT2 telemetry frame");
+        return 15;
+      }
+    } // remove the 0000 as well
     //tail = after removing the 1st part
     // in tail at offset 14, 2 bytes with signalQuality reside   
 
@@ -108,7 +126,7 @@ int decodePollAnswer(int which)
 
         memset(&s_d[0], 0, sizeof(s_d)); //zero out 
         delayMicroseconds(250);   
-        strncpy(s_d, tail + 30, strlen(tail));
+        strlcpy(s_d, tail + 30, sizeof(s_d));
         delayMicroseconds(250); //give memset a little bit of time
 
       if( Inv_Prop[which].invType == 2 ) 
@@ -136,6 +154,16 @@ int decodePollAnswer(int which)
          Inv_Data[which].dcc[0] =  extractValue(60, 4, 1, 0, s_d ) * 0.0125;
          // current ch1 offset 34
          Inv_Data[which].dcc[1] =  extractValue(64, 4, 1, 0, s_d ) * 0.0125;
+      } else if (Inv_Prop[which].invType == 3) {
+        Inv_Data[which].acv = qt2.acv[0];
+        Inv_Data[which].acvL2 = qt2.acv[1];
+        Inv_Data[which].acvL3 = qt2.acv[2];
+        Inv_Data[which].freq = qt2.frequency;
+        Inv_Data[which].heath = qt2.temperature;
+        for (int panel = 0; panel < 4; ++panel) {
+          Inv_Data[which].dcv[panel] = qt2.dcv[panel];
+          Inv_Data[which].dcc[panel] = qt2.dcc[panel];
+        }
       } else {
          
         //yc600 or QS1
@@ -196,7 +224,10 @@ We keep stacking the increases so we have also en_inc_total
     // 1st the time period 
     // at the start of this we have a value of the t_new[which] of the former poll
     // if this is 0 there was no former poll 
-    switch (Inv_Prop[which].invType) {    
+    switch (Inv_Prop[which].invType) {
+      case 3:
+         t_extr = qt2.timestamp;
+         break;
       case 0: // yc600
          t_extr = extractValue(34, 4, 1, 0, s_d); // dataframe timestamp
          break;
@@ -216,6 +247,10 @@ We keep stacking the increases so we have also en_inc_total
     // after every ECU reboot. A backwards/non-advancing inverter clock also
     // requires a fresh baseline.
     establishBaseline = t_saved[which] == 0 || t_extr <= t_saved[which];
+    // QT2 counters creep in both mains-off captures. Do not credit that as AC
+    // energy, or carry an interval across grid loss/recovery into production.
+    if (Inv_Prop[which].invType == 3 && (!qt2WasOnGrid || qt2.frequency == 0))
+      establishBaseline = true;
     ts = establishBaseline ? 0 : t_extr - t_saved[which];
     //whatever happened we remember t_extr as the new time value
     t_saved[which] = t_extr;
@@ -249,10 +284,13 @@ We keep stacking the increases so we have also en_inc_total
             consoleOut(" * decoding panel " + String(x) + " * en_old " + String(en_old[x]) );
 
             // now we extract a new energy_new[which][x] 
-            en_extr = extractValue(offst+x*increment, btc, 1, 0, s_d); // offset 74 todays module energy channel 0
+            en_extr = Inv_Prop[which].invType == 3 ? (float)qt2.energy[x] :
+                extractValue(offst+x*increment, btc, 1, 0, s_d); // offset 74 todays module energy channel 0
 
             //we calculate a new energy value for this panel and remember it
-            if ( Inv_Prop[which].invType == 2) {
+            if (Inv_Prop[which].invType == 3) {
+              en_saved[which][x] = en_extr / 31600.0f; // Provisional Wh scale; see QT2.md.
+            } else if ( Inv_Prop[which].invType == 2) {
               en_saved[which][x] = (en_extr / (float)1000 /100) * 1.66; //[Wh]
             } else {
               en_saved[which][x] = (en_extr * 8.311F / (float)3600); //[Wh]
@@ -342,7 +380,7 @@ if(Mqtt_Format == 0) return;
   bool reTain = false;
   char pan[96]={0};
   char tail[64]={0};
-  char toMQTT[300]={0};
+  char toMQTT[512]={0};
 
 // the json to domoticz must be something like {"idx" : 7, "nvalue" : 0,"svalue" : "90;2975.00"}
  
@@ -358,8 +396,12 @@ if(Mqtt_Format == 0) return;
        
    case 3:
        snprintf(toMQTT, sizeof(toMQTT), "{\"inv_serial\":\"%s\",\"freq\":%.1f,\"temp\":%.1f,\"acv\":%.1f,\"signal\":%.1f,\"polled\":%d" , Inv_Prop[which].invSerial, Inv_Data[which].freq, Inv_Data[which].heath, Inv_Data[which].acv, Inv_Data[which].sigQ, polled[which]);
-       //char pan[50]={0};
-       if( Inv_Prop[which].invType == 1 ) { // qs1
+       if (Inv_Prop[which].invType == 3) {
+         snprintf(pan, sizeof(pan), ",\"acv0\":%.1f,\"acv1\":%.1f,\"acv2\":%.1f",
+                  Inv_Data[which].acv, Inv_Data[which].acvL2, Inv_Data[which].acvL3);
+         strlcat(toMQTT, pan, sizeof(toMQTT));
+       }
+       if( inverterPhysicalPanelCount(which) == 4 ) { // qs1
            snprintf(pan, sizeof(pan), ",\"dcv\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].dcv[0], Inv_Data[which].dcv[1],Inv_Data[which].dcv[2],Inv_Data[which].dcv[3]);
            strlcat(toMQTT, pan, sizeof(toMQTT));
            snprintf(pan, sizeof(pan), ",\"dcc\":[%.1f,%.1f,%.1f,%.1f]", Inv_Data[which].dcc[0], Inv_Data[which].dcc[1],Inv_Data[which].dcc[2],Inv_Data[which].dcc[3]);
@@ -390,12 +432,17 @@ if(Mqtt_Format == 0) return;
        break;
     case 4:
         snprintf(toMQTT, sizeof(toMQTT), "{\"inv_serial\":\"%s\",\"freq\":%.1f,\"temp\":%.1f,\"acv\":%.1f" , Inv_Prop[which].invSerial, Inv_Data[which].freq, Inv_Data[which].heath, Inv_Data[which].acv);      
+        if (Inv_Prop[which].invType == 3) {
+          snprintf(pan, sizeof(pan), ",\"acv0\":%.1f,\"acv1\":%.1f,\"acv2\":%.1f",
+                   Inv_Data[which].acv, Inv_Data[which].acvL2, Inv_Data[which].acvL3);
+          strlcat(toMQTT, pan, sizeof(toMQTT));
+        }
         snprintf(pan, sizeof(pan), ",\"ch0\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[0], Inv_Data[which].dcc[0], Inv_Data[which].power[0], en_saved[which][0]);
         strlcat(toMQTT, pan, sizeof(toMQTT));
         snprintf(pan, sizeof(pan), ",\"ch1\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[1], Inv_Data[which].dcc[1], Inv_Data[which].power[1], en_saved[which][1]);
         strlcat(toMQTT, pan, sizeof(toMQTT));
 
-        if( Inv_Prop[which].invType == 1 ) { // add ch2 and ch3
+        if( inverterPhysicalPanelCount(which) == 4 ) { // add ch2 and ch3
             snprintf(pan, sizeof(pan), ",\"ch2\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[2], Inv_Data[which].dcc[2], Inv_Data[which].power[2], en_saved[which][2]);
             strlcat(toMQTT, pan, sizeof(toMQTT));
             snprintf(pan, sizeof(pan), ",\"ch3\":[%.1f,%.1f,%.1f,%.2f]", Inv_Data[which].dcv[3], Inv_Data[which].dcc[3], Inv_Data[which].power[3], en_saved[which][3]);
