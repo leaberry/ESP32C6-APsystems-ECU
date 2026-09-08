@@ -54,7 +54,7 @@ bool submitRawAps(uint16_t dst, uint8_t dep, uint8_t sep, uint16_t cluster,
 '''
 
 for signature in ("static uint8_t hexNibble(", "static uint8_t hexByte(",
-                  "static uint16_t hexLe16(", "void sendZB("):
+                  "static uint16_t hexLe16(", "bool sendZB("):
     harness += "\n" + function(signature) + "\n"
 
 harness += r'''

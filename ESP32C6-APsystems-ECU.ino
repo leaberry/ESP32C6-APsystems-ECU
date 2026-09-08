@@ -31,6 +31,7 @@ void setup() {
 
   SPIFFS_read();
   flightRecorderBegin();
+  pairAuditBeginStorage();
   // now we know the number of inverters we can find an interval between pollings
   //int pollintervall = 300/inverterCount;
   // takes care for the return to the last webpage after reboot

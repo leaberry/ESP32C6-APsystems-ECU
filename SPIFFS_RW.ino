@@ -46,6 +46,9 @@ void writeStruct( String whichfile, int nummer) {
 }
 
 bool leesStruct(String whichfile) {
+      // Recover an interrupted pairing file replacement before loading settings.
+      if (!SPIFFS.exists(whichfile) && SPIFFS.exists(whichfile + ".pair-old"))
+        SPIFFS.rename(whichfile + ".pair-old", whichfile);
       Serial.println("leesStruct whichfile = " + whichfile);
       if (!SPIFFS.exists(whichfile)) {
          Serial.print(F("Failed to open for read")); Serial.println(whichfile);

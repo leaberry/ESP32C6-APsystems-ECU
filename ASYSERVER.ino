@@ -107,6 +107,15 @@ server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) 
   request->send(response);
 });
 
+server.on("/diagnostics/pairing-log", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain; charset=utf-8", pairingAuditReport(24));
+  response->addHeader("Content-Disposition", "attachment; filename=aps-ecu-pairing-log.txt");
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+});
+
 server.on("/diagnostics/flight-recorder", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
@@ -468,6 +477,9 @@ if (!inverterRequestIndex(request, "inv", false, requestedIndex)) { request->sen
 // set the array into a json object
   String json="{";
   json += "\"invID\":\"" + String(Inv_Prop[requestedIndex].invID) + "\"";
+  const char *state = pendingPairInverter == requestedIndex ? "pairing" :
+      lastPairInverter == requestedIndex ? (lastPairSucceeded ? "success" : "failed") : "idle";
+  json += ",\"state\":\"" + String(state) + "\"";
   json += "}";
   request->send(200, "text/json", json);
   json = String();

@@ -116,6 +116,8 @@ String diagnosticsReportText() {
   report += diagnosticsText();
   report += F("\nPERSISTENT FLIGHT RECORDER (newest 30 records)\n------------------------------------------------\n");
   report += flightRecorderReport(30);
+  report += F("\nPERSISTENT PAIRING LOG (newest 3 attempts)\n");
+  report += pairingAuditReport(3);
   return report;
 }
 

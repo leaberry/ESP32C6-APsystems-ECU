@@ -1,5 +1,10 @@
 void handleInverterconfig(AsyncWebServerRequest *request)
 {
+  if (pendingPairInverter >= 0) {
+    request->send(409, "text/plain", "Wait for pairing to finish before editing inverters");
+    return;
+  }
+
   // form action = handleInverterconfig
   // we only collect the data for this specific inverter
   // collect the serverarguments
@@ -74,6 +79,11 @@ void handleInverterconfig(AsyncWebServerRequest *request)
 // *****************************************************************************************
 void handleInverterdel(AsyncWebServerRequest *request)
 {
+  if (pendingPairInverter >= 0) {
+    request->send(409, "text/plain", "Wait for pairing to finish before editing inverters");
+    return;
+  }
+
   // form action = handleInverterconfig
   // we only collect the data for this specific inverter
   // read the serverargs and copy the values into the variables

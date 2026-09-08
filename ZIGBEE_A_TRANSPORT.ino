@@ -128,15 +128,16 @@ static bool radioPreference(const char *serial, uint32_t *value, bool write) {
   if (!serial || strlen(serial) != 12) return false;
   Preferences radioPrefs;
   if (!radioPrefs.begin("apsradio", !write)) return false;
-  if (write) radioPrefs.putUInt(serial, *value);
+  bool saved = false;
+  if (write) saved = radioPrefs.putUInt(serial, *value) == sizeof(*value);
   else *value = radioPrefs.getUInt(serial, 0);
   radioPrefs.end();
-  return write || *value != 0;
+  return write ? saved : *value != 0;
 }
 
 static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
                           const char *reason) {
-  if (!rawRadioStarted || !frame || bytes < 4 || bytes > 126 ||
+  if (!rawRadioStarted || !frame || bytes < 4 || bytes > 125 ||
       !rawTxMutex || !rawTxDone) return false;
   if (xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) {
     diagnosticsAppend(String("802.15.4 TX busy: ") + reason);
@@ -264,7 +265,7 @@ static void deliverAsdu(RawReassembly *session) {
     char serial[13];
     serialBytesToText(complete.data, serial);
     uint32_t peer = ((uint32_t)session->pan << 16) | session->nwkSource;
-    radioPreference(serial, &peer, true);
+    if (!pairReceiveActive()) radioPreference(serial, &peer, true);
     char line[160];
     snprintf(line, sizeof(line),
              "APS reassembled serial=%s pan=0x%04X src=0x%04X blocks=%u len=%u",
@@ -277,15 +278,16 @@ static void deliverAsdu(RawReassembly *session) {
 }
 
 static void processApsFrame(const RawRxFrame &rx) {
+  if (pairReceiveActive()) return; // Raw matcher owns pairing; no telemetry ACK/PAN changes.
   const uint8_t *b = rx.bytes;
-  if (rx.captured < 29) return;
+  if (rx.captured < 29 || b[0] > 127 || (size_t)b[0] + 1 != rx.captured) return;
   uint8_t phyLength = b[0];
   size_t end = phyLength > 2 ? min((size_t)rx.captured, (size_t)phyLength - 1U) : 0;
   if (end < 28) return;
 
   // Current APsystems frames use compressed short/short MAC addressing.
   uint16_t macFcf = readLe16(b + 1);
-  if ((macFcf & 0xCC00) != 0x8800 || !(macFcf & 0x0040)) return;
+  if ((macFcf & ~uint16_t(0x1030)) != 0x8841) return;
   uint16_t pan = readLe16(b + 4);
   uint16_t macDestination = readLe16(b + 6);
   uint16_t macSource = readLe16(b + 8);
@@ -293,7 +295,8 @@ static void processApsFrame(const RawRxFrame &rx) {
 
   size_t p = 10;
   uint16_t nwkFcf = readLe16(b + p);
-  if ((nwkFcf & 0x0003) != 0 || ((nwkFcf >> 2) & 0x0F) != 2) return;
+  if ((nwkFcf & 0x0003) != 0 || ((nwkFcf >> 2) & 0x0F) != 2 ||
+      (nwkFcf & 0x0200)) return; // No Zigbee NWK-security decoder.
   uint16_t nwkDestination = readLe16(b + p + 2);
   uint16_t nwkSource = readLe16(b + p + 4);
   p += 8;
@@ -307,7 +310,7 @@ static void processApsFrame(const RawRxFrame &rx) {
   if (nwkDestination != 0x0000 || p + 8 > end) return;
 
   uint8_t apsFcf = b[p++];
-  if ((apsFcf & 0x03) != 0) return;  // APS data only.
+  if ((apsFcf & 0x23) != 0) return;  // APS data only.
   uint8_t delivery = (apsFcf >> 2) & 0x03;
   if (delivery != 0) return;         // Inverter replies are unicast.
   uint8_t destEp = b[p++];
@@ -325,6 +328,11 @@ static void processApsFrame(const RawRxFrame &rx) {
     if (fragmentation) blockField = b[p++];
   }
   size_t payloadLength = end > p ? end - p : 0;
+
+  // Short pairing replies have already reached the dedicated raw matcher.
+  // They are plaintext control traffic, never encrypted telemetry.
+  if (!fragmentation && cluster == 0x0101 && sourceEp == 0x14 &&
+      payloadLength == 8) return;
 
   if (!fragmentation) {
     if (!payloadLength || payloadLength > 300 || !apsRxQueue) return;
@@ -413,12 +421,13 @@ static bool submitRawAps(uint16_t requestedDestination, uint8_t dstEp,
       diagnosticsAppend(String(line));
     }
   }
-  rawRadioSetPan(pan);
+  if (!rawRadioSetPan(pan)) return false;
 
   uint8_t encrypted[300];
   size_t encryptedLength = 0;
-  bool useEncryption = which >= 0 ? apsInverterUsesEncryption(which)
-                                  : apsAllInvertersEncrypted();
+  // Pairing control frames are plaintext even for encrypted inverter models.
+  bool useEncryption = cluster == 0x0006 &&
+      (which >= 0 ? apsInverterUsesEncryption(which) : apsAllInvertersEncrypted());
   if (useEncryption && apsEncryptOutgoing(which, asdu, asduLength, encrypted,
                                            sizeof(encrypted), &encryptedLength,
                                            which < 0)) {
@@ -510,7 +519,17 @@ extern "C" void IRAM_ATTR esp_ieee802154_transmit_failed(
 
 bool apsRadioRememberPeer(const char *serial, uint16_t pan, uint16_t source) {
   uint32_t peer = ((uint32_t)pan << 16) | source;
-  return pan != 0 && pan != 0xFFFF && radioPreference(serial, &peer, true);
+  return pan != 0 && pan != 0xFFFF && pairValidAddress(source) &&
+      radioPreference(serial, &peer, true);
+}
+
+bool apsRadioForgetPeer(const char *serial) {
+  if (!serial || strlen(serial) != 12) return false;
+  Preferences prefs;
+  if (!prefs.begin("apsradio", false)) return false;
+  bool ok = !prefs.isKey(serial) || prefs.remove(serial);
+  prefs.end();
+  return ok;
 }
 
 bool apsRadioLoadPeer(const char *serial, uint16_t *pan, uint16_t *source) {
@@ -571,9 +590,9 @@ bool rawRadioStart() {
   return rawRadioStarted;
 }
 
-void sendZB(char command[]) {
+bool sendZB(char command[]) {
   size_t chars = strlen(command);
-  if (chars < 4 || (chars & 1)) return;
+  if (chars < 4 || (chars & 1)) return false;
 
   if (!strncmp(command, "2401", 4) && chars >= 24) {
     const char *p = command + 4;
@@ -588,9 +607,8 @@ void sendZB(char command[]) {
     uint8_t payload[300];
     length = min((size_t)length, min(sizeof(payload), strlen(p) / 2));
     for (uint16_t i = 0; i < length; ++i) payload[i] = hexByte(p + 2 * i);
-    submitRawAps(destination, dstEp, srcEp, cluster, payload, length,
+    return submitRawAps(destination, dstEp, srcEp, cluster, payload, length,
                  radius, options);
-    return;
   }
 
   if (!strncmp(command, "2402", 4) && chars >= 44) {
@@ -610,13 +628,14 @@ void sendZB(char command[]) {
     uint8_t payload[300];
     if (length > sizeof(payload) || length != strlen(p) / 2) {
       diagnosticsAppend("invalid AF_DATA_REQUEST_EXT payload length");
-      return;
+      return false;
     }
     for (uint16_t i = 0; i < length; ++i) payload[i] = hexByte(p + 2 * i);
     apsExpectedWhich = -1;
-    submitRawAps(0xFFFF, dstEp, srcEp, cluster, payload, length,
+    return submitRawAps(0xFFFF, dstEp, srcEp, cluster, payload, length,
                  radius, options);
   }
+  return false;
 }
 
 char *readZB(char out[]) {
