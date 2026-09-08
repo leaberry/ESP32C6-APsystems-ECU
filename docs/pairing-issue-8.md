@@ -133,8 +133,7 @@ commands carry an ECU identity and target PAN; independently implemented
 also explicitly migrates an inverter from the rendezvous PAN to the new ECU's PAN.
 That is evidence of a possible network change, not evidence that two ECUs can
 pair without disrupting each other. A spare ESP32 alone does not remove that risk.
-Use a spare inverter or a separately agreed maintenance test. No pairing requests
-were made during this investigation or the later deployment below.
+Use a spare inverter or a separately agreed maintenance test.
 
 ## Hardware validation and logging correction
 
