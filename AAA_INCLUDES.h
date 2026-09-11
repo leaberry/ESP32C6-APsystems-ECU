@@ -1,3 +1,5 @@
+#include "PAIRING_PROTOCOL.h"
+#include "PAIRING_AUDIT.h"
 #include <ArduinoJson.h>
 
 #include <ESPAsyncWebServer.h>
@@ -245,7 +247,8 @@ long  mqtt_lastConnect = 0;
   int dst;
   int iKeuze;
   int pendingPairInverter = -1;
-  char pendingPairPreviousId[5] = {};
+  int lastPairInverter = -1;
+  bool lastPairSucceeded = false;
 //  int inverterTopoll = 0;
   bool timeRetrieved = false;
   int networksFound = 0; // used in the portal

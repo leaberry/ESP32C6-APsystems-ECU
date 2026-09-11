@@ -1,105 +1,54 @@
-void pairOnActionflag() {
-//start with setup the coordinator
-//can we pair when the radio is up for normal operation
-   const int which = pendingPairInverter;
-   if (which < 0 || which >= inverterCount) {
-     pendingPairInverter = -1;
-     pendingPairPreviousId[0] = '\0';
-     Update_Log(4, "invalid inverter");
-     consoleOut("pairing rejected: invalid pending inverter");
-     return;
-   }
-
-   char term[20];
-   snprintf(term, sizeof(term), "inverter %.10s", Inv_Prop[which].invSerial);
-   Update_Log(4, term);
-    if( !coordinator(false) ) {
-      //term="pairing failed, zb down";
-      Update_Log(4, "failed");
-      consoleOut("pairing failed, zb down");
-      strlcpy(Inv_Prop[which].invID,
-              pendingPairPreviousId[0] ? pendingPairPreviousId : "0000",
-              sizeof(Inv_Prop[which].invID));
-      writeStruct("/Inv_Prop" + String(which) + ".str", which);
-      pendingPairInverter = -1;
-      pendingPairPreviousId[0] = '\0';
-       return;
-    }
-
-   consoleOut("trying pair inv " + String(which));
-   char previousId[5] = {};
-   strlcpy(previousId,
-           pendingPairPreviousId[0] ? pendingPairPreviousId : "0000",
-           sizeof(previousId));
-  // now that we know that the radio is up, we don't need to test this in the pairing routine
-
-  if( pairing(which) ) {
-    //DebugPrintln("pairing success, saving configfile");
-    String term = "success, inverter got id " + String(Inv_Prop[which].invID);
-    Update_Log(2, "success");
-    consoleOut(term);
-    //} else if(diagNose==2){ws.textAll(term);}  
-
-  } else {
-    // A failed retry must not destroy a previously working pairing.
-    if (strcmp(previousId, "0000") && strcmp(previousId, "1111"))
-      strlcpy(Inv_Prop[which].invID, previousId,
-              sizeof(Inv_Prop[which].invID));
-    else
-      strlcpy(Inv_Prop[which].invID, "0000",
-              sizeof(Inv_Prop[which].invID));
-    String term = "failed, inverter got id " + String(Inv_Prop[which].invID);
-    Update_Log(4, "failed");
-    consoleOut(term);
-      
-  }
-    String bestand = "/Inv_Prop" + String(which) + ".str"; // /Inv_Prop0.str
-    writeStruct(bestand, which); // alles opslaan in SPIFFS
-   
-   //after successfull pairing we issue the command for normal ops
-   sendNO();
-   checkCoordinator(); // updates the log
-   pendingPairInverter = -1;
-   pendingPairPreviousId[0] = '\0';
-}
-
+// The HTTP handler only schedules work; loop() owns the radio transaction.
 void handlePair(AsyncWebServerRequest *request) {
-
-     strlcpy(pendingPairPreviousId, Inv_Prop[iKeuze].invID,
-             sizeof(pendingPairPreviousId));
-     strncpy(Inv_Prop[iKeuze].invID, "1111", 4); // this value makes the pairing page visable
-     pendingPairInverter = iKeuze;
-     actionFlag = 60; // we do this because no delay is alowed within an async request
-     toSend=FPSTR(WAIT_PAIR);
-     toSend.replace("{#}", String(iKeuze));
-     request->send(200, "text/html", toSend); //send the html code to the client
+  uint8_t serial[6];
+  if (iKeuze < 0 || iKeuze >= inverterCount ||
+      !pairSerialBytes(Inv_Prop[iKeuze].invSerial, serial)) {
+    request->send(400, "text/plain", "Save a valid 12-digit inverter serial first");
+    return;
+  }
+  pendingPairInverter = iKeuze;
+  lastPairInverter = iKeuze;
+  lastPairSucceeded = false;
+  // Keep the stored ID intact. Pending/result status is separate from routing.
+  actionFlag = 60;
+  String page = FPSTR(WAIT_PAIR);
+  page.replace("{#}", String(iKeuze));
+  request->send(200, "text/html", page);
 }
 
+void pairOnActionflag() {
+  const int which = pendingPairInverter;
+  bool success = false;
+  if (which >= 0 && which < inverterCount) {
+    pairAuditBegin(which, Inv_Prop[which].invSerial);
+    bool radioReady = coordinator(false);
+    pairAuditStep(PA_RADIO, radioReady, 0, 0);
+    if (radioReady) {
+    consoleOut("trying pair inv " + String(which));
+    success = pairing(which);
+    }
+    pairAuditStep(PA_DONE, success, 0, 0);
+  }
+  lastPairSucceeded = success;
+  Update_Log(success ? 2 : 4, success ? "success" : "failed");
+  consoleOut(success ? "pairing verified and saved" :
+                      "pairing not verified; previous local pairing retained");
+  pendingPairInverter = -1;
+}
 
 bool pairing(int which) {
-
-  //the pairing process consistst of 4 commands sent to the coordinator
-  char pairCmd[254]={0};
-  char s_d[250]={0};
-  char ecu_id_reverse[13];  
-  ECU_REVERSE().toCharArray(ecu_id_reverse, 13);
-  char ecu_short[5]={0};
-  strncat(ecu_short, ECU_ID + 2, 2); // D8A3011B9780 should be A3D8
-  strncat(ecu_short, ECU_ID, 2);
-  //ecu_short[5]='\0'; no need for as strncat terminates with \0
-  String term = "";
-  bool success=false;
-  // Factory/unpaired APsystems inverters rendezvous on PAN 0xFFFF. The old
-  // CC253x ZNP accepted a destination-PAN override in AF_DATA_REQUEST_EXT;
-  // Espressif's public APS request has no equivalent field, so temporarily
-  // move the integrated radio's PAN and restore it after the sequence.
-  radioTraceBegin();
-  if (!apsUsePairingPan(true)) {
-    consoleOut("could not enter APsystems pairing PAN 0xFFFF");
-    radioTraceEnd();
-    return false;
-  }
-  for ( int y = 0; y < 4; y++) {
+  if (which < 0 || which >= inverterCount) return false;
+  char pairCmd[254] = {};
+  char ecu_id_reverse[13];
+  ECU_REVERSE().toCharArray(ecu_id_reverse, sizeof(ecu_id_reverse));
+  char ecu_short[5];
+  snprintf(ecu_short, sizeof(ecu_short), "%02X%02X",
+           zbOperationalPan >> 8, zbOperationalPan & 0xFF);
+  if (!pairReceiveBegin(Inv_Prop[which].invSerial, zbOperationalPan)) return false;
+  empty_serial2();
+  bool sequenceOk = radioTraceBegin();
+  pairAuditStep(PA_RADIO, sequenceOk, 1, 0xFFFF);
+  for (int y = 0; y < 4 && sequenceOk; ++y) {
     switch (y) {
         case 0:// command 0
             // build command 0 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0D0200000F1100" + String(invSerial) + "FFFF10FFFF" + ecu_id_reverse
@@ -118,116 +67,107 @@ bool pairing(int which) {
             // now build command 3 this is "24020FFFFFFFFFFFFFFFFF14FFFF14"  + "010103000F0600" + ecu_id_reverse,
             snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF14010103000F0600%s", ecu_id_reverse);
        }
-    delayMicroseconds(250);
-    // send 
-    term = "pair command " + String(y) +  " = " + String(pairCmd);
-    consoleOut(term); 
-    //else if(diagNose == 2) ws.textAll(term);
+    // Reassert PAN for every step; never let another receive operation choose it.
+    sequenceOk = apsUsePairingPan(true);
+    if (!sequenceOk) { pairAuditStep(PA_COMMAND, false, y, 0xFFFF); break; }
+    consoleOut("pair command " + String(y) + " = " + String(pairCmd));
+    sequenceOk = sendZB(pairCmd);
+    pairAuditStep(PA_COMMAND, sequenceOk, y, 0xFFFF);
+    if (!sequenceOk) break;
+    // The worker collects direct replies throughout this window, without readZB().
+    delay(4700);
+  }
 
-    sendZB(pairCmd);
-    delay(1500); // give the inverter the chance to answer
-    char rawInverterId[5] = {};
-    if (radioTraceFindPairReply(Inv_Prop[which].invSerial, rawInverterId)) {
-      strlcpy(Inv_Prop[which].invID, rawInverterId,
-              sizeof(Inv_Prop[which].invID));
-      success = true;
-      consoleOut("accepted cross-PAN pairing reply, inverter ID " +
-                 String(Inv_Prop[which].invID));
-    }
-      //check if anything was received
-      // after sending cmd 1 or 2 we can expect an answer to decode
-      // we let decodePairMessage retrieve the answer then.
-      // the answers on cmd0 or cmd3 are flushed
-    if(y == 1 || y == 2) {
-      // if y 1 or 2 we catch and decode the answer
-      if ( decodePairMessage(which) ) 
-        {
-           success = true; // if at least one of these 2 where true we had success
-        } 
-    } else { 
-        // if not y == 1 or y == 2 we waste the received message
-        readZB(s_d);  
+  // A discovery/status reply on FFFF proves contact, not successful migration.
+  // Query again on the operational PAN after the four-command handshake settles.
+  bool restored = apsUsePairingPan(false);
+  if (sequenceOk && restored) {
+    consoleOut("pairing: settling before operating-PAN verification");
+    delay(10000);
+    pairReceiveVerify();
+    for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
+      snprintf(pairCmd, sizeof(pairCmd),
+               "24020FFFFFFFFFFFFFFFFF14FFFF140C0201000F0600%s",
+               Inv_Prop[which].invSerial);
+      sequenceOk = apsUsePairingPan(false) && sendZB(pairCmd);
+      pairAuditStep(PA_VERIFY_QUERY, sequenceOk, attempt, zbOperationalPan);
+      if (sequenceOk) delay(4700);
     }
   }
-  //now all 4 commands have been sent
+  char verifiedId[5] = {};
+  uint16_t pan = 0, source = 0;
+  bool verified = pairReceiveFinish(verifiedId, &pan, &source);
+  // Previously validated units can retain a different PAN. Require a fresh
+  // serial-matched response there, rather than accepting the saved route blindly.
+  uint16_t previousPan = 0, previousSource = 0;
+  if (sequenceOk && restored && !verified &&
+      apsRadioLoadPeer(Inv_Prop[which].invSerial, &previousPan, &previousSource) &&
+      previousPan && previousPan != 0xFFFF && previousPan != zbOperationalPan) {
+    pairReceiveBegin(Inv_Prop[which].invSerial, previousPan);
+    pairReceiveVerify();
+    for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
+      sequenceOk = apsUseSpecificPan(previousPan, "saved pairing verification") && sendZB(pairCmd);
+      pairAuditStep(PA_SAVED_NETWORK, sequenceOk, attempt, previousPan);
+      if (sequenceOk) delay(4700);
+    }
+    verified = pairReceiveFinish(verifiedId, &pan, &source);
+  }
   radioTraceEnd();
-  if (!success) {
-    char inferredInverterId[5] = {};
-    if (radioTraceInferPairPeer(Inv_Prop[which].invSerial,
-                                inferredInverterId)) {
-      strlcpy(Inv_Prop[which].invID, inferredInverterId,
-              sizeof(Inv_Prop[which].invID));
-      success = true;
-      consoleOut("accepted uniquely inferred pairing peer, compatibility ID " +
-                 String(Inv_Prop[which].invID));
-    }
+  restored = apsUsePairingPan(false) && restored;
+  pairAuditStep(PA_RESTORE, restored, 0, zbOperationalPan);
+  empty_serial2();
+  bool saved = sequenceOk && restored && verified &&
+      saveVerifiedPairing(which, verifiedId, pan, source);
+  if (sequenceOk && restored && verified) pairAuditStep(PA_STORAGE, saved, 0, pan);
+  pairReceiveStop();
+  if (!saved) {
+    consoleOut("pairing failed: transmit, restore, verification, or persistence; see journal");
+    return false;
   }
-  if (!apsUsePairingPan(false)) {
-    consoleOut("warning: could not restore operational Zigbee PAN");
-  }
-  if(success) {return true; } else { return false;}  // when paired 0x103A
+  consoleOut("verified pairing ID " + String(verifiedId));
+  sendNO();
+  checkCoordinator();
+  return true;
 }
 
-
-bool decodePairMessage(int which)
-{
-    char messageToDecode[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
-    char _CC2530_answer_string[] = "44810000";
-    char _noAnswerFromInverter[32] = "FE0164010064FE034480CD14011F";
-    char * result;                                 
-    char temp[13];
-    char s_d[250]={0};
-    String term = "";
-
-    strcpy(messageToDecode, readZB(s_d));        
-    //Serial.println("messageToDecode = " + String(messageToDecode));
-     consoleOut("decoding : " + String(messageToDecode));
-    if (readCounter == 0 || strlen(messageToDecode) < 6 ) // invalid message
-    {
-      consoleOut("no usable code, returning..");
-    messageToDecode[0]='\0';
+// Stage the file before touching NVS. SPIFFS cannot rename over an existing
+// file, so retain a backup until both stores have been updated.
+bool saveVerifiedPairing(int which, const char *id, uint16_t pan, uint16_t source) {
+  auto updated = Inv_Prop[which];
+  strlcpy(updated.invID, id, sizeof(updated.invID));
+  String path = "/Inv_Prop" + String(which) + ".str";
+  String temporary = path + ".pair";
+  File file = SPIFFS.open(temporary, "w");
+  if (!file) return false;
+  bool written = file.write((const uint8_t *)&updated, sizeof(updated)) == sizeof(updated);
+  file.flush();
+  file.close();
+  if (!written) { SPIFFS.remove(temporary); return false; }
+  String backup = path + ".pair-old";
+  bool hadFile = SPIFFS.exists(path);
+  if (hadFile && ((SPIFFS.exists(backup) && !SPIFFS.remove(backup)) ||
+                  !SPIFFS.rename(path, backup))) {
+    SPIFFS.remove(temporary);
     return false;
-    }
-    // can we conclude that a valid pair answer cannot be less than 60 bytes
-    if (strlen(messageToDecode) > 222 || readCounter < 60 || strlen(messageToDecode) < 6)
-    {
-      //term = "no pairing code, returning...";
-      consoleOut(F("no valid pairing code, returning..."));
-      messageToDecode[0]='\0';
-      return false;   
-    }
-// the message is shorter but not too short so continueing    
-
- if (!strstr(messageToDecode, Inv_Prop[which].invSerial)) {
-    consoleOut("not found serialnr, returning");
-    //if(diagNose==1) Serial.println(term); else if(diagNose==2) ws.textAll(term);
-    messageToDecode[0]='\0';
-    return false;
- }
-
-  if ( strstr(messageToDecode, Inv_Prop[which].invSerial) ) { 
-  result = split(messageToDecode, Inv_Prop[which].invSerial);
   }
-  consoleOut("result after 1st splitting = " + String(result));
-
-  // now we keep splitting as long as result contains the serial nr
-    while ( strstr(result, Inv_Prop[which].invSerial) ) 
-    { 
-    result = split(result, Inv_Prop[which].invSerial);
-    }
-    consoleOut("result after splitting = " + String(result));
-    // result are the bytes behind the serialnr
-    // now we know that it is what we expect, a string right behind the last occurence of the serialnr
-  
-    memset(&Inv_Prop[which].invID, 0, sizeof(Inv_Prop[which].invID)); //zero out the 
-    delayMicroseconds(250);  
-    strncpy(Inv_Prop[which].invID, result, 4); // take the 1st 4 bytes
-
-    term = "found invID = " + String(Inv_Prop[which].invID);
-    consoleOut(term);
-    // why is this? Can it get this value?
-    if ( String(Inv_Prop[which].invID) == "0000" ) {
-       return false;    
-     }
+  uint16_t oldPan = 0, oldSource = 0;
+  bool hadPeer = apsRadioLoadPeer(updated.invSerial, &oldPan, &oldSource);
+  if (!apsRadioRememberPeer(updated.invSerial, pan, source)) {
+    if (hadFile && !SPIFFS.rename(backup, path))
+      consoleOut("pairing: old inverter file retained as .pair-old; reboot to recover");
+    SPIFFS.remove(temporary);
+    return false;
+  }
+  if (!SPIFFS.rename(temporary, path)) {
+    bool rolledBack = hadPeer ? apsRadioRememberPeer(updated.invSerial, oldPan, oldSource)
+                             : apsRadioForgetPeer(updated.invSerial);
+    if (!rolledBack) consoleOut("pairing: failed to restore previous radio peer after file error");
+    if (hadFile && !SPIFFS.rename(backup, path))
+      consoleOut("pairing: old inverter file retained as .pair-old; reboot to recover");
+    SPIFFS.remove(temporary);
+    return false;
+  }
+  if (hadFile) SPIFFS.remove(backup);
+  Inv_Prop[which] = updated;
   return true;
-} 
+}

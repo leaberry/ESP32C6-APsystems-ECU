@@ -20,8 +20,12 @@ jobs:
             artifact_base: ESP32C6_ECU-8MB-OTA
     steps:
       - uses: actions/checkout@v4
-      - name: Test ZNP pairing packet decoding
-        run: python3 tools/test_znp_pairing.py
+      - name: Test pairing protocol, persistence, and status
+        run: |
+          python3 tools/test_znp_pairing.py
+          python3 tools/test_pairing_path.py
+          python3 tools/test_pairing_audit.py
+          node tools/test_pairing_status.js
       - uses: arduino/setup-arduino-cli@v2
       - name: Install ESP32 platform
         run: |
