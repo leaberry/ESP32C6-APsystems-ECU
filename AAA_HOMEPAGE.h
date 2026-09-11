@@ -6,7 +6,7 @@ const char ECU_HOMEPAGE[] PROGMEM = R"=====(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>APsystems ECU</title>
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.12">
+<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.13">
 </head>
 <body>
 <header class="topbar">

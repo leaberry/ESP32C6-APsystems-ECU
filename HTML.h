@@ -10,7 +10,7 @@ const char HTML_HEAD[] PROGMEM = R"=====(
 <!DOCTYPE html><html><head><meta charset='utf-8'>
 <title>ESP32-ECU</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.12">
+<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.13">
 
 <script type='text/javascript'>
 
@@ -156,7 +156,7 @@ function getData() {
 )=====";
 
 const char WAIT_PAIR[] PROGMEM = R"=====(
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pair inverter · APsystems ECU</title><link rel="icon" href="/favicon.ico"><link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.12"></head><body><header class="topbar"><a class="brand" href="/">ESP32-C6 ECU</a></header><main class="page"><div class="eyebrow">Radio setup</div><h1>Pairing inverter {#}</h1><section class="card section"><span id="badge" class="badge">Pairing</span><h2 id="title">Listening for the inverter...</h2><p id="message">Allow about one minute for pairing and verification. Keep the ECU powered and near the inverter.</p><div class="actions"><a class="button secondary" href="/journal">Open journal</a><a class="button secondary" href="/inverters">Return to inverters</a></div></section></main><script>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pair inverter · APsystems ECU</title><link rel="icon" href="/favicon.ico"><link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.13"></head><body><header class="topbar"><a class="brand" href="/">ESP32-C6 ECU</a></header><main class="page"><div class="eyebrow">Radio setup</div><h1>Pairing inverter {#}</h1><section class="card section"><span id="badge" class="badge">Pairing</span><h2 id="title">Listening for the inverter...</h2><p id="message">Allow about one minute for pairing and verification. Keep the ECU powered and near the inverter.</p><div class="actions"><a class="button secondary" href="/journal">Open journal</a><a class="button secondary" href="/inverters">Return to inverters</a></div></section></main><script>
 async function check(){try{let n=await fetch('/pair/status?inv={#}',{cache:'no-store'}).then(r=>r.json());if(n.state==='pairing'||n.state==='idle')return;if(n.state==='failed'){document.getElementById('badge').textContent='Failed';document.getElementById('badge').className='badge warn';document.getElementById('title').textContent='Pairing did not complete';document.getElementById('message').textContent='Move the ECU closer, confirm the serial number, and try again. Previous ECU pairing settings have been kept. See the journal for details.'}else{document.getElementById('badge').textContent='Paired';document.getElementById('title').textContent='Inverter paired successfully';document.getElementById('message').textContent='Assigned network ID: '+n.invID}}catch(e){document.getElementById('message').textContent='Unable to read pairing status.'}}
 check();setInterval(check,2500);
 </script></body></html>
@@ -166,7 +166,7 @@ const char REQUEST_DENIED[] PROGMEM = R"=====(
 <!DOCTYPE html><html><head><meta charset='utf-8'>
 <title>ESP-ECU</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.12">
+<link rel="stylesheet" type="text/css" href="/stylesheet?v=1.4.13">
 </head>
 <body style='font-size:16px;'>
 <script type='text/javascript'>setTimeout(function(){ window.location.href='/';}, 9000 ); </script>
