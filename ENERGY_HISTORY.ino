@@ -184,6 +184,7 @@ void energyRecordDelta(uint8_t which, float deltaWh) {
     return;
   }
 
+  haEnergyCredit(which, deltaWh);
   uint32_t today = energyLocalDateKey();
   if (today && !energyDateKey) energyDateKey = today;
   energyFractionWh[which] += deltaWh;

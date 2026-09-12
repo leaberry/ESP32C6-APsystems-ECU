@@ -54,6 +54,10 @@ jobs:
           sed -i '/#include <Time.h>/d' "$HOME/Arduino/libraries/sunMoon/sunMoon.h"
       - name: Test settings backup and interrupted restore
         run: python3 tools/test_settings_backup.py
+      - name: Test Home Assistant retained recovery and controls
+        run: |
+          python3 tools/test_home_assistant.py
+          python3 tools/test_power_limit.py
       - name: Test ECU identity initialization
         run: python3 tools/test_ecu_identity.py
       - name: Select ${{ matrix.name }} layout

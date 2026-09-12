@@ -68,6 +68,7 @@ void setup() {
 
   getTijd(); // retrieve time from the timeserver
   energyHistoryBegin();
+  haBegin();
   // Do not accept Modbus clients until inverter configuration and persistent
   // counters are loaded. Starting the listener earlier briefly exported a
   // syntactically valid zero lifetime counter during every reboot.
@@ -190,6 +191,7 @@ void loop() {
 // ***************************************************************************
        // before each transmission the connection is tested
        // so we don't do this in the loop
+       haLoop();
        if(Mqtt_Format != 0 ) MQTT_Client.loop(); //looks for incoming messages
 
   //*********************************************************************
