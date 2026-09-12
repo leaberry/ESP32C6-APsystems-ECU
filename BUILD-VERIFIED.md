@@ -15,7 +15,9 @@ a separate firmware compiler error.
 All Python host regressions and the three JavaScript UI checks pass locally.
 Firmware source and partition maps are unchanged, so the previous two-variant
 build evidence still applies; no new firmware build or board flashing was done
-for this edit. GitHub has not been rerun: this is a local review commit only.
+for this edit. At the initial review, these changes were local only. The header
+fix was subsequently backported to PR12, and PR13 and the documentation PR
+were rebased onto it for GitHub validation.
 
 README installation/upgrade filenames were checked against release packaging.
 Application-only USB addresses and sector-aligned image spans were checked
