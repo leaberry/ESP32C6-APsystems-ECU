@@ -10,6 +10,7 @@ const char MENUPAGE[] PROGMEM = R"=====menu(
 <a class="menu-item" href="/energy"><strong>Energy history</strong><span>Hourly output today and recorded daily totals</span></a>
 <a class="menu-item" href="/system"><strong>System information</strong><span>Firmware, memory, radio, network and polling status</span></a>
 <a class="menu-item" href="/mqtt"><strong>MQTT</strong><span>Broker and publishing configuration</span></a>
+<a class="menu-item" href="/home-assistant"><strong>Home Assistant</strong><span>MQTT discovery, solar energy and output limits</span></a>
 <a class="menu-item" href="/grid-profile"><strong>Grid profiles</strong><span>Read and cautiously manage protection settings</span></a>
 <a class="menu-item" href="/journal"><strong>Journal</strong><span>Recent operational messages</span></a>
 <a class="menu-item" href="/console"><strong>Diagnostics console</strong><span>Live diagnostic output over the network</span></a>

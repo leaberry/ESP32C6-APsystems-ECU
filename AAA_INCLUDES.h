@@ -66,6 +66,7 @@
 #include <mbedtls/aes.h>
 
 #include <Preferences.h>
+#include "HA_MODEL.h"
 Preferences preferences;
 extern volatile uint8_t lastWifiDisconnectReason;
 bool flightRecorderEnabled = false; // opt-in persistent troubleshooting writes
@@ -241,6 +242,9 @@ char requestUrl[32] = {"/"}; // return path for asynchronous web actions
   char  Mqtt_Password[26] = {""};
   //char  Mqtt_Clientid[26] = {""};
   char  Mqtt_Port[5] =  {""};
+  bool haEnabled = false;
+  bool haConfigured = false;
+  char haDiscoveryPrefix[49] = "homeassistant";
   int   Mqtt_Format = 0; 
 int   event = 0;
 long  mqtt_lastConnect = 0;
