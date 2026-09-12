@@ -12,7 +12,7 @@ void SPIFFS_read() {
              Serial.println("wificonfig.json not opened\n");
           }
        
-       if( file_open_for_read("/basisconfig.json") ) {     
+       if( ecuIdentityRecoverConfig() && file_open_for_read("/basisconfig.json") ) {
              Serial.println("read basisconfig\n");
           } else {
           Serial.println("basisconfig.json not opened\n");
@@ -86,6 +86,7 @@ void wifiConfigsave() {
     json["gmtOffset"] = gmtOffset;
     json["zomerTijd"] = zomerTijd;
     json["timeZoneId"] = timeZoneId;
+    json["ntpServer"] = ntpServerSetting();
     json["daylightPolling"] = daylightPolling;
     json["locationConfigured"] = locationConfigured;
     json["securityLevel"] = securityLevel;
@@ -104,9 +105,7 @@ void wifiConfigsave() {
 }
 
 
-void basisConfigsave() {
-    Serial.println("saving basis config");
-    JsonDocument doc;
+void basisConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();
     json["ECU_ID"] = ECU_ID;
     json["fleetName"] = fleetName;
@@ -118,17 +117,23 @@ void basisConfigsave() {
     json["sunspecEnabled"] = sunspecEnabled;
     json["flightRecorderEnabled"] = flightRecorderEnabled;
     json["schemaVersion"] = 3;
+}
+
+void basisConfigsave() {
+    Serial.println("saving basis config");
+    JsonDocument doc;
+    basisConfigDocument(doc);
         
     File configFile = SPIFFS.open("/basisconfig.json", "w");
     if (!configFile) {
       //DebugPrintln("open file for writing failed");
     }
     Serial.println("inverterconfig.json written");
-    #ifdef DEBUG 
-    serializeJson(json, Serial);
+    #ifdef DEBUG
+    serializeJson(doc, Serial);
     Serial.println(F(""));     
     #endif
-    serializeJson(json, configFile);
+    serializeJson(doc, configFile);
     configFile.close();
 }
 
@@ -187,6 +192,8 @@ bool file_open_for_read(const char* bestand)
 
             //serializeJson(doc, jsonStr);
             if (strcmp(bestand, "/wificonfig.json") == 0) {
+                      const char *server = doc["ntpServer"] | "pool.ntp.org";
+                      ntpSetServer(validNtpServer(server) ? server : "pool.ntp.org");
                       //strcpy(static_ip, doc["ip"] | "000.000.000.000");
                       strlcpy(pswd, doc["pswd"] | "0000", sizeof(pswd));
                       longi = doc["longi"] | 0.0;

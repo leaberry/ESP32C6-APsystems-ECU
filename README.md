@@ -238,6 +238,62 @@ OTA writes the inactive application slot and preserves NVS/SPIFFS. It cannot
 convert a 4 MB installation or change partition layouts. Use USB for those
 operations and keep physical USB access available for recovery.
 
+## ECU identifier initialization
+
+At boot, an ECU still using the legacy default `D8A3011B9780` generates and
+saves a random 12-digit hexadecimal identifier **only if no pairing data is
+present**. A custom or previously generated identifier is preserved. The
+generated ID is not a secret and requires no cryptographic randomness.
+
+The check covers all nine inverter slots, interrupted pairing files, and the
+saved radio-peer table, including orphan peers. Malformed or unreadable pairing
+records also preserve the current ID. The firmware saves and reads back the
+new configuration before activating the ID; failed writes leave the active ID
+unchanged. Interrupted file replacement can recover the previous configuration.
+
+`ECU_ID` is used in inverter pairing, polling and control messages, determines
+the operational PAN, and is exposed as the SunSpec ECU serial number. Existing
+paired installations using the default retain it to avoid requiring re-pairing.
+The MQTT client ID remains derived from the board MAC. Identity initialization
+happens before radio or web startup, and subsequent boots reuse the saved ID.
+
+Developer check: `python3 tools/test_ecu_identity.py` requires g++ and ArduinoJson
+headers. Set `ARDUINOJSON_INCLUDE` to the library's `src` directory if it is not
+under `~/Arduino/libraries/ArduinoJson`.
+
+## NTP server and antenna selection
+
+Under **Menu > Time and location**, set the NTP server to a hostname or IPv4
+address (without a URL scheme or port). Existing configurations default to
+`pool.ntp.org`. Saving requests synchronization; reload the page to see its
+result. A configured private server is used without public fallback. A failed
+request preserves an already synchronized running clock and is retried. Without
+an initial valid clock, daylight-aware polling falls back to 24-hour operation.
+
+Under **Menu > Antenna**, the default is **Unmanaged**: the firmware does not
+drive antenna-control pins. Selecting **Internal** or **External** reveals the
+board selector:
+
+- **Seeed Studio XIAO ESP32-C6** uses GPIO3 LOW to enable the RF switch and
+  GPIO14 LOW for internal or HIGH for external. The page links to a board photo
+  for identification. These settings follow the
+  [Seeed hardware reference](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/#hardware-overview).
+- **Advanced** exposes the select GPIO and polarity, plus an optional enable
+  GPIO and its active level. GPIO numbers are ESP32-C6 chip numbers, not board
+  labels. Check the board schematic for suitable wiring; the firmware rejects
+  duplicate pins and pins reserved for flash, USB, serial, strapping, the
+  firmware's GPIO4 output, and its configured button/LED.
+
+Save, then restart to apply the antenna configuration before Wi-Fi or inverter
+radio startup. Connect a suitable antenna before selecting External. Invalid
+saved antenna settings fall back to unmanaged operation. Only the XIAO preset
+is currently verified against manufacturer documentation; other switch-equipped
+boards use Advanced until their wiring is confirmed. RF performance and actual
+switching still need validation on physical hardware.
+
+Developer checks: `python3 tools/test_device_settings.py` (requires g++) and
+`node tools/test_antenna_ui.js`.
+
 ## Production history backup and recovery
 
 The Energy history page offers two downloads and an explicit shutdown save:

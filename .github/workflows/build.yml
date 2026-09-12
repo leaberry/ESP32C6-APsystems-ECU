@@ -20,6 +20,10 @@ jobs:
             artifact_base: ESP32C6_ECU-8MB-OTA
     steps:
       - uses: actions/checkout@v4
+      - name: Test NTP and antenna settings
+        run: |
+          python3 tools/test_device_settings.py
+          node tools/test_antenna_ui.js
       - name: Test pairing protocol, persistence, and status
         run: |
           python3 tools/test_znp_pairing.py
@@ -45,6 +49,8 @@ jobs:
           # sunMoon still includes the removed legacy Time.h alias. Windows
           # resolves that mismatch case-insensitively; Linux runners do not.
           sed -i '/#include <Time.h>/d' "$HOME/Arduino/libraries/sunMoon/sunMoon.h"
+      - name: Test ECU identity initialization
+        run: python3 tools/test_ecu_identity.py
       - name: Select ${{ matrix.name }} layout
         run: cp "${{ matrix.partitions }}" partitions.csv
       - name: Compile ${{ matrix.name }}

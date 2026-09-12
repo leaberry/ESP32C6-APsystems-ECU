@@ -271,6 +271,17 @@ server.on("/settings/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   handleBasisSave(request);
 });
 
+server.on("/antenna", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!loginBoth(request, "admin")) return;
+  antennaPage(request);
+});
+server.on("/antenna/save", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!loginBoth(request, "admin")) return;
+  antennaHandleSave(request);
+});
+
 server.on("/time/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   handleTimeSave(request);

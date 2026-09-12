@@ -30,6 +30,7 @@ void setup() {
 
 
   SPIFFS_read();
+  ecuIdentityBegin(); // Persist a default/unpaired ID before any radio or web startup.
   flightRecorderBegin();
   pairAuditBeginStorage();
   // now we know the number of inverters we can find an interval between pollings
@@ -52,6 +53,7 @@ void setup() {
   // takes care for the return to the last webpage after reboot
   preferences.end();
 
+  antennaBegin(); // Apply RF switch selection before either radio starts.
   start_wifi(); // start wifi and server
 
 // we set inverterCount to the number of inverterfiles we find

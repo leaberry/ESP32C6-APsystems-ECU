@@ -1,5 +1,5 @@
 void healthCheck() {
-  if (!timeRetrieved) getTijd();
+  if (!timeRetrieved || ntpNeedsSync()) getTijd();
   if (!zbStarted) coordinator(true);
   zigbeeUp = zbStarted ? 1 : 0;
   if (!zigbeeUp) errorCode = 3000;

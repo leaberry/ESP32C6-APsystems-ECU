@@ -1,5 +1,40 @@
 # Build and hardware verification
 
+## Guarded ECU identity generation (2026-09-12)
+
+The 4 MB and 8 MB builds with identity initialization each use 1,520,126 bytes
+of application storage and 90,128 bytes of static globals. Both compile with
+Arduino core 3.3.8. `tools/test_ecu_identity.py` compiles the actual identity
+and configuration serialization code against ArduinoJson with fake flash/NVS.
+It passes generation/reboot reuse, custom-ID preservation, paired/gapped/orphan
+record guards, invalid storage, unknown configuration-field preservation,
+failed writes/renames, and interrupted-save recovery. The existing pairing-path
+and seven pairing-storage scenarios also pass. No board was flashed; physical
+pairing with a newly generated identity still needs a hardware check.
+
+## NTP and antenna configuration (2026-09-12)
+
+Both 4 MB USB-only and 8 MB OTA variants compile with Arduino core 3.3.8.
+Each application uses 1,516,078 bytes; static globals use 90,128 bytes, leaving
+237,552 bytes before runtime allocations. Decoded generated partition tables
+confirm the 4 MB factory layout and the 8 MB dual-OTA layout.
+
+`tools/test_device_settings.py` passes against the actual validation, antenna
+startup and NTP functions with hardware stubs: default unmanaged operation,
+invalid-settings fallback, XIAO levels, reversed polarity, no enable pin,
+reserved/duplicate GPIO rejection, server validation, failed cold-boot sync,
+retry throttling, server changes and preservation of the clock during outages.
+`tools/test_antenna_ui.js` passes all 12 mode/board/enable combinations. The
+existing timezone suite also passes, including autonomous DST transitions,
+energy rollovers and concurrent clock reads/settings changes.
+
+The antenna template was rendered in a 390-pixel-wide headless Edge viewport
+with the firmware stylesheet. Unmanaged, XIAO and Advanced states were visually
+checked; the form has no horizontal overflow and remains valid with the enable
+pin disabled. XIAO wiring and its photo link were checked against Seeed's docs.
+Physical antenna switching, reception quality, and synchronization against a
+real private NTP server remain hardware checks. No device was flashed.
+
 This document records evidence for the current source tree. It is not a claim
 that every supported inverter model or control path has been field-tested.
 
