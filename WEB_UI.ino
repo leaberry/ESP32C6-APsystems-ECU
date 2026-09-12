@@ -176,6 +176,8 @@ void handleAbout(AsyncWebServerRequest *request) {
       F("Live firmware, network, storage, polling and radio status."));
   page += F("<div class=\"card-grid\"><section class=\"card\"><h2>Firmware</h2><dl class=\"kv\"><dt>Version</dt><dd>");
   page += VERSION;
+  page += F("</dd><dt>ECU_ID</dt><dd><a href=\"/basicconfig#ecuid\">");
+  page += webEscape(ECU_ID); page += F("</a>");
   page += F("</dd><dt>Built</dt><dd>"); page += __DATE__; page += ' '; page += __TIME__;
   page += F("</dd><dt>Flash size</dt><dd>"); page += String(ESP.getFlashChipSize() / 1048576UL); page += F(" MB</dd><dt>OTA available</dt><dd>"); page += esp_ota_get_next_update_partition(nullptr) ? F("Yes") : F("No — USB only");
   page += F("</dd><dt>Free heap</dt><dd>"); page += String(ESP.getFreeHeap()); page += F(" bytes</dd><dt>SPIFFS used</dt><dd>"); page += String(SPIFFS.usedBytes()); page += F(" / "); page += String(SPIFFS.totalBytes()); page += F(" bytes</dd><dt>Uptime</dt><dd>"); page += String(uptimeMinutes / 1440); page += F("d "); page += String((uptimeMinutes / 60) % 24); page += F("h "); page += String(uptimeMinutes % 60); page += F("m</dd></dl></section>");

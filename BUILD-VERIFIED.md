@@ -1,5 +1,32 @@
 # Build and hardware verification
 
+## Broker connection test and ECU_ID warning (2026-09-12)
+
+The 4 MB and 8 MB builds compile locally. Host tests exercise the real connection
+handlers and worker with success, broker refusals, authentication failures,
+unreachable-broker results, request validation, overlapping tests, stale results
+and worker-allocation failure. They verify a separate temporary client, saved
+password fallback, typed credentials, disconnect cleanup and no settings writes.
+UI tests cover success, refusal, busy responses, network errors and timeouts.
+The connection test does not publish or subscribe, so it cannot establish topic
+permissions. These additions have not been deployed to production hardware.
+
+## Local menu, MQTT and OTA changes (2026-09-12)
+
+Based on merged main. The 4 MB USB-only and 8 MB OTA layouts compile locally
+with ESP32 core 3.3.8. All Python host regressions and JavaScript UI checks pass.
+The new handler tests cover independent MQTT modes, preserved disabled settings,
+validation and save failures, OTA checkpoint failure before any firmware write,
+explicit checkpoint opt-out, zero production, authentication, unavailable OTA,
+write failures, incomplete uploads and concurrent uploads. CI includes these tests.
+Desktop and phone-width browser renders show the reordered menu, combined MQTT
+form and OTA checkbox without horizontal overflow.
+
+This change has not been flashed to hardware. Host tests do not establish
+power-loss durability or live inverter operation during an OTA upload. The OTA
+checkpoint saves daily totals only; hourly charts and production after the
+checkpoint remain RAM-only. No periodic flash writes were introduced.
+
 ## Local CI fix and documentation review (2026-09-12)
 
 PR12 run [34702769670](https://github.com/leaberry/ESP32C6-APsystems-ECU/actions/runs/34702769670)

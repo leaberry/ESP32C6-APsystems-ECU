@@ -28,14 +28,22 @@ from different records and need not match.
    for a backup.
 3. In Home Assistant, open **Settings > Devices & services**, add **MQTT** if
    needed, and connect it to your broker. Leave discovery enabled.
-4. In the ECU's existing **Menu > MQTT** page, enter the same broker address,
+4. In the ECU's **Menu > MQTT** page, under **Shared broker**, enter the same broker address,
    port and a permitted username/password. For ordinary local MQTT the port is
    usually `1883`. The ECU uses plain MQTT/TCP, not TLS or WebSockets.
-5. If you only want HA, leave the existing message format **Disabled**. If you
-   already use Domoticz, keep its existing format and topic. Save the settings.
-6. Open **Menu > Home Assistant**, enable discovery and telemetry, and leave
-   the discovery prefix at `homeassistant` unless you changed it in HA too.
-   Select **Save and restart ECU**.
+   Select **Test broker connection** to check the values above before saving.
+   A blank password uses the saved password. The result confirms whether the
+   broker accepted the connection and login. It does not test permission to
+   publish or subscribe to topics. The test works with either mode disabled
+   and does not save settings or send messages to your automation topics.
+5. Turn on **Enable/Disable Home Assistant**. Leave the discovery prefix at
+   `homeassistant` unless you changed it in HA too.
+6. For HA alone, leave **Enable/Disable Domoticz** off. To use both, turn it on
+   and keep your existing message format, topic and device ID. Each switch
+   reveals its mode's settings. Turning a mode off keeps its saved settings.
+   Select **Save and restart ECU**. Broker credentials are shared; a blank
+   password keeps the current password. The old Home Assistant page redirects
+   here.
 7. In HA, open the MQTT integration and look for the fleet device and its
    inverter devices. Allow time for discovery and a normal inverter poll.
 
