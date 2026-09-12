@@ -21,6 +21,7 @@ def function(source, signature):
 
 harness = r'''
 #include <cassert>
+#include <cstdint>
 #include <string>
 #include <map>
 #include <algorithm>
