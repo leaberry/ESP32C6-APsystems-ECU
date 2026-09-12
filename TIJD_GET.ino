@@ -1,52 +1,71 @@
+namespace {
+portMUX_TYPE ntpSettingsMux = portMUX_INITIALIZER_UNLOCKED;
+char configuredNtpServer[254] = "pool.ntp.org";
+int8_t ntpSyncStatus = 0;
+}
+
+String ntpServerSetting() {
+  char copy[254];
+  portENTER_CRITICAL(&ntpSettingsMux);
+  memcpy(copy, configuredNtpServer, sizeof(copy));
+  portEXIT_CRITICAL(&ntpSettingsMux);
+  return String(copy);
+}
+
+void ntpSetServer(const char *server) {
+  portENTER_CRITICAL(&ntpSettingsMux);
+  strlcpy(configuredNtpServer, server, sizeof(configuredNtpServer));
+  ntpSyncStatus = 0;
+  portEXIT_CRITICAL(&ntpSettingsMux);
+}
+
+String ntpStatusText() {
+  portENTER_CRITICAL(&ntpSettingsMux);
+  int8_t status = ntpSyncStatus;
+  portEXIT_CRITICAL(&ntpSettingsMux);
+  return status == 1 ? F("Last synchronization succeeded") :
+      status == -1 ? F("Last synchronization failed; will retry") :
+      F("Waiting for synchronization");
+}
+
+bool ntpNeedsSync() {
+  portENTER_CRITICAL(&ntpSettingsMux);
+  bool needed = ntpSyncStatus != 1;
+  portEXIT_CRITICAL(&ntpSettingsMux);
+  return needed;
+}
+
 void getTijd() {
-
-  timeRetrieved = false; // stays false until time is retrieved  
+  // The library retains this pointer. Keep it alive and snapshot the setting
+  // so an HTTP save cannot alter a request in flight.
+  static char activeServer[254];
+  static uint32_t lastAttempt = 0;
+  static bool attempted = false;
+  portENTER_CRITICAL(&ntpSettingsMux);
+  bool changed = ntpSyncStatus == 0;
+  portEXIT_CRITICAL(&ntpSettingsMux);
+  if (attempted && !changed && uint32_t(millis() - lastAttempt) < 60000) return;
+  lastAttempt = millis();
+  attempted = true;
+  ntpServerSetting().toCharArray(activeServer, sizeof(activeServer));
+  timeClient.setPoolServerName(activeServer);
   timeClient.begin();
-  //unsigned long epochTime = 0;
-  //get the time, if fails we try again during healthcheck
-
-  timeClient.update();
-  unsigned long epochTime = timeClient.getEpochTime();
-
-
-  //Serial.print("Epoch Time: ");
-  //Serial.println(epochTime);
-
-    // now convert NTP time into unix tijd:
-    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-    //const unsigned long seventyYears = 2208988800UL;
-    // subtract seventy years:
-//    unsigned long epoch = secsSince1900 - seventyYears + atof(timezone) * 60; // * 60 weggehaald omdat timezone in minuten is
-//    unsigned long epochTime = timeClient.getEpochTime;
-    // we have to do this conditional, if time retrieving failed
-    if (epochTime < 1000) {
-    ntpUDP.stop();
+  bool received = timeClient.forceUpdate();
+  unsigned long epochTime = received ? timeClient.getEpochTime() : 0;
+  timeClient.end();
+  bool synced = received && epochTime >= 1577836800UL &&
+      ecuSetLocalTimeFromUtc((time_t)epochTime);
+  portENTER_CRITICAL(&ntpSettingsMux);
+  if (!strcmp(activeServer, configuredNtpServer)) ntpSyncStatus = synced ? 1 : -1;
+  portEXIT_CRITICAL(&ntpSettingsMux);
+  if (!synced) {
+    // Preserve the running clock on an outage. At cold boot timeRetrieved
+    // remains false so daylight polling falls back to 24-hour operation.
+    Update_Log(1, "time sync failed");
     return;
-  } else {
-   
-    if (!ecuSetLocalTimeFromUtc((time_t)epochTime)) {
-      ntpUDP.stop();
-      return;
-    }
-    timeRetrieved=true;
-    Update_Log(1, "got time");
-    }
-    //DebugPrint(" Unix time epoch = ");
-    //DebugPrintln(epochTime);
-  
-ntpUDP.stop();
-//
-//  // de tijd is nu opgehaald en in setTime gestopt
-//  // dus met de tijden die met setTime zijn opgeslagen gaan we  alle berekeningen doen
-//  
-//DebugPrint("het uur is ");  //DebugPrint(hour());
-//DebugPrint("   aantal minuten "); //DebugPrintln(minute());
-datum = ecuDay(ecuNow());
-//
-//yield();
-delay(10);
-sun_setrise(); //to calulate moonshape sunrise etc. and the switchtimes
-
-//  switchonTime = sunrise - 900;
-//  switchoffTime = sunset + 900; // nightmode starts at 15 min after sunset
+  }
+  timeRetrieved = true;
+  Update_Log(1, "got time");
+  datum = ecuDay(ecuNow());
+  sun_setrise();
 }

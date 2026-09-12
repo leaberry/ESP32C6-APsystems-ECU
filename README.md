@@ -138,7 +138,18 @@ On first boot the ECU creates an open setup access point named
 6. Set and record an administrator password of 8 to 32 printable, non-space
    characters. A fresh installation initially offers `0000`; do not leave that
    default on an untrusted network.
-7. Save. The ECU restarts and requests an address using the selected hostname.
+7. Save. The ECU restarts and, when using DHCP, requests an address using the selected hostname.
+
+Hostnames support up to 31 characters and are normalized to lowercase letters,
+numbers, and hyphens. The hostname is applied before Wi-Fi starts. **Network**
+and **System** show the active station hostname; System and the diagnostic report
+also show the configured hostname. Network saves are checked before reporting
+success or restarting. If storage fails, some settings may have been written;
+review the settings and retry.
+
+Your router controls its displayed device labels and DNS records, and may retain
+an old name until its lease or cache updates. Static addressing does not send a
+DHCP hostname. The firmware does not provide mDNS.
 
 Find the address in the router's DHCP leases and reserve it, or use the static
 settings. If the ECU cannot reconnect, it returns to the setup access point.
@@ -237,6 +248,110 @@ information** must show **OTA available: Yes**.
 OTA writes the inactive application slot and preserves NVS/SPIFFS. It cannot
 convert a 4 MB installation or change partition layouts. Use USB for those
 operations and keep physical USB access available for recovery.
+
+## ECU identifier initialization
+
+At boot, an ECU still using the legacy default `D8A3011B9780` generates and
+saves a random 12-digit hexadecimal identifier **only if no pairing data is
+present**. A custom or previously generated identifier is preserved. The
+generated ID is not a secret and requires no cryptographic randomness.
+
+The check covers all nine inverter slots, interrupted pairing files, and the
+saved radio-peer table, including orphan peers. Malformed or unreadable pairing
+records also preserve the current ID. The firmware saves and reads back the
+new configuration before activating the ID; failed writes leave the active ID
+unchanged. Interrupted file replacement can recover the previous configuration.
+
+`ECU_ID` is used in inverter pairing, polling and control messages, determines
+the operational PAN, and is exposed as the SunSpec ECU serial number. Existing
+paired installations using the default retain it to avoid requiring re-pairing.
+The MQTT client ID remains derived from the board MAC. Identity initialization
+happens before radio or web startup, and subsequent boots reuse the saved ID.
+
+Developer check: `python3 tools/test_ecu_identity.py` requires g++ and ArduinoJson
+headers. Set `ARDUINOJSON_INCLUDE` to the library's `src` directory if it is not
+under `~/Arduino/libraries/ArduinoJson`.
+
+## NTP server and antenna selection
+
+Under **Menu > Time and location**, set the NTP server to a hostname or IPv4
+address (without a URL scheme or port). Existing configurations default to
+`pool.ntp.org`. Saving requests synchronization; reload the page to see its
+result. A configured private server is used without public fallback. A failed
+request preserves an already synchronized running clock and is retried. Without
+an initial valid clock, daylight-aware polling falls back to 24-hour operation.
+
+Under **Menu > Antenna**, the default is **Unmanaged**: the firmware does not
+drive antenna-control pins. Selecting **Internal** or **External** reveals the
+board selector:
+
+- **Seeed Studio XIAO ESP32-C6** uses GPIO3 LOW to enable the RF switch and
+  GPIO14 LOW for internal or HIGH for external. The page links to a board photo
+  for identification. These settings follow the
+  [Seeed hardware reference](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/#hardware-overview).
+- **Advanced** exposes the select GPIO and polarity, plus an optional enable
+  GPIO and its active level. GPIO numbers are ESP32-C6 chip numbers, not board
+  labels. Check the board schematic for suitable wiring; the firmware rejects
+  duplicate pins and pins reserved for flash, USB, serial, strapping, the
+  firmware's GPIO4 output, and its configured button/LED.
+
+Save, then restart to apply the antenna configuration before Wi-Fi or inverter
+radio startup. Connect a suitable antenna before selecting External. Invalid
+saved antenna settings fall back to unmanaged operation. Only the XIAO preset
+is currently verified against manufacturer documentation; other switch-equipped
+boards use Advanced until their wiring is confirmed. RF performance and actual
+switching still need validation on physical hardware.
+
+Developer checks: `python3 tools/test_device_settings.py` (requires g++) and
+`node tools/test_antenna_ui.js`.
+
+## Settings backup and replacement boards
+
+**Menu > Settings backup** provides a separate JSON backup and restore. It includes:
+
+- ECU_ID and the radio's IEEE address;
+- inverter names, serials, types, panel configuration, calibration, saved power
+  limits and pairing records, including learned peers stored in NVS;
+- fleet, polling, SunSpec and flight-recorder settings;
+- location, timezone and NTP settings;
+- MQTT, Wi-Fi, hostname, static addressing, antenna and login settings.
+
+The file contains passwords in plain text. Keep it private. Download and restore
+require administrator authentication and the configured local-access check.
+Production history, today's checkpoint, live readings, diagnostic logs, crash
+dumps and inverter grid-protection settings are not included.
+
+To restore, choose the JSON file and select **Validate and preview**. Review the
+installation identity, inverter count and selected options, then choose
+**Restore settings and restart**. Network and antenna restore are unchecked by
+default, preserving the destination board's current connection and wiring.
+Login passwords always come from the backup. If network settings are restored,
+reconnect using the restored address or the router's new DHCP lease.
+
+For a replacement board, configure its Wi-Fi first and open Settings backup.
+Restoring preserves the original ECU_ID, radio IEEE address and paired-peer
+records; the replacement board's Wi-Fi MAC remains its own. Keep the old ECU
+powered off when transferring its identity. Antenna settings should only be
+restored when the saved wiring matches the destination. Pairing continuity with
+real inverters on replacement hardware still needs field verification.
+
+Backups use the versioned `aps-ecu-settings` format, with a 32 KB upload limit,
+strict value validation and a CRC32 corruption check. They contain logical
+settings rather than raw memory structures or a complete flash image. Uploads
+are held separately per request, and preview does not write any settings.
+Restore stages and verifies a complete manifest before restart, then applies
+and reads back all settings before starting either radio. An interrupted or
+failed apply retains the manifest for replay after reset; startup stops with a
+serial-console message if replay cannot complete. Do not erase or reformat
+storage while recovering a pending restore.
+
+Settings restore replaces the configured inverter list but leaves production
+history in place. Restore the matching history backup separately when moving
+an installation. If the destination contains records from another fleet, manage
+those explicitly on the Energy history page.
+
+Regression tests: `python3 tools/test_settings_backup.py` (requires ArduinoJson
+headers) and `node tools/test_settings_ui.js`.
 
 ## Production history backup and recovery
 

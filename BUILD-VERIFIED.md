@@ -1,5 +1,80 @@
 # Build and hardware verification
 
+## Settings backup and restore (2026-09-12)
+
+Both 4 MB and 8 MB variants compile with Arduino core 3.3.8. Each application
+uses 1,560,468 bytes; static globals use 90,128 bytes. No board was flashed.
+
+`tools/test_settings_backup.py` compiles the actual export, validation, upload,
+restore and radio-identity functions with ArduinoJson and fake filesystem/NVS
+stores. It passes round trips, malformed records, CRC/schema/value rejection,
+incomplete exports, original/restored radio addresses, orphan-peer preservation,
+inverter replacement, saved power limits, insufficient staging space,
+authentication, incomplete/oversized uploads, preview without writes and all
+four optional network/antenna restore combinations. Failure injection at each
+of 30 apply mutations retains the manifest, blocks startup and completes on
+retry. Production-history and current-day checkpoint sentinel files remain
+unchanged in every restore scenario.
+
+`tools/test_settings_ui.js` passes preview/confirmation, all restore selections,
+error handling, the file-size limit and stale-file-selection tests. The page was
+visually checked at 390 px width in Edge with the firmware stylesheet: no
+horizontal overflow; network/antenna options are unchecked and Restore is
+disabled before validation. Both new tests run in CI.
+
+Existing ECU identity, hostname, NTP/antenna, pairing-path/storage, pairing
+audit, ZNP parsing and pairing-status regressions also pass. Same-board restore,
+replacement-board pairing continuity, real flash power-loss recovery and Wi-Fi
+reconnection remain hardware checks.
+
+## Wi-Fi hostname fixes (2026-09-12)
+
+Both 4 MB and 8 MB variants compile with Arduino core 3.3.8, each using
+1,522,212 bytes of application storage and 90,128 bytes of static globals.
+`tools/test_wifi_hostname.py` compiles the actual hostname functions and both
+HTTP save handlers with Wi-Fi/NVS stubs. It verifies startup ordering, active
+versus global hostname reporting, startup failures, normalization and the
+31-character boundary, NVS open/write/readback failures, and success/reboot
+behavior for both setup and Network forms. The test also runs in CI.
+
+No board was flashed. DHCP packet advertisement and router lease/DNS/cache
+behavior still need hardware verification. No mDNS service was added.
+
+## Guarded ECU identity generation (2026-09-12)
+
+The 4 MB and 8 MB builds with identity initialization each use 1,520,126 bytes
+of application storage and 90,128 bytes of static globals. Both compile with
+Arduino core 3.3.8. `tools/test_ecu_identity.py` compiles the actual identity
+and configuration serialization code against ArduinoJson with fake flash/NVS.
+It passes generation/reboot reuse, custom-ID preservation, paired/gapped/orphan
+record guards, invalid storage, unknown configuration-field preservation,
+failed writes/renames, and interrupted-save recovery. The existing pairing-path
+and seven pairing-storage scenarios also pass. No board was flashed; physical
+pairing with a newly generated identity still needs a hardware check.
+
+## NTP and antenna configuration (2026-09-12)
+
+Both 4 MB USB-only and 8 MB OTA variants compile with Arduino core 3.3.8.
+Each application uses 1,516,078 bytes; static globals use 90,128 bytes, leaving
+237,552 bytes before runtime allocations. Decoded generated partition tables
+confirm the 4 MB factory layout and the 8 MB dual-OTA layout.
+
+`tools/test_device_settings.py` passes against the actual validation, antenna
+startup and NTP functions with hardware stubs: default unmanaged operation,
+invalid-settings fallback, XIAO levels, reversed polarity, no enable pin,
+reserved/duplicate GPIO rejection, server validation, failed cold-boot sync,
+retry throttling, server changes and preservation of the clock during outages.
+`tools/test_antenna_ui.js` passes all 12 mode/board/enable combinations. The
+existing timezone suite also passes, including autonomous DST transitions,
+energy rollovers and concurrent clock reads/settings changes.
+
+The antenna template was rendered in a 390-pixel-wide headless Edge viewport
+with the firmware stylesheet. Unmanaged, XIAO and Advanced states were visually
+checked; the form has no horizontal overflow and remains valid with the enable
+pin disabled. XIAO wiring and its photo link were checked against Seeed's docs.
+Physical antenna switching, reception quality, and synchronization against a
+real private NTP server remain hardware checks. No device was flashed.
+
 This document records evidence for the current source tree. It is not a claim
 that every supported inverter model or control path has been field-tested.
 

@@ -47,9 +47,9 @@ String normalizeWifiHostname(String value) {
   value.trim();
   value.toLowerCase();
   String normalized;
-  normalized.reserve(32);
+  normalized.reserve(31);
   bool previousWasDash = false;
-  for (size_t i = 0; i < value.length() && normalized.length() < 32; ++i) {
+  for (size_t i = 0; i < value.length() && normalized.length() < 31; ++i) {
     char c = value[i];
     bool alphaNumeric = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
     if (alphaNumeric) {
@@ -100,9 +100,9 @@ String buildPortalPage(const String &message = String()) {
   page += portalNetworkOptions;
   page += F("</datalist><p class='hint'>Choose a detected 2.4 GHz network or type a hidden SSID.</p>");
   page += F("<label for='p'>Wi-Fi password</label><input id='p' name='p' type='password' maxlength='63' autocomplete='new-password'>");
-  page += F("<label for='hostname'>Device hostname</label><input id='hostname' name='hostname' maxlength='32' value='");
+  page += F("<label for='hostname'>Device hostname</label><input id='hostname' name='hostname' maxlength='31' value='");
   page += htmlEscape(portalHostname);
-  page += F("' required><p class='hint'>Letters, numbers, and hyphens; sent to DHCP on the next boot.</p>");
+  page += F("' required><p class='hint'>Up to 31 letters, numbers, and hyphens. Advertised through DHCP after restart; your router controls its device labels and DNS records. Static addressing does not advertise a DHCP name.</p>");
   page += F("<label for='addressing'>IP addressing</label><select id='addressing' name='addressing'>");
   page += portalUseDhcp ? F("<option value='dhcp' selected>DHCP</option><option value='static'>Static</option>")
                         : F("<option value='dhcp'>DHCP</option><option value='static' selected>Static</option>");
@@ -158,6 +158,14 @@ void loadStoredWifiCredentials(String &storedSsid, String &storedPassword,
   wifiPrefs.end();
 }
 
+String wifiConfiguredHostname() {
+  Preferences prefs;
+  if (!prefs.begin(WIFI_PREFS_NAMESPACE, true)) return defaultWifiHostname();
+  String hostname = normalizeWifiHostname(prefs.getString(WIFI_PREF_HOSTNAME, defaultWifiHostname()));
+  prefs.end();
+  return hostname;
+}
+
 void loadStoredWifiAddressing(bool &useDhcp, String &staticIp,
                               String &netmask, String &gateway) {
   useDhcp = true;
@@ -173,21 +181,34 @@ void loadStoredWifiAddressing(bool &useDhcp, String &staticIp,
   wifiPrefs.end();
 }
 
-void saveStoredWifiConfiguration(const String &storedSsid,
+bool wifiHostnameInputValid(String value) {
+  value.trim();
+  return !value.isEmpty() && value.length() <= 31;
+}
+
+bool wifiSaveString(Preferences &prefs, const char *key, const String &value) {
+  return prefs.putString(key, value) == value.length() && prefs.isKey(key) &&
+      prefs.getString(key, "") == value;
+}
+
+bool saveStoredWifiConfiguration(const String &storedSsid,
                                  const String &storedPassword,
                                  const String &storedHostname, bool useDhcp,
                                  const String &staticIp, const String &netmask,
                                  const String &gateway) {
   Preferences wifiPrefs;
-  if (!wifiPrefs.begin(WIFI_PREFS_NAMESPACE, false)) return;
-  wifiPrefs.putString(WIFI_PREF_SSID, storedSsid);
-  wifiPrefs.putString(WIFI_PREF_PASSWORD, storedPassword);
-  wifiPrefs.putString(WIFI_PREF_HOSTNAME, normalizeWifiHostname(storedHostname));
-  wifiPrefs.putBool(WIFI_PREF_DHCP, useDhcp);
-  wifiPrefs.putString(WIFI_PREF_IP, staticIp);
-  wifiPrefs.putString(WIFI_PREF_NETMASK, netmask);
-  wifiPrefs.putString(WIFI_PREF_GATEWAY, gateway);
+  if (!wifiHostnameInputValid(storedHostname) ||
+      !wifiPrefs.begin(WIFI_PREFS_NAMESPACE, false)) return false;
+  bool saved = wifiSaveString(wifiPrefs, WIFI_PREF_HOSTNAME, normalizeWifiHostname(storedHostname)) &&
+      wifiSaveString(wifiPrefs, WIFI_PREF_SSID, storedSsid) &&
+      wifiSaveString(wifiPrefs, WIFI_PREF_PASSWORD, storedPassword) &&
+      wifiPrefs.putBool(WIFI_PREF_DHCP, useDhcp) == 1 &&
+      wifiPrefs.getBool(WIFI_PREF_DHCP, !useDhcp) == useDhcp &&
+      wifiSaveString(wifiPrefs, WIFI_PREF_IP, staticIp) &&
+      wifiSaveString(wifiPrefs, WIFI_PREF_NETMASK, netmask) &&
+      wifiSaveString(wifiPrefs, WIFI_PREF_GATEWAY, gateway);
   wifiPrefs.end();
+  return saved;
 }
 
 String normalizedWifiHostname(const String &value) {
@@ -247,6 +268,10 @@ void start_portal() {
     request->redirect("/");
   });
   server.on("/wifi/save", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!wifiHostnameInputValid(request->arg("hostname"))) {
+      request->send(400, "text/plain", "Hostname must contain 1 to 31 characters");
+      return;
+    }
     String submittedSsid = request->arg("s");
     String submittedPassword = request->arg("p");
     String submittedHostname = normalizeWifiHostname(request->arg("hostname"));
@@ -275,23 +300,18 @@ void start_portal() {
       return;
     }
 
-    Preferences wifiPrefs;
-    wifiPrefs.begin(WIFI_PREFS_NAMESPACE, false);
-    wifiPrefs.putString(WIFI_PREF_SSID, submittedSsid);
-    wifiPrefs.putString(WIFI_PREF_PASSWORD, submittedPassword);
-    wifiPrefs.putString(WIFI_PREF_HOSTNAME, submittedHostname);
-    wifiPrefs.putBool(WIFI_PREF_DHCP, submittedDhcp);
-    wifiPrefs.putString(WIFI_PREF_IP, submittedIp);
-    wifiPrefs.putString(WIFI_PREF_NETMASK, submittedNetmask);
-    wifiPrefs.putString(WIFI_PREF_GATEWAY, submittedGateway);
-    wifiPrefs.end();
+    if (!saveStoredWifiConfiguration(submittedSsid, submittedPassword,
+        submittedHostname, submittedDhcp, submittedIp, submittedNetmask, submittedGateway)) {
+      request->send(500, "text/plain", "Could not save all network settings. The ECU will not restart automatically. Review the settings and retry.");
+      return;
+    }
 
     if (!submittedAdminPassword.isEmpty())
       strlcpy(pswd, submittedAdminPassword.c_str(), sizeof(pswd));
     securityLevel = constrain(request->arg("sl").toInt(), 0, 9);
     wifiConfigsave();
 
-    String response = F("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body><h2>Settings saved</h2><p>The APS-ECU is restarting and will request an address using hostname <strong>");
+    String response = F("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body><h2>Settings saved</h2><p>The APS-ECU is restarting with configured hostname <strong>");
     response += htmlEscape(submittedHostname);
     response += F("</strong>.</p></body></html>");
     request->send(200, "text/html", response);

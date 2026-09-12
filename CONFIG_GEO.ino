@@ -2,6 +2,11 @@ void zendPageGEOconfig(AsyncWebServerRequest *request) {
   String page = ecuPageStart(F("Time and location"),
       F("Location and local time determine the optional daylight polling window and daily energy boundaries."));
   page += F("<div class=\"alert info\">Latitude is positive north and negative south. Longitude is positive east and negative west. Example: Denver is approximately 39.739, -104.990.</div><form class=\"form-card section\" method=\"post\" action=\"/time/save\"><div class=\"form-grid\">");
+  page += F("<div class=\"field full\"><label for=\"ntp\">NTP server</label><input id=\"ntp\" name=\"ntp\" maxlength=\"253\" required value=\"");
+  page += webEscape(ntpServerSetting());
+  page += F("\"><span class=\"help\">Hostname or IPv4 address. Default: pool.ntp.org. A private server is used without public fallback.</span><span class=\"help\">");
+  page += ntpStatusText();
+  page += F(". Reload this page after saving to check the result.</span></div>");
   if (timeRetrieved) {
     page += F("<div class=\"alert info\">Saved time zone: <strong>");
     page += ecuTimeZoneLabel();
@@ -33,6 +38,13 @@ void handleTimeSave(AsyncWebServerRequest *request) {
     return;
   }
   float submittedLat = request->getParam("lat", true)->value().toFloat();
+  String submittedNtp = request->hasParam("ntp", true)
+      ? request->getParam("ntp", true)->value() : ntpServerSetting();
+  submittedNtp.trim();
+  if (!validNtpServer(submittedNtp.c_str())) {
+    request->send(400, "text/plain", "NTP server must be a valid hostname or IPv4 address (no URL or port)");
+    return;
+  }
   float submittedLon = request->getParam("lon", true)->value().toFloat();
   String submittedZone = request->getParam("zone", true)->value();
   if (!isfinite(submittedLat) || !isfinite(submittedLon) ||
@@ -50,6 +62,7 @@ void handleTimeSave(AsyncWebServerRequest *request) {
     return;
   }
   lati = submittedLat;
+  ntpSetServer(submittedNtp.c_str());
   longi = submittedLon;
   locationConfigured = true;
   strlcpy(timeZoneId, submittedZone.c_str(), sizeof(timeZoneId));

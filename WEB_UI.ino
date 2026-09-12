@@ -92,6 +92,9 @@ void handleNetworkPage(AsyncWebServerRequest *request) {
 
   String page = ecuPageStart(F("Network"),
       F("Review the active Wi-Fi connection or change hostname and IP addressing. Saving restarts the ECU."));
+  page += F("<p>Active station hostname: <strong>");
+  page += webEscape(wifiActiveHostname());
+  page += F("</strong></p>");
   page += F("<div class=\"metrics\"><div class=\"metric\"><strong>");
   page += WiFi.localIP().toString();
   page += F("</strong><span>Current IP address</span></div><div class=\"metric\"><strong>");
@@ -100,9 +103,9 @@ void handleNetworkPage(AsyncWebServerRequest *request) {
   page += webEscape(WiFi.SSID());
   page += F("</strong><span>Connected network</span></div></div><form class=\"form-card section\" method=\"post\" action=\"/network/save\"><div class=\"form-grid\"><div class=\"field full\"><label for=\"ssid\">Wi-Fi network name</label><input id=\"ssid\" name=\"ssid\" maxlength=\"32\" value=\"");
   page += webEscape(storedSsid);
-  page += F("\" required></div><div class=\"field full\"><label for=\"wifiPassword\">Wi-Fi password</label><input id=\"wifiPassword\" name=\"wifiPassword\" type=\"password\" maxlength=\"63\" placeholder=\"Leave blank to keep the current password\"></div><div class=\"field full\"><label for=\"hostname\">Device hostname</label><input id=\"hostname\" name=\"hostname\" maxlength=\"32\" value=\"");
+  page += F("\" required></div><div class=\"field full\"><label for=\"wifiPassword\">Wi-Fi password</label><input id=\"wifiPassword\" name=\"wifiPassword\" type=\"password\" maxlength=\"63\" placeholder=\"Leave blank to keep the current password\"></div><div class=\"field full\"><label for=\"hostname\">Device hostname</label><input id=\"hostname\" name=\"hostname\" maxlength=\"31\" value=\"");
   page += webEscape(hostname);
-  page += F("\" required><span class=\"help\">Letters, numbers and hyphens. Sent in DHCP requests after restart.</span></div><div class=\"field full\"><label for=\"addressing\">IP addressing</label><select id=\"addressing\" name=\"addressing\" onchange=\"addressFields()\"><option value=\"dhcp\"");
+  page += F("\" required><span class=\"help\">Up to 31 letters, numbers, and hyphens. Advertised through DHCP after restart; your router controls its device labels and DNS records. Static addressing does not advertise a DHCP name.</span></div><div class=\"field full\"><label for=\"addressing\">IP addressing</label><select id=\"addressing\" name=\"addressing\" onchange=\"addressFields()\"><option value=\"dhcp\"");
   if (useDhcp) page += F(" selected");
   page += F(">DHCP (recommended)</option><option value=\"static\"");
   if (!useDhcp) page += F(" selected");
@@ -124,6 +127,10 @@ void handleNetworkSave(AsyncWebServerRequest *request) {
     return;
   }
   String oldSsid, oldPassword, oldHostname;
+  if (!wifiHostnameInputValid(request->getParam("hostname", true)->value())) {
+    request->send(400, "text/plain", "Hostname must contain 1 to 31 characters");
+    return;
+  }
   loadStoredWifiCredentials(oldSsid, oldPassword, oldHostname);
   String submittedSsid = request->getParam("ssid", true)->value();
   String submittedHostname = normalizedWifiHostname(
@@ -144,8 +151,11 @@ void handleNetworkSave(AsyncWebServerRequest *request) {
     request->send(400, "text/plain", "Invalid Wi-Fi or static IP setting");
     return;
   }
-  saveStoredWifiConfiguration(submittedSsid, submittedPassword,
-      submittedHostname, useDhcp, ip, netmask, gateway);
+  if (!saveStoredWifiConfiguration(submittedSsid, submittedPassword,
+      submittedHostname, useDhcp, ip, netmask, gateway)) {
+    request->send(500, "text/plain", "Could not save all network settings. The ECU will not restart automatically. Review the settings and retry.");
+    return;
+  }
   String response = ecuPageStart(F("Network settings saved"),
       F("The ECU is restarting. Reconnect using its reserved address or new static IP."));
   response += F("<div class=\"alert info\">New hostname: <strong>");
@@ -176,7 +186,7 @@ void handleAbout(AsyncWebServerRequest *request) {
     page += F("<div class=\"alert\">The internal temperature sensor is unavailable.</div>");
   }
   page += F("</section>");
-  page += F("<section class=\"card\"><h2>Network</h2><dl class=\"kv\"><dt>Hostname</dt><dd>"); page += webEscape(hostname); page += F("</dd><dt>SSID</dt><dd>"); page += webEscape(WiFi.SSID()); page += F("</dd><dt>Addressing</dt><dd>"); page += useDhcp ? F("DHCP") : F("Static"); page += F("</dd><dt>IP address</dt><dd>"); page += WiFi.localIP().toString(); page += F("</dd><dt>Netmask</dt><dd>"); page += WiFi.subnetMask().toString(); page += F("</dd><dt>Gateway</dt><dd>"); page += WiFi.gatewayIP().toString(); page += F("</dd><dt>DNS</dt><dd>"); page += WiFi.dnsIP().toString(); page += F("</dd><dt>MAC address</dt><dd>"); page += WiFi.macAddress(); page += F("</dd><dt>Signal</dt><dd>"); page += String(WiFi.RSSI()); page += F(" dBm</dd></dl><a class=\"button secondary\" href=\"/network\">Change network settings</a></section>");
+  page += F("<section class=\"card\"><h2>Network</h2><dl class=\"kv\"><dt>Configured hostname</dt><dd>"); page += webEscape(hostname); page += F("</dd><dt>Active station hostname</dt><dd>"); page += webEscape(wifiActiveHostname()); page += F("</dd><dt>SSID</dt><dd>"); page += webEscape(WiFi.SSID()); page += F("</dd><dt>Addressing</dt><dd>"); page += useDhcp ? F("DHCP") : F("Static"); page += F("</dd><dt>IP address</dt><dd>"); page += WiFi.localIP().toString(); page += F("</dd><dt>Netmask</dt><dd>"); page += WiFi.subnetMask().toString(); page += F("</dd><dt>Gateway</dt><dd>"); page += WiFi.gatewayIP().toString(); page += F("</dd><dt>DNS</dt><dd>"); page += WiFi.dnsIP().toString(); page += F("</dd><dt>MAC address</dt><dd>"); page += WiFi.macAddress(); page += F("</dd><dt>Signal</dt><dd>"); page += String(WiFi.RSSI()); page += F(" dBm</dd></dl><a class=\"button secondary\" href=\"/network\">Change network settings</a></section>");
   page += F("<section class=\"card\"><h2>Polling and time</h2><dl class=\"kv\"><dt>Automatic polling</dt><dd>"); page += Polling ? F("Enabled") : F("Disabled"); page += F("</dd><dt>Fleet interval</dt><dd>"); page += String(pollIntervalSeconds); page += F(" seconds</dd><dt>Poll round</dt><dd>"); page += pollingRoundInProgress() ? F("In progress") : F("Idle"); page += F("</dd><dt>Next round</dt><dd>"); if (pollingNightModeActive()) { page += F("Night Mode — resumes "); time_t resume = pollingNextResumeEpoch(); if (resume) { char value[8]; snprintf(value, sizeof(value), "%02d:%02d", ecuHour(resume), ecuMinute(resume)); page += value; } else page += F("at sunrise"); } else if (Polling && pollingAllowedNow()) { page += String(pollingSecondsUntilNextRound()); page += F(" seconds"); } else page += F("Paused"); page += F("</dd><dt>Local time</dt><dd>"); page += ecuClockText(); page += F("</dd><dt>Time zone</dt><dd>"); page += webEscape(ecuTimeZoneLabel()); page += F("</dd><dt>Effective UTC offset</dt><dd>"); page += ecuUtcOffsetText(); page += F("</dd><dt>Solar window</dt><dd>"); page += ecuSolarWindowText(); page += F("</dd></dl></section>");
   page += F("<section class=\"card\"><h2>Radio and services</h2><dl class=\"kv\"><dt>802.15.4 radio</dt><dd>"); page += zigbeeUp == 1 ? F("Ready") : (zigbeeUp == 11 ? F("Starting") : F("Fault")); page += F("</dd><dt>Configured inverters</dt><dd>"); page += String(inverterCount); page += F("</dd><dt>Modbus/TCP</dt><dd>"); page += sunspecEnabled ? F("Enabled on port 502") : F("Disabled"); page += F("</dd><dt>MQTT</dt><dd>"); page += Mqtt_Format == 0 ? F("Disabled") : (MQTT_Client.connected() ? F("Connected") : F("Disconnected")); page += F("</dd><dt>Flight recorder</dt><dd>"); page += flightRecorderIsEnabled() ? F("Enabled") : F("Disabled"); page += F("</dd><dt>Wi-Fi disconnects since boot</dt><dd>"); page += String(wifiDisconnectsSinceBoot()); page += F("</dd><dt>Last Wi-Fi disconnect</dt><dd>"); page += webEscape(wifiLastDisconnectTimestamp()); if (wifiDisconnectsSinceBoot()) { page += F("<br><span class=\"help\">"); page += webEscape(wifiLastDisconnectReasonText()); page += F("</span>"); } page += F("</dd></dl></section></div>");
   page += ecuPageEnd();
