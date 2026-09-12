@@ -53,6 +53,18 @@ String wifiLastDisconnectTimestamp() {
   return String(text);
 }
 
+String wifiActiveHostname() {
+  const char *active = WiFi.STA.getHostname();
+  return active && active[0] ? String(active) : String("Unavailable");
+}
+
+bool wifiStartStationWithHostname(const String &hostname) {
+  // Arduino 3.3.8 copies the global hostname into the netif when STA starts.
+  // Setting it after mode() only changes the global default, not DHCP's name.
+  if (!WiFi.setHostname(hostname.c_str()) || !WiFi.mode(WIFI_STA)) return false;
+  return wifiActiveHostname() == hostname;
+}
+
 void start_wifi() {
   String storedSsid;
   String storedPassword;
@@ -73,8 +85,11 @@ void start_wifi() {
   Serial.println("Connecting to " + storedSsid + " as " + hostname);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(false);
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(hostname.c_str());
+  if (!wifiStartStationWithHostname(hostname)) {
+    Serial.println(F("Could not apply station hostname; opening setup portal"));
+    start_portal();
+    return;
+  }
   if (!useDhcp) {
     IPAddress staticIp;
     IPAddress netmask;
@@ -140,7 +155,10 @@ void start_wifi() {
   flightRecorderManageStation(true);
   Serial.println();
   Serial.println("Wi-Fi connected: " + WiFi.localIP().toString());
-  Serial.println("DHCP hostname: " + hostname);
+  Serial.println("Configured hostname: " + hostname);
+  Serial.println("Active station hostname: " + wifiActiveHostname());
+  Serial.println(useDhcp ? F("Hostname advertised through DHCP") :
+                           F("Static IP: no DHCP hostname advertisement"));
   start_server();
 }
 

@@ -1,3 +1,4 @@
+#include "DEVICE_SETTINGS.h"
 #include "PAIRING_PROTOCOL.h"
 #include "PAIRING_AUDIT.h"
 #include <ArduinoJson.h>

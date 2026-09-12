@@ -12,6 +12,7 @@ static void sendStylesheet(AsyncWebServerRequest *request) {
 }
 
 void start_server() {
+  settingsRoutes();
 if( diagNose != 0 ) consoleOut("starting server");
 //server.addHandler(&ws);
 server.addHandler(&events);
@@ -269,6 +270,17 @@ server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request) {
 server.on("/settings/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   handleBasisSave(request);
+});
+
+server.on("/antenna", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!loginBoth(request, "admin")) return;
+  antennaPage(request);
+});
+server.on("/antenna/save", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!loginBoth(request, "admin")) return;
+  antennaHandleSave(request);
 });
 
 server.on("/time/save", HTTP_POST, [](AsyncWebServerRequest *request) {

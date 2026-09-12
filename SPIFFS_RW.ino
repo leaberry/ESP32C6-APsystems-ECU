@@ -5,6 +5,7 @@ void SPIFFS_read() {
   //DebugPrintln("mounting FS...");
  if (SPIFFS.begin(true)) {
     Serial.println("mounted file system");
+    if (!settingsRestoreBoot()) return;
 
        if( file_open_for_read("/wificonfig.json") ) {
                 Serial.println("read wificonfig\n");
@@ -12,7 +13,7 @@ void SPIFFS_read() {
              Serial.println("wificonfig.json not opened\n");
           }
        
-       if( file_open_for_read("/basisconfig.json") ) {     
+       if( ecuIdentityRecoverConfig() && file_open_for_read("/basisconfig.json") ) {
              Serial.println("read basisconfig\n");
           } else {
           Serial.println("basisconfig.json not opened\n");
@@ -73,10 +74,7 @@ bool leesStruct(String whichfile) {
 // **************************************************************************** 
 //                      de gegevens opslaan in SPIFFS                         *  
 // ****************************************************************************
-void wifiConfigsave() {
-   Serial.println("saving config");
-
-    JsonDocument doc;
+void wifiConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();   
     //json["ip"] = static_ip;
     json["pswd"] = pswd;
@@ -86,9 +84,16 @@ void wifiConfigsave() {
     json["gmtOffset"] = gmtOffset;
     json["zomerTijd"] = zomerTijd;
     json["timeZoneId"] = timeZoneId;
+    json["ntpServer"] = ntpServerSetting();
     json["daylightPolling"] = daylightPolling;
     json["locationConfigured"] = locationConfigured;
     json["securityLevel"] = securityLevel;
+}
+
+void wifiConfigsave() {
+    JsonDocument doc;
+    wifiConfigDocument(doc);
+    JsonObject json = doc.as<JsonObject>();
     File configFile = SPIFFS.open("/wificonfig.json", "w");
     if (!configFile) {
       Serial.println("open file for writing failed!");
@@ -104,9 +109,7 @@ void wifiConfigsave() {
 }
 
 
-void basisConfigsave() {
-    Serial.println("saving basis config");
-    JsonDocument doc;
+void basisConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();
     json["ECU_ID"] = ECU_ID;
     json["fleetName"] = fleetName;
@@ -118,23 +121,27 @@ void basisConfigsave() {
     json["sunspecEnabled"] = sunspecEnabled;
     json["flightRecorderEnabled"] = flightRecorderEnabled;
     json["schemaVersion"] = 3;
+}
+
+void basisConfigsave() {
+    Serial.println("saving basis config");
+    JsonDocument doc;
+    basisConfigDocument(doc);
         
     File configFile = SPIFFS.open("/basisconfig.json", "w");
     if (!configFile) {
       //DebugPrintln("open file for writing failed");
     }
     Serial.println("inverterconfig.json written");
-    #ifdef DEBUG 
-    serializeJson(json, Serial);
+    #ifdef DEBUG
+    serializeJson(doc, Serial);
     Serial.println(F(""));     
     #endif
-    serializeJson(json, configFile);
+    serializeJson(doc, configFile);
     configFile.close();
 }
 
-void mqttConfigsave() {
-   //DebugPrintln("saving mqtt config");
-    JsonDocument doc;
+void mqttConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();
 // 
 //    json["Mqtt_Enabled"] = Mqtt_Enabled;
@@ -147,6 +154,12 @@ void mqttConfigsave() {
     json["Mqtt_Password"] = Mqtt_Password;
 //    json["Mqtt_Idx"] = Mqtt_Idx;
     json["Mqtt_Format"] = Mqtt_Format;    
+}
+
+void mqttConfigsave() {
+    JsonDocument doc;
+    mqttConfigDocument(doc);
+    JsonObject json = doc.as<JsonObject>();
     File configFile = SPIFFS.open("/mqttconfig.json", "w");
     if (!configFile) {
       //DebugPrintln("open file for writing failed");
@@ -175,7 +188,7 @@ bool file_open_for_read(const char* bestand)
             // Continue with fallback values
         } else {
         // no error so we can print the file
-            serializeJson(doc, Serial);  // always print
+            // Configuration includes passwords; never print the document.
         }
     } else {
         Serial.print(F("Cannot open config file: "));
@@ -187,6 +200,8 @@ bool file_open_for_read(const char* bestand)
 
             //serializeJson(doc, jsonStr);
             if (strcmp(bestand, "/wificonfig.json") == 0) {
+                      const char *server = doc["ntpServer"] | "pool.ntp.org";
+                      ntpSetServer(validNtpServer(server) ? server : "pool.ntp.org");
                       //strcpy(static_ip, doc["ip"] | "000.000.000.000");
                       strlcpy(pswd, doc["pswd"] | "0000", sizeof(pswd));
                       longi = doc["longi"] | 0.0;
