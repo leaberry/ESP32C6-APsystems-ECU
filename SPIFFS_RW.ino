@@ -153,6 +153,9 @@ void mqttConfigDocument(JsonDocument &doc) {
     json["Mqtt_Username"] = Mqtt_Username;
     json["Mqtt_Password"] = Mqtt_Password;
 //    json["Mqtt_Idx"] = Mqtt_Idx;
+    json["haEnabled"] = haEnabled;
+    json["haConfigured"] = haConfigured;
+    json["haDiscoveryPrefix"] = haDiscoveryPrefix;
     json["Mqtt_Format"] = Mqtt_Format;    
 }
 
@@ -257,6 +260,11 @@ bool file_open_for_read(const char* bestand)
                      strlcpy(Mqtt_outTopic, doc["Mqtt_outTopic"] | "domoticz/in", sizeof(Mqtt_outTopic));
                      strlcpy(Mqtt_Username, doc["Mqtt_Username"] | "n/a", sizeof(Mqtt_Username));
                      strlcpy(Mqtt_Password, doc["Mqtt_Password"] | "n/a", sizeof(Mqtt_Password));
+                     haEnabled = doc["haEnabled"] | false;
+                     haConfigured = doc["haConfigured"] | haEnabled;
+                     const char *prefix = doc["haDiscoveryPrefix"] | "homeassistant";
+                     if (!haPrefixValid(prefix)) { prefix="homeassistant"; haEnabled=false; }
+                     strlcpy(haDiscoveryPrefix,prefix,sizeof(haDiscoveryPrefix));
                      Mqtt_Format = doc["Mqtt_Format"] | 0;
                      Mqtt_stateIDX = doc["Mqtt_stateIDX"] | 123;
             }

@@ -447,6 +447,65 @@ disabled by default. Configure a broker reachable from the ECU's network,
 choose the required format and use **Send test**; the test reports actual
 connection or publish failure.
 
+### Home Assistant
+
+**Menu > Home Assistant** enables a separate MQTT client using the existing
+broker credentials. Home Assistant is off by default. Keep the existing MQTT
+format Disabled for HA only, or enable the original format for Domoticz alongside
+HA. Existing Domoticz payloads, topics and command handling are unchanged. HA
+uses `aps-ha-<ECU_ID>` as its client ID and `aps_ecu/<ECU_ID>/...` as its topic
+root; keep only one running ECU with a given ECU_ID.
+
+Discovery creates a fleet device and devices identified by inverter serial,
+with solar power and cumulative solar energy, temperature, AC voltage/frequency,
+connected-panel power and optional diagnostic sensors. It uses Home Assistant's
+[device discovery format](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
+In **Settings > Dashboards > Energy**, add Solar production and choose the fleet
+**Solar energy** sensor, or choose the individual inverter energy sensors.
+Do not add both: that would double count production. Counters are `energy`,
+`kWh`, `total_increasing`, so they are eligible for the
+[Energy dashboard](https://www.home-assistant.io/docs/energy/faq/).
+Production today is a separate diagnostic without a statistics state class.
+
+Counters accumulate the existing validated telemetry deltas, not wall-clock
+power integration. They do not reset at midnight, when a slot is reordered, or
+when an inverter is removed. The bounded archive holds 64 inverter serials;
+exhaustion or malformed checkpoints makes energy unavailable instead of
+publishing a false reset. A newly enabled installation starts at zero; finalized
+history is not imported. As with existing telemetry, production while the ECU
+is off and the first baseline interval after reboot cannot be reconstructed.
+
+**No new automatic ECU flash writes:** unacknowledged deltas stay in RAM and
+counter checkpoints are retained on the broker at `aps_ecu/<ECU_ID>/energy`.
+The ECU recovers this checkpoint before publishing energy and publishes only
+counters echoed back by the broker. A boot token prevents counting an accepted
+checkpoint twice after a lost echo/reconnect. Enable broker persistence and
+back up its retained data; an echo confirms receipt, not a broker disk flush.
+Power loss can lose unacknowledged deltas, and losing both retained data and
+ECU RAM loses the counter baseline. Preserve the checkpoint when replacing the
+board and restore the same ECU_ID using settings restore. Settings/history
+backups do not include these broker checkpoints.
+
+Discovery inventory is also broker-retained at `aps_ecu/<ECU_ID>/inventory`.
+It removes this ECU's obsolete discovery entries after inverter removal, a
+prefix change or disabling HA. Disable HA while the old broker remains
+reachable before changing brokers; cleanup cannot reach an abandoned broker.
+Broker ACLs must allow reading and writing this ECU's topic root, writing its
+discovery topics and reading `<discovery-prefix>/status` (default `homeassistant`).
+Missing read permission prevents recovery rather than publishing a false zero.
+
+Each inverter exposes a **Per-input power limit** number (20–500 W per connected
+input, using existing calibration), not a whole-inverter limit. It requires
+recent telemetry, validates commands and checks the inverter's response before
+reporting success. MQTT commands are not retained and carry a connection token
+to reject old retained commands. These commands update RAM only; they do not
+save a new boot-time limit. Configuration saves still explicitly write the
+existing settings file. Existing production-history writes are unchanged.
+
+HA uses cached telemetry without extra radio polling, publishing a paced state
+cycle every 15 seconds. Both MQTT modes use separate client IDs and namespaces;
+real-device CPU/network load and inverter control still need hardware testing.
+
 The compatibility `get.Data` interface remains available. New UI/API code uses
 lowercase routes under `/api`. Do not expose the ECU directly to the Internet;
 place remote access behind a trusted VPN or authenticated reverse proxy.

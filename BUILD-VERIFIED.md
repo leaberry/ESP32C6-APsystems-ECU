@@ -1,5 +1,33 @@
 # Build and hardware verification
 
+## Home Assistant MQTT (2026-09-12)
+
+Both 4 MB and 8 MB variants compile with ESP32 core 3.3.8 and ArduinoJson
+7.4.2. Each application uses 1,595,784 bytes; static globals use 93,424 bytes.
+The HA client additionally allocates an 8 KB MQTT buffer when configured,
+plus transient JSON documents. No board was flashed.
+
+`tools/test_home_assistant.py` compiles the actual HA MQTT modules against an
+in-memory retained broker, with no filesystem or NVS API available. It passes
+initialization, acknowledged counters, lost-echo reconnect, reboot recovery
+with pending deltas, failed publication, removed-inverter totals, invalid data,
+energy availability, Energy discovery metadata, stable serial identity,
+component tombstones, discovery inventory acknowledgment and disable cleanup.
+It also tests stale/unavailable commands and successful/failed controls.
+
+`tools/test_power_limit.py` tests the actual query decoder for YC600/QS1/DS3,
+calibrated limits, mismatches, truncated data and missing replies. New CI steps
+run both tests. Existing Python host and JavaScript UI regressions pass.
+The legacy MQTT implementation, format builders and command handler have no diff.
+
+Counter/discovery durability depends on retained broker persistence. An MQTT
+echo does not guarantee a broker disk flush. Broker persistence/restart behavior,
+live Home Assistant discovery and Energy statistics, real inverter throttling,
+replacement-board counter continuity and simultaneous MQTT client load remain
+integration/hardware checks. HA limit commands are RAM-only; only explicit HA
+configuration saves write the existing settings file. Existing history writes
+are unchanged.
+
 ## Settings backup and restore (2026-09-12)
 
 Both 4 MB and 8 MB variants compile with Arduino core 3.3.8. Each application

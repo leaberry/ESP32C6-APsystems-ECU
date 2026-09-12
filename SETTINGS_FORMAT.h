@@ -1,5 +1,6 @@
 #pragma once
 #include "DEVICE_SETTINGS.h"
+#include "HA_MODEL.h"
 #include <ArduinoJson.h>
 #include <math.h>
 
@@ -71,6 +72,9 @@ inline bool settingsFormatValid(JsonDocument &doc, int button, int led) {
   const char *offset=w["gmtOffset"];
   char *end=nullptr; long minutes=strtol(offset,&end,10);
   if (!end || *end || minutes < -720 || minutes > 840) return false;
+  if ((!m["haEnabled"].isNull()&&!m["haEnabled"].is<bool>()) ||
+      (!m["haConfigured"].isNull()&&!m["haConfigured"].is<bool>()) ||
+      (!m["haDiscoveryPrefix"].isNull()&&(!settingsText(m["haDiscoveryPrefix"],48,1)||!haPrefixValid(m["haDiscoveryPrefix"])))) return false;
   if (!settingsText(m["Mqtt_Broker"],29) || !settingsText(m["Mqtt_Port"],4,1) ||
       !settingsText(m["Mqtt_outTopic"],39) || !settingsText(m["Mqtt_Username"],25) ||
       !settingsText(m["Mqtt_Password"],25) || !settingsInt(m["Mqtt_Format"],0,5) ||

@@ -120,6 +120,7 @@ int ecuMonth(time_t t) { tm v={}; gmtime_r(&t,&v); return v.tm_mon+1; }
 int ecuDay(time_t t) { tm v={}; gmtime_r(&t,&v); return v.tm_mday; }
 int ecuHour(time_t t) { tm v={}; gmtime_r(&t,&v); return v.tm_hour; }
 '''
+harness += "void haEnergyCredit(int,float) {}\n"
 for signature in ("static uint32_t energyLocalDateKey(", "void energyRecordDelta(",
                   "void energyHistoryLoop("):
     harness += extract(energy, signature)

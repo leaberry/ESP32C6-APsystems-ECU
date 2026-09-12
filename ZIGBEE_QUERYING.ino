@@ -78,6 +78,7 @@ int decodeQueryAnswer(int welke)
     payload = split(messageToDecode, "FBFB"); // remove the 0000 as well   
      //   */
     // for test we give payload a value
+    if (!payload || strlen(payload) < 14) return 15;
     consoleOut("payload " + String(payload) );
     
     // we must handle the DS3 and YC600 differently 
@@ -99,7 +100,7 @@ int decodeQueryAnswer(int welke)
         int decimalValue = (int)strtol(before, NULL, 16) / 28.89; // convert from hex string to int
         //we must compare decimalValue with maxPower
         // so we have calculate it back with the calibrateFactor
-        int programmedVal = decimalValue - desiredThrottle[welke];
+        int programmedVal = decimalValue - Inv_Prop[welke].calib;
         //double result = decimalValue / 28.89;
         consoleOut("power value YC600 = " + String(decimalValue));
         // this should match with the set throttle value which is
@@ -118,7 +119,7 @@ int decodeQueryAnswer(int welke)
     // for test we give payload a conten
     //strcpy(payload, "FBFB5CDDDE0104 26E2  0013BA14B413EC000A032000500003DD03A403200003E80000000000640003DD03A503350304012C060D03FF045F0E93140E3204890258001374136F125C0014032007D023A6031401BF03D9FFFFFFFFFFFF23A6C8FF1C01FEFEA2F6734E");
      
-     char powval[5]; // 4 chars + null terminator
+     char powval[5] = {0}; // 4 chars + null terminator
      memcpy(powval, payload + 10, 4); // copy "26E2"
      int decimalValue = (int)strtol(powval, NULL, 16) / 16.59;
      String term="power value DS3 = " + String(powval) + " this is dec. " + String(decimalValue);
