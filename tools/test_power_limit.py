@@ -4,6 +4,7 @@ import subprocess,tempfile
 root=Path(__file__).resolve().parents[1]
 source=(root/'ZIGBEE_QUERYING.ino').read_text(encoding='utf-8').split('int decodeQueryAnswer(int welke)',1)[1]
 harness=r'''
+#include <cstdint>
 #include <string>
 #include <cstring>
 #include <cstdlib>
