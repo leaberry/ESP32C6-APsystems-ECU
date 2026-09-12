@@ -75,6 +75,7 @@ inline bool settingsFormatValid(JsonDocument &doc, int button, int led) {
   if ((!m["haEnabled"].isNull()&&!m["haEnabled"].is<bool>()) ||
       (!m["haConfigured"].isNull()&&!m["haConfigured"].is<bool>()) ||
       (!m["haDiscoveryPrefix"].isNull()&&(!settingsText(m["haDiscoveryPrefix"],48,1)||!haPrefixValid(m["haDiscoveryPrefix"])))) return false;
+  if (!m["Mqtt_savedFormat"].isNull() && !settingsInt(m["Mqtt_savedFormat"],1,5)) return false;
   if (!settingsText(m["Mqtt_Broker"],29) || !settingsText(m["Mqtt_Port"],4,1) ||
       !settingsText(m["Mqtt_outTopic"],39) || !settingsText(m["Mqtt_Username"],25) ||
       !settingsText(m["Mqtt_Password"],25) || !settingsInt(m["Mqtt_Format"],0,5) ||

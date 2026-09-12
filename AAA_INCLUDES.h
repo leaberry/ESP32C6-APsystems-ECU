@@ -245,6 +245,7 @@ char requestUrl[32] = {"/"}; // return path for asynchronous web actions
   bool haEnabled = false;
   bool haConfigured = false;
   char haDiscoveryPrefix[49] = "homeassistant";
+  int Mqtt_savedFormat = 1; // Remember the selected legacy format while disabled.
   int   Mqtt_Format = 0; 
 int   event = 0;
 long  mqtt_lastConnect = 0;

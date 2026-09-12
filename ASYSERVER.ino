@@ -83,7 +83,9 @@ if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect(
 if (!loginBoth(request, "admin")) return;
 //toSend = FPSTR(HTML_HEAD);
 //toSend += FPSTR(MENUPAGE);
-request->send_P(200, "text/html", MENUPAGE);
+String menu = FPSTR(MENUPAGE);
+menu.replace("{ecuid}", webEscape(ECU_ID));
+request->send(200, "text/html", menu);
 });
 server.on("/security", HTTP_GET, [](AsyncWebServerRequest *request) {
    request->send_P(200, "text/css", SECURITY);
@@ -206,6 +208,7 @@ request->send(200, "text/html", toSend);
 // Register the MQTT child routes before /mqtt. ESPAsyncWebServer treats the
 // parent path as a match for slash-delimited children when the HTTP method is
 // the same, so the old order made both Save and Send test render this page.
+server.on("/mqtt/save", HTTP_POST, mqttConfigSaveCombined);
 server.on("/mqtt/save", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   if (!handleForms(request)) return;
@@ -561,56 +564,7 @@ if (!inverterRequestIndex(request, "inv", false, requestedIndex)) { request->sen
     }
     request->send_P(200, "text/html", otaIndex); 
     });
-  server.on("/firmware/upload", HTTP_POST, [](AsyncWebServerRequest *request){
-    if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
-    if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
-    Serial.println("FWUPDATE requested");
-    if( !Update.hasError() ) {
-    toSend="<br><br><center><h2>UPDATE SUCCESS !!</h2><br><br>";
-    toSend +="click here to reboot<br><br><a href='/reboot'><input style='font-size:3vw;' type='submit' value='REBOOT'></a>";
-    } else {
-    toSend="<br><br><center><kop>update failed<br><br>";
-    toSend +="click here to go back <a href='/firmware'>BACK</a></center>";
-    }
-    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", toSend);
-    response->addHeader("Connection", "close");
-    request->send(response);
-  
-  },[](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
-    if (!request->authenticate("admin", pswd)) return;
-    if (esp_ota_get_next_update_partition(nullptr) == nullptr) return;
-    //Serial.println("filename = " + filename);
-    if(filename != "") {
-    if(!index){
-      //#ifdef DEBUG
-        Serial.printf("start firmware update: %s\n", filename.c_str());
-      //#endif
-      //Update.runAsync(true);
-      if(!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)){
-        //#ifdef DEBUG
-          Update.printError(Serial);
-        //#endif
-      }
-    }
-    } else {
-      if( diagNose != 0 ) consoleOut("filename empty, aborting");
-//     Update.hasError()=true;
-    }
-    if(!Update.hasError()){
-      if(Update.write(data, len) != len){
-          Serial.println("update failed with error: " );
-          Update.printError(Serial);
-      }
-    }
-    if(final){
-      if(Update.end(true)){
-        Serial.printf("firmware Update Success: %uB\n", index+len);
-      } else {
-        Update.printError(Serial);
-      }
-    }
-  });
-
+  server.on("/firmware/upload", HTTP_POST, otaUploadComplete, otaUploadChunk);
 
 // if everything failed we come here
 server.onNotFound([](AsyncWebServerRequest *request){

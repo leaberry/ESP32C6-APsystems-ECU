@@ -156,6 +156,7 @@ void mqttConfigDocument(JsonDocument &doc) {
     json["haEnabled"] = haEnabled;
     json["haConfigured"] = haConfigured;
     json["haDiscoveryPrefix"] = haDiscoveryPrefix;
+    json["Mqtt_savedFormat"] = Mqtt_Format ? Mqtt_Format : Mqtt_savedFormat;
     json["Mqtt_Format"] = Mqtt_Format;    
 }
 
@@ -266,6 +267,8 @@ bool file_open_for_read(const char* bestand)
                      if (!haPrefixValid(prefix)) { prefix="homeassistant"; haEnabled=false; }
                      strlcpy(haDiscoveryPrefix,prefix,sizeof(haDiscoveryPrefix));
                      Mqtt_Format = doc["Mqtt_Format"] | 0;
+                     Mqtt_savedFormat = doc["Mqtt_savedFormat"] | (Mqtt_Format ? Mqtt_Format : 1);
+                     if (Mqtt_savedFormat < 1 || Mqtt_savedFormat > 5) Mqtt_savedFormat = 1;
                      Mqtt_stateIDX = doc["Mqtt_stateIDX"] | 123;
             }
              return true;

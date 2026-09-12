@@ -207,7 +207,8 @@ Use these steps only when keeping the **same partition layout**. A partition
 layout is the map that separates firmware from settings and history in flash.
 Changing that map requires backups and a fresh installation followed by restore.
 
-First download both backups above. Save today's total just before restarting.
+First download both backups above. For USB upgrades, save today's total just
+before flashing. The OTA page offers the automatic save described below.
 Keep your administrator password, ECU IP address and firmware bundle handy.
 
 ### OTA: update an 8 MB board over Wi-Fi
@@ -216,8 +217,14 @@ Keep your administrator password, ECU IP address and firmware bundle handy.
 2. Download `ESP32C6_ECU-8MB-OTA.bin` for the new release. This is the
    **application** file; its name does **not** contain `.merged`, `.bootloader`
    or `.partitions`.
-3. Open **Menu > Firmware update**, choose that file, and select **Install
-   firmware**.
+3. Open **Menu > Firmware update** and choose that file. Leave **Save current
+   day totals from ram** checked, then select **Install firmware**. The ECU
+   saves today's production before writing the image. A failed save stops the
+   update; fix the reported problem and retry. A day with no production needs
+   no save. Uncheck the box only if you accept losing unsaved totals.
+   This saves daily totals, not the hourly chart. On older firmware without
+   this checkbox, use **Energy history > Save today to flash now**
+   before updating.
 4. Keep power and Wi-Fi connected until the page reports success. Select
    **Restart ECU** when offered.
 5. Reopen the ECU and check its version, inverter list, polling and history.

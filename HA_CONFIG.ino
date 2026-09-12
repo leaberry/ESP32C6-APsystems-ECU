@@ -2,9 +2,7 @@
 
 void haConfigPage(AsyncWebServerRequest *request) {
   if(!settingsAuthorized(request))return;
-  String page=ecuPageStart(F("Home Assistant"),F("Discover solar sensors and controls without changing the existing Domoticz MQTT output."));
-  String form=FPSTR(HA_CONFIG_UI);form.replace("{enabled}",haEnabled?"checked":"");form.replace("{prefix}",webEscape(haDiscoveryPrefix));
-  page+=form;page+=ecuPageEnd();request->send(200,"text/html; charset=utf-8",page);
+  request->redirect("/mqtt#home-assistant");
 }
 void haConfigSave(AsyncWebServerRequest *request) {
   if(!settingsAuthorized(request))return;
