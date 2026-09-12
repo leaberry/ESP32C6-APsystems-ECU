@@ -17,7 +17,10 @@ Firmware source and partition maps are unchanged, so the previous two-variant
 build evidence still applies; no new firmware build or board flashing was done
 for this edit. At the initial review, these changes were local only. The header
 fix was subsequently backported to PR12, and PR13 and the documentation PR
-were rebased onto it for GitHub validation.
+were rebased onto it for GitHub validation. PR12 then passed both firmware
+builds and merged. PR13 exposed the same missing `<cstdint>` dependency in
+`tools/test_power_limit.py` (`uint8_t`); that harness now also includes the
+header explicitly.
 
 README installation/upgrade filenames were checked against release packaging.
 Application-only USB addresses and sector-aligned image spans were checked
