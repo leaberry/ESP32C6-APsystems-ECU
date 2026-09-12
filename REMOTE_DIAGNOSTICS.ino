@@ -85,6 +85,8 @@ String diagnosticsReportText() {
   report += F("\nWi-Fi SSID: "); report += WiFi.SSID();
   report += F("\nWi-Fi IP: "); report += WiFi.localIP().toString();
   report += F("\nWi-Fi RSSI dBm: "); report += WiFi.RSSI();
+  report += F("\nConfigured hostname: "); report += wifiConfiguredHostname();
+  report += F("\nActive station hostname: "); report += wifiActiveHostname();
   report += F("\nWi-Fi MAC: "); report += WiFi.macAddress();
   report += F("\nWi-Fi disconnects since boot: "); report += wifiDisconnectsSinceBoot();
   report += F("\nLast Wi-Fi disconnect: "); report += wifiLastDisconnectTimestamp();

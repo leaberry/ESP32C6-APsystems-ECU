@@ -138,7 +138,18 @@ On first boot the ECU creates an open setup access point named
 6. Set and record an administrator password of 8 to 32 printable, non-space
    characters. A fresh installation initially offers `0000`; do not leave that
    default on an untrusted network.
-7. Save. The ECU restarts and requests an address using the selected hostname.
+7. Save. The ECU restarts and, when using DHCP, requests an address using the selected hostname.
+
+Hostnames support up to 31 characters and are normalized to lowercase letters,
+numbers, and hyphens. The hostname is applied before Wi-Fi starts. **Network**
+and **System** show the active station hostname; System and the diagnostic report
+also show the configured hostname. Network saves are checked before reporting
+success or restarting. If storage fails, some settings may have been written;
+review the settings and retry.
+
+Your router controls its displayed device labels and DNS records, and may retain
+an old name until its lease or cache updates. Static addressing does not send a
+DHCP hostname. The firmware does not provide mDNS.
 
 Find the address in the router's DHCP leases and reserve it, or use the static
 settings. If the ECU cannot reconnect, it returns to the setup access point.

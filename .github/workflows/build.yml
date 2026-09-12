@@ -20,6 +20,8 @@ jobs:
             artifact_base: ESP32C6_ECU-8MB-OTA
     steps:
       - uses: actions/checkout@v4
+      - name: Test Wi-Fi hostname and save failures
+        run: python3 tools/test_wifi_hostname.py
       - name: Test NTP and antenna settings
         run: |
           python3 tools/test_device_settings.py

@@ -1,5 +1,18 @@
 # Build and hardware verification
 
+## Wi-Fi hostname fixes (2026-09-12)
+
+Both 4 MB and 8 MB variants compile with Arduino core 3.3.8, each using
+1,522,212 bytes of application storage and 90,128 bytes of static globals.
+`tools/test_wifi_hostname.py` compiles the actual hostname functions and both
+HTTP save handlers with Wi-Fi/NVS stubs. It verifies startup ordering, active
+versus global hostname reporting, startup failures, normalization and the
+31-character boundary, NVS open/write/readback failures, and success/reboot
+behavior for both setup and Network forms. The test also runs in CI.
+
+No board was flashed. DHCP packet advertisement and router lease/DNS/cache
+behavior still need hardware verification. No mDNS service was added.
+
 ## Guarded ECU identity generation (2026-09-12)
 
 The 4 MB and 8 MB builds with identity initialization each use 1,520,126 bytes
