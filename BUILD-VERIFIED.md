@@ -1,5 +1,16 @@
 # Build and hardware verification
 
+## Broker connection test and ECU_ID warning (2026-09-12)
+
+The 4 MB and 8 MB builds compile locally. Host tests exercise the real connection
+handlers and worker with success, broker refusals, authentication failures,
+unreachable-broker results, request validation, overlapping tests, stale results
+and worker-allocation failure. They verify a separate temporary client, saved
+password fallback, typed credentials, disconnect cleanup and no settings writes.
+UI tests cover success, refusal, busy responses, network errors and timeouts.
+The connection test does not publish or subscribe, so it cannot establish topic
+permissions. These additions have not been deployed to production hardware.
+
 ## Local menu, MQTT and OTA changes (2026-09-12)
 
 Based on merged main. The 4 MB USB-only and 8 MB OTA layouts compile locally

@@ -215,6 +215,8 @@ server.on("/mqtt/save", HTTP_GET, [](AsyncWebServerRequest *request) {
   request->redirect("/mqtt");
 });
 
+server.on("/mqtt/connection-test", HTTP_POST, mqttConnectionStart);
+server.on("/mqtt/connection-test", HTTP_GET, mqttConnectionStatus);
 server.on("/mqtt/test", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
   if (Mqtt_Format == 0) {

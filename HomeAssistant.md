@@ -31,6 +31,11 @@ from different records and need not match.
 4. In the ECU's **Menu > MQTT** page, under **Shared broker**, enter the same broker address,
    port and a permitted username/password. For ordinary local MQTT the port is
    usually `1883`. The ECU uses plain MQTT/TCP, not TLS or WebSockets.
+   Select **Test broker connection** to check the values above before saving.
+   A blank password uses the saved password. The result confirms whether the
+   broker accepted the connection and login. It does not test permission to
+   publish or subscribe to topics. The test works with either mode disabled
+   and does not save settings or send messages to your automation topics.
 5. Turn on **Enable/Disable Home Assistant**. Leave the discovery prefix at
    `homeassistant` unless you changed it in HA too.
 6. For HA alone, leave **Enable/Disable Domoticz** off. To use both, turn it on

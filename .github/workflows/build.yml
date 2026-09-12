@@ -60,6 +60,8 @@ jobs:
           python3 tools/test_power_limit.py
           python3 tools/test_mqtt_ota_settings.py
           node tools/test_mqtt_ota_ui.js
+          python3 tools/test_mqtt_connection.py
+          node tools/test_mqtt_connection_ui.js
       - name: Test ECU identity initialization
         run: python3 tools/test_ecu_identity.py
       - name: Select ${{ matrix.name }} layout

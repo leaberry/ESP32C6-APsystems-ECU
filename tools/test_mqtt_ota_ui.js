@@ -3,7 +3,7 @@ const path=require('node:path');
 const read=name=>fs.readFileSync(path.join(__dirname,'..',name),'utf8');
 const source=read('MQTT_CONFIG_UI.h'),script=source.split('<script>')[1].split('</script>')[0];
 for(const ha of [false,true]) for(const legacy of [false,true]) {
- const elements={haEnabled:{checked:ha},legacyEnabled:{checked:legacy},haFields:{},legacyFields:{}};
+ const elements={testBroker:{addEventListener(){}},haEnabled:{checked:ha},legacyEnabled:{checked:legacy},haFields:{},legacyFields:{}};
  for(const id of ['haEnabled','legacyEnabled'])elements[id].addEventListener=(_,f)=>elements[id].change=f;
  vm.runInNewContext(script,{document:{getElementById:id=>elements[id]}});
  for(const [toggle,fields]of [['haEnabled','haFields'],['legacyEnabled','legacyFields']]){
