@@ -1,5 +1,34 @@
 # Build and hardware verification
 
+## Local CI fix and documentation review (2026-09-12)
+
+PR12 run [34702769670](https://github.com/leaberry/ESP32C6-APsystems-ECU/actions/runs/34702769670)
+and PR13 run [34705072334](https://github.com/leaberry/ESP32C6-APsystems-ECU/actions/runs/34705072334)
+both stop in `tools/test_wifi_hostname.py`, before the firmware build. The host
+C++ harness uses `uint32_t` but did not include `<cstdint>`. The resulting
+`PORTAL_REBOOT_DELAY_MS` error is a consequence of the missing type. The local
+GCC 11 standard-library headers had supplied the type indirectly; the GitHub
+runner did not. The harness now includes its dependency explicitly. Matrix
+fail-fast also cancels the other build after a failing job; cancellation is not
+a separate firmware compiler error.
+
+All Python host regressions and the three JavaScript UI checks pass locally.
+Firmware source and partition maps are unchanged, so the previous two-variant
+build evidence still applies; no new firmware build or board flashing was done
+for this edit. At the initial review, these changes were local only. The header
+fix was subsequently backported to PR12, and PR13 and the documentation PR
+were rebased onto it for GitHub validation. PR12 then passed both firmware
+builds and merged. PR13 exposed the same missing `<cstdint>` dependency in
+`tools/test_power_limit.py` (`uint8_t`); that harness now also includes the
+header explicitly.
+
+README installation/upgrade filenames were checked against release packaging.
+Application-only USB addresses and sector-aligned image spans were checked
+against both partition CSVs and the built images. The partition comparison
+reads 3,072 bytes, matching the generated partition binaries. Local Markdown
+links were checked. These are static/documentation checks, not a physical USB
+upgrade or power-loss test.
+
 ## Home Assistant MQTT (2026-09-12)
 
 Both 4 MB and 8 MB variants compile with ESP32 core 3.3.8 and ArduinoJson

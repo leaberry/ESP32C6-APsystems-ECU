@@ -42,5 +42,6 @@ power and energy without HACS. See [HomeAssistant.md](HomeAssistant.md) for a
 complete `configuration.yaml` example and Energy dashboard instructions.
 
 The server does not implement SunSpec control models or any Modbus writes. Inverter
-power limiting and grid-profile actions remain behind the existing authenticated
-web/API paths.
+power limiting is available through the authenticated web/API paths and the
+optional Home Assistant MQTT number entity. Grid-profile actions remain in the
+web/API paths. Neither control is available through Modbus.

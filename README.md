@@ -1,648 +1,437 @@
 # ESP32-C6 APsystems ECU
-An inexpensive, single-board local ECU for YC600, QS1 and DS3 microinverters.
-It pairs and polls APsystems inverters directly with the ESP32-C6's integrated
-IEEE 802.15.4 radio, then presents production through a web interface, HTTP,
-MQTT and read-only SunSpec/Modbus TCP.
 
-This repository began at
-[`patience4711/ESP32-read-APS-inverters`](https://github.com/patience4711/ESP32-read-APS-inverters)
-commit `7b0ff63`. It retains proven APsystems command builders, telemetry
-decoders, MQTT formats and configuration concepts, but it is no longer merely a
-hardware port. The external CC2530/CC2531 and TI ZNP architecture was replaced
-with a native raw-radio transport, and the Wi-Fi setup, web application,
-scheduler, history, diagnostics, OTA/release process, Modbus service, security
-handling and many safety checks were substantially refactored or newly built.
+This project turns an ESP32-C6 board into a local controller (ECU) for up to
+nine APsystems YC600, QS1 or DS3 solar microinverters. It reads production over
+the board's built-in radio and shows it in a web page. No separate Zigbee module
+or cloud account is needed.
 
-This is an independent community project. It is not affiliated with or
-endorsed by APsystems, Espressif, the SunSpec Alliance or the upstream projects.
-See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md), [UPSTREAM.md](UPSTREAM.md) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for detailed provenance and
-credit.
+Use an **8 MB ESP32-C6** board if possible. It supports updates over Wi-Fi (OTA).
+A **4 MB ESP32-C6** also works, but updates require USB. Check the board's flash
+size; the chip name alone does not tell you the size.
 
-## What it does
+Plaintext DS3 pairing and polling have been tested on hardware. YC600, QS1,
+encrypted communication and replacement-board pairing still need more field
+testing. See [LIMITATIONS.md](LIMITATIONS.md).
 
-- pairs and polls up to nine YC600, QS1 or DS3 inverters;
-- uses the ESP32-C6 radio directly: no Zigbee module, UART wiring or CC25xx
-  firmware is required;
-- supports plaintext and the reverse-engineered APsystems L1 AES envelope per
-  inverter;
-- polls the fleet cooperatively, defaults to 300 seconds and enforces a safe
-  minimum based on fleet size;
-- provides a responsive local web dashboard, diagnostics and configuration;
-- queries inverter model and firmware information with APsystems command `0xDC`;
-- exposes cached telemetry through HTTP, MQTT and read-only SunSpec/Modbus TCP
-  on port 502;
-- keeps current-day hourly energy in RAM and appends one finalized daily record
-  to flash;
-- backs up, validates, restores or deliberately wipes finalized production
-  history;
-- records RAM-only daily runtime, operating window, peak output, temperature
-  range and grid-voltage range per inverter;
-- monitors the ESP32-C6 internal die temperature, including low/high values
-  and local timestamps since boot on the System information page;
-- supports guarded OpenAPS-compatible grid-protection profile read, apply and
-  restore operations; and
-- builds for 8 MB boards with OTA by default, with a supported 4 MB USB-only
-  alternative.
+## Find the instructions you need
 
-## Hardware status
+- [Install on a new board](#install-on-a-new-board)
+- [Connect Wi-Fi and set up the ECU](#connect-wi-fi-and-set-up-the-ecu)
+- [Add and pair inverters](#add-and-pair-inverters)
+- [Back up settings and production data](#back-up-settings-and-production-data)
+- [Upgrade without losing settings or data](#upgrade-without-losing-settings-or-data)
+- [Restore settings or production data](#restore-settings-or-production-data)
+- [Replace a failed ECU board](#replace-a-failed-ecu-board)
+- [Understand ECU_ID](#understand-ecu_id)
+- [Connect Home Assistant](#connect-home-assistant)
+- [Build from source](DEVELOPMENT.md)
 
-The native transport has been field-tested with three plaintext DS3 inverters,
-including two units on the same PAN and another on a different PAN. Pairing,
-two-fragment telemetry, firmware queries, repeated polling, Wi-Fi coexistence,
-OTA and the modern web interface have been exercised on an 8 MB ESP32-C6.
+## Install on a new board
 
-YC600, QS1, encrypted inverter transport and grid-protection writes retain
-known protocol implementations but still need model-specific hardware testing.
-Read [LIMITATIONS.md](LIMITATIONS.md) before using control functions.
+These steps are for a blank board or a deliberate fresh start. **They erase the
+board's old settings, pairing and production data.** For an existing ECU, use
+[the upgrade instructions](#upgrade-without-losing-settings-or-data) instead.
 
-## Fastest path: buy, flash, run
+### 1. Download the right files
 
-### 1. Buy an ESP32-C6 board
+Open [GitHub Releases](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases)
+and choose the release you want. Download and unzip the bundle for your board:
 
-The recommended target is an **8 MB ESP32-C6 development board** with:
+| Board | Bundle | First-install file inside |
+|---|---|---|
+| 8 MB | `ESP32C6-APsystems-ECU-8mb-ota.zip` | `ESP32C6_ECU-8MB-OTA.merged.bin` |
+| 4 MB | `ESP32C6-APsystems-ECU-4mb-noota.zip` | `ESP32C6_ECU-4MB-noOTA.merged.bin` |
 
-- 8 MB flash;
-- a USB connector that supports flashing;
-- a suitable 2.4 GHz antenna; and
-- a stable 5 V USB power supply.
+If a change is not in a release yet, signed-in GitHub users can download the
+matching artifact from a **successful** [Actions build](https://github.com/leaberry/ESP32C6-APsystems-ECU/actions).
+Check `BUILD-INFO.txt` for its version and commit. Keep the bundle; it also
+contains the application image needed for later updates.
 
-The ESP32-C6 is single-core plus a low-power core; that is sufficient because
-radio, Wi-Fi, web and Modbus work are event-driven. An 8 MB board is preferred
-because it supports safe dual-slot OTA updates and has more history/storage
-space. A 4 MB board runs the same application but must be updated over USB.
+### 2. Set up the USB tool
 
-Keep the ECU reasonably close to the inverters and away from metal enclosures.
-The board is normally cool enough without a heatsink, but use a ventilated,
-UV- and moisture-resistant enclosure in a hot installation location and keep
-it out of direct sunlight.
+The commands below use **Windows PowerShell** and Python 3. Install Python from
+[python.org](https://www.python.org/downloads/) if `py --version` does not work.
+Open PowerShell in the folder containing the unzipped firmware files, then run:
 
-### 2. Download the firmware
-
-Open the
-[latest GitHub Release](https://github.com/leaberry/ESP32C6-APsystems-ECU/releases/latest)
-and download:
-
-- `ESP32C6_ECU-8MB-OTA.merged.bin` for the recommended 8 MB board; or
-- `ESP32C6_ECU-4MB-noOTA.merged.bin` only for a confirmed 4 MB board.
-
-The merged image is the simplest first-install image and is flashed at address
-`0x0`. Firmware binaries are release assets, not files committed to this
-repository. Verify `BUILD-INFO.txt` and `SHA256SUMS.txt` when using an Actions
-artifact or release bundle.
-
-Do not flash the 8 MB image onto a 4 MB module. First installation or a full
-erase removes all previous settings, pairing records and production history.
-
-### 3. Flash over USB
-
-#### Windows graphical flasher
-
-Espressif's official
-[Flash Download Tool](https://docs.espressif.com/projects/esp-test-tools/en/latest/esp32c6/production_stage/tools/flash_download_tool.html)
-does not require ESP-IDF, Arduino IDE or Python.
-
-1. Connect the board by USB and close any serial monitor using its COM port.
-2. Start Flash Download Tool and select **ESP32-C6** and **Develop** mode.
-3. Select the downloaded `.merged.bin`, enable its row and enter address `0x0`.
-4. Select **DoNotChgBin**, choose the board's COM port and select **START**.
-5. If synchronization fails, hold **BOOT**, tap **RESET**, release **BOOT** and
-   retry.
-6. Reset the board when flashing completes.
-
-#### Standalone esptool
-
-Espressif also publishes a
-[standalone esptool executable](https://github.com/espressif/esptool/releases/latest)
-for Windows, macOS and Linux:
-
-```text
-esptool --chip esp32c6 --port COM7 erase-flash
-esptool --chip esp32c6 --port COM7 write-flash 0x0 ESP32C6_ECU-8MB-OTA.merged.bin
+```powershell
+py -m pip install "esptool>=5,<6"
+py -m serial.tools.list_ports
 ```
 
-Replace `COM7` and the filename for your system. Some boards require the same
-BOOT/RESET sequence described above.
+Connect the board with a USB **data** cable. Use the port shown for your board.
+The examples use `COM7`; replace it everywhere with your actual port. Close any
+serial monitor before using the port. On Linux or macOS, use `python3` instead
+of `py` and your device path instead of `COM7` (for example `/dev/ttyACM0`).
 
-### 4. Join Wi-Fi
+Check the detected flash size:
 
-On first boot the ECU creates an open setup access point named
-`aps-ecu-xxxxxx`.
+```powershell
+py -m esptool --chip esp32c6 --port COM7 flash-id
+```
 
-1. Connect a phone or computer to that access point.
-2. If the captive page does not open, browse to `http://192.168.4.1/`.
-3. Enter the 2.4 GHz Wi-Fi SSID and password. Hidden SSIDs can be typed.
-4. Choose a DHCP hostname.
-5. Use DHCP unless you specifically need a static IPv4 address, netmask and
-   gateway. The gateway is also used for DNS in static mode.
-6. Set and record an administrator password of 8 to 32 printable, non-space
-   characters. A fresh installation initially offers `0000`; do not leave that
-   default on an untrusted network.
-7. Save. The ECU restarts and, when using DHCP, requests an address using the selected hostname.
+If it cannot connect, hold **BOOT**, press and release **RESET**, then release
+**BOOT** and retry. Some boards need a manual RESET after flashing too.
 
-Hostnames support up to 31 characters and are normalized to lowercase letters,
-numbers, and hyphens. The hostname is applied before Wi-Fi starts. **Network**
-and **System** show the active station hostname; System and the diagnostic report
-also show the configured hostname. Network saves are checked before reporting
-success or restarting. If storage fails, some settings may have been written;
-review the settings and retry.
+### 3. Flash the new board
 
-Your router controls its displayed device labels and DNS records, and may retain
-an old name until its lease or cache updates. Static addressing does not send a
-DHCP hostname. The firmware does not provide mDNS.
+For an **8 MB** board:
 
-Find the address in the router's DHCP leases and reserve it, or use the static
-settings. If the ECU cannot reconnect, it returns to the setup access point.
+```powershell
+py -m esptool --chip esp32c6 --port COM7 erase-flash
+py -m esptool --chip esp32c6 --port COM7 --baud 460800 write-flash 0x0 ESP32C6_ECU-8MB-OTA.merged.bin
+```
 
-### 5. Configure time and polling
+For a **4 MB** board, use these commands instead:
 
-Open `http://ECU-IP/`, sign in as `admin`, and use **Menu**:
+```powershell
+py -m esptool --chip esp32c6 --port COM7 erase-flash
+py -m esptool --chip esp32c6 --port COM7 --baud 460800 write-flash 0x0 ESP32C6_ECU-4MB-noOTA.merged.bin
+```
 
-1. **Time and location:** enter signed decimal latitude and longitude, such as
-   `39.7392` and `-104.9903`, then select the nearest named time zone. Regional
-   zones apply daylight-saving transitions automatically.
-2. **Polling and access:** automatic polling defaults to enabled at 300 seconds.
-   The minimum is three seconds per configured inverter and never below five
-   seconds. Start with the default until communication is proven. The read-only
-   SunSpec/Modbus TCP server also defaults to enabled and can be disabled here.
-3. **Network:** confirm the hostname, address and Wi-Fi signal.
+Wait for a successful write and verification, then reset the board. If transfers
+fail, try `--baud 115200`. Never put the 8 MB image on a 4 MB board.
 
-### Administrator and read-only accounts
+For a graphical Windows tool, use Espressif's
+[Flash Download Tool](https://docs.espressif.com/projects/esp-test-tools/en/latest/esp32c6/production_stage/tools/flash_download_tool.html):
+select **ESP32-C6**, **Develop**, the merged file at address `0x0`, **DoNotChgBin**,
+and your COM port. This is also a first-install procedure.
 
-The local web server has two fixed usernames with different privileges:
+## Connect Wi-Fi and set up the ECU
 
-- **`admin`** can open the administration menu, change settings, add or control
-  inverters, manage grid profiles and history, view diagnostics, restart the
-  ECU and install OTA firmware.
-- **`user`** is read-only. It can view the dashboard, inverter details, energy
-  history and telemetry APIs, but cannot open administrative pages or submit
-  control/configuration actions.
+1. Connect your phone or computer to the ECU's open Wi-Fi network,
+   named `aps-ecu-xxxxxx`.
+2. Open `http://192.168.4.1/` if the setup page does not appear.
+3. Enter your **2.4 GHz** Wi-Fi name and password. You can type a hidden name.
+4. Choose a hostname, such as `solar-ecu`. Leave **DHCP** enabled unless you
+   already know the static IP address, netmask and gateway you need.
+5. Set an administrator password and save. The ECU restarts.
+6. Rejoin your normal Wi-Fi. Find the ECU's IP address in your router's device
+   list, then open that address in a browser, for example `http://192.168.1.50/`.
+7. Sign in as `admin` with the password you chose. In **Menu > Polling and
+   access**, also change the read-only `user` password. Factory defaults are
+   `admin` / `0000` and `user` / `1111`. New passwords must have 8–32 printable
+   characters with no spaces, and the two passwords must differ.
+8. In **Menu > Time and location**, enter your latitude, longitude and time
+   zone. Leave the NTP server as `pool.ntp.org`, or enter your own server's
+   hostname or IPv4 address without `http://` or a port.
+9. Leave automatic polling at **300 seconds** while checking your installation.
+   Correct time and location let the ECU stop polling overnight.
 
-A fresh installation starts with `admin` / `0000` and `user` / `1111` for
-compatibility with the original project. Replace both defaults before placing
-the ECU on any network that is not completely trusted.
+Reserve the ECU's IP address in your router so bookmarks keep working. The ECU
+requests your hostname, but the router controls its displayed name and local
+DNS records. Use the IP address if the name does not work. There is no mDNS
+(`.local`) service. Static IP mode does not send a DHCP hostname.
 
-Use **Menu > Polling and access** while signed in as `admin` to change either
-password. Changing the administrator password requires the current password
-and matching confirmation. New passwords must contain 8 to 32 printable
-non-space characters, and the two accounts cannot share a password. The ECU
-never displays an existing password. HTTP Basic Authentication is stateless,
-so the browser may retry cached old credentials once before prompting after an
-administrator-password change.
+Keep the board near the inverters, away from metal, dry and out of direct sun.
+Use a stable USB power supply. If Wi-Fi cannot reconnect, the ECU can return to
+its setup access point.
 
-These accounts protect the web interface only. Modbus/TCP and MQTT use their
-own network/service configuration, so keep the ECU on a trusted IoT network and
-do not expose it directly to the Internet.
+### Choose an antenna, if needed
 
-Daylight-aware polling pauses inverter radio traffic outside the calculated
-sunrise/sunset window. When Night Mode begins, all per-input and total power
-values are set to zero immediately; Modbus then serves zero watts and MQTT
-publishes one zero-output update per inverter. Energy counters are preserved,
-while non-power telemetry such as the last voltage and temperature remains the
-most recent observation. If time or location is invalid, the scheduler
-deliberately falls back to 24-hour polling rather than silently stopping.
+**Menu > Antenna** starts at **Unmanaged**, which leaves antenna pins alone.
+For a supported switched-antenna board, select **Internal** or **External**, then
+choose its board name. The page includes a photo link to help identify it.
 
-The application clock uses ESP-IDF's 64-bit monotonic timer behind a
-task-safe local-time wrapper. This avoids the 32-bit `millis()` rollover and
-cross-task race behavior of the legacy Time library while the web, scheduler
-and Modbus tasks are active together.
+The **Seeed Studio XIAO ESP32-C6** preset uses GPIO3 LOW to enable the switch,
+and GPIO14 LOW for internal or HIGH for external. **Advanced** lets you enter
+chip GPIO numbers, polarity and an optional enable pin. Use that only with the
+board's schematic. Save and restart. Connect an external antenna before
+selecting External. Do not copy GPIO settings from a different board.
 
-During that pause the dashboard prominently reports **Night Mode** and the
-calculated local time when polling will resume at the next sunrise. The fleet
-heading defaults to **APsystems Fleet** and can be changed from its adjacent
-edit icon; the custom name is retained across restarts and OTA updates.
+## Add and pair inverters
 
-### 6. Add and pair each inverter
-
-For each inverter:
+Pair during daylight, when the inverter is powered. Place the ECU close enough
+for a strong radio signal.
 
 1. Open **Menu > Inverters > Add inverter**.
-2. Enter the 12-digit serial number printed on the inverter.
-3. Select the model, assign a useful name and mark the physically connected PV
-   inputs.
-4. Leave calibration empty/default unless a verified model-specific correction
-   is required. The Domoticz index is used only by the legacy Domoticz MQTT
-   format.
-5. Select **Save inverter**. Saving must happen first because pairing frames use
-   the serial number and the learned address is written to that inverter's
-   configuration.
-6. Select **Pair inverter** and wait for success.
-
-Pair near the array. Once all inverters are configured, confirm that the
-dashboard reports recent poll times, firmware versions and sensible per-input
-values. DS3 units show only their two physical PV inputs.
-
-## Updating an existing 8 MB installation
-
-OTA requires an existing 8 MB dual-slot installation. **Menu > System
-information** must show **OTA available: Yes**.
-
-1. Back up production history from **Menu > Energy history > Download
-   restorable backup**.
-2. Download `ESP32C6_ECU-8MB-OTA.bin` from the desired release. Use the
-   application `.bin`, not the merged image, bootloader or partition image.
-3. Open **Menu > Firmware update**, select the application image and install it.
-4. Keep power and Wi-Fi stable until the page reports success, then reboot.
-5. Verify the firmware version, network, inverter list, polling and history.
-
-OTA writes the inactive application slot and preserves NVS/SPIFFS. It cannot
-convert a 4 MB installation or change partition layouts. Use USB for those
-operations and keep physical USB access available for recovery.
-
-## ECU identifier initialization
-
-At boot, an ECU still using the legacy default `D8A3011B9780` generates and
-saves a random 12-digit hexadecimal identifier **only if no pairing data is
-present**. A custom or previously generated identifier is preserved. The
-generated ID is not a secret and requires no cryptographic randomness.
-
-The check covers all nine inverter slots, interrupted pairing files, and the
-saved radio-peer table, including orphan peers. Malformed or unreadable pairing
-records also preserve the current ID. The firmware saves and reads back the
-new configuration before activating the ID; failed writes leave the active ID
-unchanged. Interrupted file replacement can recover the previous configuration.
-
-`ECU_ID` is used in inverter pairing, polling and control messages, determines
-the operational PAN, and is exposed as the SunSpec ECU serial number. Existing
-paired installations using the default retain it to avoid requiring re-pairing.
-The MQTT client ID remains derived from the board MAC. Identity initialization
-happens before radio or web startup, and subsequent boots reuse the saved ID.
-
-Developer check: `python3 tools/test_ecu_identity.py` requires g++ and ArduinoJson
-headers. Set `ARDUINOJSON_INCLUDE` to the library's `src` directory if it is not
-under `~/Arduino/libraries/ArduinoJson`.
-
-## NTP server and antenna selection
-
-Under **Menu > Time and location**, set the NTP server to a hostname or IPv4
-address (without a URL scheme or port). Existing configurations default to
-`pool.ntp.org`. Saving requests synchronization; reload the page to see its
-result. A configured private server is used without public fallback. A failed
-request preserves an already synchronized running clock and is retried. Without
-an initial valid clock, daylight-aware polling falls back to 24-hour operation.
-
-Under **Menu > Antenna**, the default is **Unmanaged**: the firmware does not
-drive antenna-control pins. Selecting **Internal** or **External** reveals the
-board selector:
-
-- **Seeed Studio XIAO ESP32-C6** uses GPIO3 LOW to enable the RF switch and
-  GPIO14 LOW for internal or HIGH for external. The page links to a board photo
-  for identification. These settings follow the
-  [Seeed hardware reference](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/#hardware-overview).
-- **Advanced** exposes the select GPIO and polarity, plus an optional enable
-  GPIO and its active level. GPIO numbers are ESP32-C6 chip numbers, not board
-  labels. Check the board schematic for suitable wiring; the firmware rejects
-  duplicate pins and pins reserved for flash, USB, serial, strapping, the
-  firmware's GPIO4 output, and its configured button/LED.
-
-Save, then restart to apply the antenna configuration before Wi-Fi or inverter
-radio startup. Connect a suitable antenna before selecting External. Invalid
-saved antenna settings fall back to unmanaged operation. Only the XIAO preset
-is currently verified against manufacturer documentation; other switch-equipped
-boards use Advanced until their wiring is confirmed. RF performance and actual
-switching still need validation on physical hardware.
-
-Developer checks: `python3 tools/test_device_settings.py` (requires g++) and
-`node tools/test_antenna_ui.js`.
-
-## Settings backup and replacement boards
-
-**Menu > Settings backup** provides a separate JSON backup and restore. It includes:
-
-- ECU_ID and the radio's IEEE address;
-- inverter names, serials, types, panel configuration, calibration, saved power
-  limits and pairing records, including learned peers stored in NVS;
-- fleet, polling, SunSpec and flight-recorder settings;
-- location, timezone and NTP settings;
-- MQTT, Wi-Fi, hostname, static addressing, antenna and login settings.
-
-The file contains passwords in plain text. Keep it private. Download and restore
-require administrator authentication and the configured local-access check.
-Production history, today's checkpoint, live readings, diagnostic logs, crash
-dumps and inverter grid-protection settings are not included.
-
-To restore, choose the JSON file and select **Validate and preview**. Review the
-installation identity, inverter count and selected options, then choose
-**Restore settings and restart**. Network and antenna restore are unchecked by
-default, preserving the destination board's current connection and wiring.
-Login passwords always come from the backup. If network settings are restored,
-reconnect using the restored address or the router's new DHCP lease.
-
-For a replacement board, configure its Wi-Fi first and open Settings backup.
-Restoring preserves the original ECU_ID, radio IEEE address and paired-peer
-records; the replacement board's Wi-Fi MAC remains its own. Keep the old ECU
-powered off when transferring its identity. Antenna settings should only be
-restored when the saved wiring matches the destination. Pairing continuity with
-real inverters on replacement hardware still needs field verification.
-
-Backups use the versioned `aps-ecu-settings` format, with a 32 KB upload limit,
-strict value validation and a CRC32 corruption check. They contain logical
-settings rather than raw memory structures or a complete flash image. Uploads
-are held separately per request, and preview does not write any settings.
-Restore stages and verifies a complete manifest before restart, then applies
-and reads back all settings before starting either radio. An interrupted or
-failed apply retains the manifest for replay after reset; startup stops with a
-serial-console message if replay cannot complete. Do not erase or reformat
-storage while recovering a pending restore.
-
-Settings restore replaces the configured inverter list but leaves production
-history in place. Restore the matching history backup separately when moving
-an installation. If the destination contains records from another fleet, manage
-those explicitly on the Energy history page.
-
-Regression tests: `python3 tools/test_settings_backup.py` (requires ArduinoJson
-headers) and `node tools/test_settings_ui.js`.
-
-## Production history backup and recovery
-
-The Energy history page offers two downloads and an explicit shutdown save:
-
-- **Download CSV** includes finalized days plus the volatile current day and is
-  intended for people and spreadsheets.
-- **Download restorable backup** downloads the exact finalized binary journal.
-  This is the file accepted by Restore history.
-- **Save today to flash now** writes a CRC-protected snapshot of the current
-  day's per-inverter totals to `/energy-today.bin`. It does not end the day or
-  stop later production from accumulating. Use it immediately before an
-  intentional power-off when preserving today's total matters.
-
-Restore first writes a temporary file, checks record size, magic, date range
-and CRC, preserves the current journal for rollback,
-then activates the validated backup. It replaces finalized history and resets
-the current day's volatile hourly/statistics RAM.
-
-Wipe is permanent and requires typing `WIPE` plus accepting a browser warning.
-Download a binary backup first. Changing partition layouts or flashing a merged
-image can erase history independently of the web controls.
-
-Only finalized daily records are included in the downloadable backup. A saved
-current-day checkpoint is restored automatically after a same-day restart and
-promoted to finalized history if the ECU next starts on a later local date.
-Hourly buckets and per-inverter operating statistics intentionally live only
-in RAM to avoid flash wear; the manual save preserves totals, not those
-fine-grained observations.
-
-## Energy accounting
-
-Telemetry energy deltas are accumulated per inverter:
-
-- current-day 24-hour buckets remain in RAM;
-- one finalized record is appended to `/energy-days.bin` at local-day rollover;
-- an optional administrator-requested `/energy-today.bin` checkpoint is the
-  only normal current-day energy write;
-- recorded/lifetime energy is reconstructed from the validated journal at boot;
-- `/api/energy/hourly?inv=N` returns one inverter, and `inv=-1` returns the
-  fleet;
-- `/api/energy/days?limit=90` returns recent finalized records plus today;
-- `/api/energy/history.csv` streams CSV; and
-- `/energy/backup` downloads the lossless restorable journal.
-
-The recorded counter starts when this firmware's history is initialized. It is
-not the inverter's factory lifetime counter. The first telemetry response after
-an ECU restart establishes energy/time baselines and reports zero power; this
-prevents accumulated inverter energy from becoming a false startup power spike
-or duplicate energy.
-
-The dashboard's **Lifetime Energy** value is therefore the durable production
-recorded by this ECU since its history was initialized (or last wiped), not the
-microinverter's factory lifetime production. Per-input **Inverter energy
-counter** values are separate raw, short-window counters reported by the
-inverter in Wh. They can reset or wrap and should not be interpreted as daily
-or lifetime totals; the ECU uses their deltas to build its authoritative daily
-and lifetime history.
-
-## Output limiting and grid profiles
-
-The inverter output target is **watts per connected PV input**, not a percentage
-or whole-inverter limit. For example, `100` requests about 100 W from each DS3
-input, approximately 200 W total. The web UI accepts 20-500 W per input; 500 W
-requests normal maximum output. Use low limits cautiously.
-
-Grid profiles use OpenAPS `invdriver.gridprofile/v1` JSON and change utility
-protection values such as voltage/frequency trip thresholds and timing. They do
-**not** install executable inverter firmware. Operations target one inverter,
-back up readable current values, enforce bounds and read every written value
-back. YC600 writes remain disabled because no verified encoder path is
-available. Use only utility-approved settings.
-
-## Home Assistant, Modbus and SunSpec
-
-When enabled, the read-only server accepts Modbus functions 03 and 04 on TCP
-port 502. It is enabled by default and can be switched off under **Menu >
-Polling and access**. Unit 1 is the fleet aggregate; units 2-10 map to inverter
-indexes 0-8. It exposes SunSpec Common Model 1 and single-phase Inverter Model
-101.
-
-Home Assistant's built-in Modbus integration can create fleet and per-inverter
-power/energy sensors without HACS. Copy-ready YAML is in
-[HomeAssistant.md](HomeAssistant.md); the register map is in
-[SUNSPEC.md](SUNSPEC.md). Modbus serves the last completed telemetry snapshot,
-so a persistent client does not generate radio requests or contend with the
-poll scheduler.
-
-## MQTT and HTTP
-
-The project preserves the upstream MQTT formats and command topic. MQTT is
-disabled by default. Configure a broker reachable from the ECU's network,
-choose the required format and use **Send test**; the test reports actual
-connection or publish failure.
-
-### Home Assistant
-
-**Menu > Home Assistant** enables a separate MQTT client using the existing
-broker credentials. Home Assistant is off by default. Keep the existing MQTT
-format Disabled for HA only, or enable the original format for Domoticz alongside
-HA. Existing Domoticz payloads, topics and command handling are unchanged. HA
-uses `aps-ha-<ECU_ID>` as its client ID and `aps_ecu/<ECU_ID>/...` as its topic
-root; keep only one running ECU with a given ECU_ID.
-
-Discovery creates a fleet device and devices identified by inverter serial,
-with solar power and cumulative solar energy, temperature, AC voltage/frequency,
-connected-panel power and optional diagnostic sensors. It uses Home Assistant's
-[device discovery format](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
-In **Settings > Dashboards > Energy**, add Solar production and choose the fleet
-**Solar energy** sensor, or choose the individual inverter energy sensors.
-Do not add both: that would double count production. Counters are `energy`,
-`kWh`, `total_increasing`, so they are eligible for the
-[Energy dashboard](https://www.home-assistant.io/docs/energy/faq/).
-Production today is a separate diagnostic without a statistics state class.
-
-Counters accumulate the existing validated telemetry deltas, not wall-clock
-power integration. They do not reset at midnight, when a slot is reordered, or
-when an inverter is removed. The bounded archive holds 64 inverter serials;
-exhaustion or malformed checkpoints makes energy unavailable instead of
-publishing a false reset. A newly enabled installation starts at zero; finalized
-history is not imported. As with existing telemetry, production while the ECU
-is off and the first baseline interval after reboot cannot be reconstructed.
-
-**No new automatic ECU flash writes:** unacknowledged deltas stay in RAM and
-counter checkpoints are retained on the broker at `aps_ecu/<ECU_ID>/energy`.
-The ECU recovers this checkpoint before publishing energy and publishes only
-counters echoed back by the broker. A boot token prevents counting an accepted
-checkpoint twice after a lost echo/reconnect. Enable broker persistence and
-back up its retained data; an echo confirms receipt, not a broker disk flush.
-Power loss can lose unacknowledged deltas, and losing both retained data and
-ECU RAM loses the counter baseline. Preserve the checkpoint when replacing the
-board and restore the same ECU_ID using settings restore. Settings/history
-backups do not include these broker checkpoints.
-
-Discovery inventory is also broker-retained at `aps_ecu/<ECU_ID>/inventory`.
-It removes this ECU's obsolete discovery entries after inverter removal, a
-prefix change or disabling HA. Disable HA while the old broker remains
-reachable before changing brokers; cleanup cannot reach an abandoned broker.
-Broker ACLs must allow reading and writing this ECU's topic root, writing its
-discovery topics and reading `<discovery-prefix>/status` (default `homeassistant`).
-Missing read permission prevents recovery rather than publishing a false zero.
-
-Each inverter exposes a **Per-input power limit** number (20–500 W per connected
-input, using existing calibration), not a whole-inverter limit. It requires
-recent telemetry, validates commands and checks the inverter's response before
-reporting success. MQTT commands are not retained and carry a connection token
-to reject old retained commands. These commands update RAM only; they do not
-save a new boot-time limit. Configuration saves still explicitly write the
-existing settings file. Existing production-history writes are unchanged.
-
-HA uses cached telemetry without extra radio polling, publishing a paced state
-cycle every 15 seconds. Both MQTT modes use separate client IDs and namespaces;
-real-device CPU/network load and inverter control still need hardware testing.
-
-The compatibility `get.Data` interface remains available. New UI/API code uses
-lowercase routes under `/api`. Do not expose the ECU directly to the Internet;
-place remote access behind a trusted VPN or authenticated reverse proxy.
-
-## Failure diagnostics
-
-**Menu > Diagnostics** provides three administrator-only downloads:
-
-- the current system/radio report and newest in-memory trace lines;
-- a fixed-size twelve-hour flight recorder with one-minute heap, largest-free-
-  block, task-stack, Wi-Fi, temperature and polling snapshots; and
-- the ESP-IDF crash dump stored in the dedicated flash partition, when a panic
-  or watchdog failure has created one.
-
-The flight recorder is **disabled by default** and can be enabled under
-**Menu > Polling and access** for intermittent-failure investigation. Enabling
-it creates or reuses `/flight-recorder.bin`, a preallocated 720-record circular
-file (74 bytes per record, 53,280 bytes total). While enabled it overwrites one
-slot each minute and also records Wi-Fi loss, restoration and reconnect events.
-Each record captures uptime and local time, free/minimum heap, largest free
-block, task stack margins, Wi-Fi state/RSSI/reason, die temperature and current
-poll activity. It retains roughly twelve hours and never grows with uptime.
-
-Disabling it stops all recorder flash writes immediately but retains existing
-records for download. Wi-Fi reconnect supervision is independent and remains
-active. The bounded live trace shown in the diagnostic report is RAM-only. An
-ESP-IDF crash dump is written only after a qualifying panic/watchdog failure.
-A crash dump must be decoded with the exact `.elf` from the firmware build that
-crashed, so retain the release ELF and download all three diagnostic files
-before installing another build whenever possible.
-
-## Build from source
-
-### Default 8 MB build
-
-`partitions.csv` now defaults to the recommended 8 MB dual-OTA layout and is
-identical to `partitions-8mb-ota.csv`.
-
-1. Install Arduino IDE 2.x.
-2. Add
-   `https://espressif.github.io/arduino-esp32/package_esp32_index.json` to Boards
-   Manager URLs.
-3. Install **esp32 by Espressif Systems 3.3.8**.
-4. Install ArduinoJson 7.4.2, PubSubClient 2.8, NTPClient 3.2.1, Time 1.6.1,
-   PSACrypto 1.1.1, ESP Async WebServer, AsyncTCP and sunMoon. CI contains the
-   authoritative dependency commands.
-5. Open `ESP32C6-APsystems-ECU.ino` and select the board or **ESP32C6 Dev
-   Module**.
-6. Select **Flash size: 8 MB**, **Partition Scheme: Custom**, **USB CDC On Boot:
-   Enabled**, and leave **Zigbee Mode: Disabled/default**.
-7. Upload and monitor at 115200 baud.
-
-Do not enable ZCZR/ZBOSS. The native APsystems transport requires exclusive
-ownership of the C6's IEEE 802.15.4 callbacks.
-
-### 4 MB USB-only build
-
-Before compiling for a 4 MB board, replace `partitions.csv` with
-`partitions-4mb-noota.csv` and select 4 MB flash. That layout has one factory
-application and no OTA slot. Restore the 8 MB default afterward by copying
-`partitions-8mb-ota.csv` back to `partitions.csv`.
-
-| Flash | Application layout | Web OTA | SPIFFS |
-|---|---|---:|---:|
-| 8 MB default | two 3 MB OTA slots | yes | about 1.85 MB |
-| 4 MB alternative | one 3.375 MB factory image | no | about 488 KB |
-
-CI explicitly substitutes each named partition file, compiles both variants and
-packages separate artifacts. See [BUILD-VERIFIED.md](BUILD-VERIFIED.md).
-
-### Local Windows helpers
-
-With Espressif's ESP-IDF 5.5 tools installed under `C:\Espressif`:
+2. Enter the inverter's printed **12-digit serial number**.
+3. Select its model and a useful name, such as `Garage roof`.
+4. Mark only the PV inputs that have panels connected. DS3 has two inputs.
+5. Leave calibration at its default unless you have a verified correction.
+   The Domoticz index is only needed for the legacy Domoticz MQTT format.
+6. Select **Save inverter** first, then **Pair inverter**. Wait for the result.
+7. Check the dashboard after a polling cycle. Look for a recent poll time and
+   sensible readings. The first reading after reboot establishes a baseline
+   and can show zero power; wait for the next cycle.
+8. Repeat for the other inverters, then download a settings backup.
+
+If pairing fails, check the serial, model, inverter power and distance. See the
+pairing status and **Menu > Diagnostics** before erasing anything. Do not erase
+settings or change ECU_ID as a routine pairing fix.
+
+## Back up settings and production data
+
+There are **two different ECU backups**. Save both before an upgrade, and save
+settings again after adding or pairing an inverter. Keep dated copies.
+
+| Download | What it saves | What it does not save |
+|---|---|---|
+| Settings `.json` | ECU_ID, radio identity, inverter list and pairing, saved limits, network, login, MQTT, antenna, time and polling settings | Production history and live data |
+| Restorable history `.bin` | Finished daily production records | Today's unfinished total, hourly readings, settings and pairing |
+| CSV | Readable production data, including today | It cannot be uploaded to restore history |
+
+**Settings contain passwords in plain text.** Keep them private. Neither ECU
+backup contains Home Assistant's broker-retained counters. Back up the MQTT
+broker separately if you use [Home Assistant MQTT](HomeAssistant.md#mqtt-backups-and-counter-recovery).
+
+### Download settings
+
+1. Sign in as `admin`.
+2. Open **Menu > Settings backup**.
+3. Select **Download settings backup (.json)**.
+4. Check that a nonempty `.json` file was saved to your computer.
+
+The settings file also includes the original radio IEEE address and learned
+peer records needed when replacing the board. Inverter grid-protection settings,
+diagnostic logs and crash dumps are not included.
+
+### Download production history
+
+1. Open **Menu > Energy history**.
+2. Select **Download restorable backup** and keep the `.bin` file.
+3. Also select **Download CSV** if you want a readable copy of today's readings.
+
+Immediately before a planned restart or power-off, select **Save today to flash
+now** if you want to preserve today's total on the **same board**. This manual
+save does not finish the day or add it to the downloadable history backup.
+After restart, the ECU reloads the saved total; hourly charts and detailed
+operating statistics start again. Production since that manual save can be lost.
+
+For a board replacement, today's checkpoint is not transferred by the two web
+backups. If possible, wait until the day is finalized, then download history
+again. Do not change the clock to force a day to finish.
+
+## Upgrade without losing settings or data
+
+Use these steps only when keeping the **same partition layout**. A partition
+layout is the map that separates firmware from settings and history in flash.
+Changing that map requires backups and a fresh installation followed by restore.
+
+First download both backups above. Save today's total just before restarting.
+Keep your administrator password, ECU IP address and firmware bundle handy.
+
+### OTA: update an 8 MB board over Wi-Fi
+
+1. Open **Menu > System information** and check **OTA available: Yes**.
+2. Download `ESP32C6_ECU-8MB-OTA.bin` for the new release. This is the
+   **application** file; its name does **not** contain `.merged`, `.bootloader`
+   or `.partitions`.
+3. Open **Menu > Firmware update**, choose that file, and select **Install
+   firmware**.
+4. Keep power and Wi-Fi connected until the page reports success. Select
+   **Restart ECU** when offered.
+5. Reopen the ECU and check its version, inverter list, polling and history.
+
+OTA writes a spare firmware slot and keeps settings, pairing and history.
+It cannot change the partition layout and is unavailable on 4 MB boards.
+
+### USB: update either board size while keeping its data
+
+Do **not** run `erase-flash`, use `--erase-all`, or flash a `.merged.bin` for
+this procedure. Even without a separate erase command, a merged file can write
+across settings areas. The repository's `Flash-Firmware.ps1` helper writes a
+merged image; `-SkipErase` does **not** make it a data-preserving upgrade tool.
+
+Use the [USB tool setup](#2-set-up-the-usb-tool) above. Download and unzip the
+new release bundle, then open PowerShell in that folder. Close serial monitors.
+Replace `COM7` with your board's port.
+
+Optionally save a complete emergency image of this board before writing:
 
 ```powershell
-.\tools\Flash-Firmware.ps1 -Variant 8MB -Port COM7
-.\tools\Serial-Monitor.ps1 -Port COM7
+py -m esptool --chip esp32c6 --port COM7 read-flash 0 ALL ecu-before-upgrade.bin
 ```
 
-The flash helper erases by default. Add `-SkipErase` only for a same-layout
-replacement when retaining configuration is intentional. For built-in USB-JTAG
-source debugging, connect the native USB/JTAG port and run:
+Keep this file private; it contains settings and passwords. It is a same-board
+recovery image, not the normal settings backup for a replacement board.
+
+**Check the partition map before upgrading.** Read the 3,072-byte table:
 
 ```powershell
-.\tools\Debug-ESP32C6.ps1
+py -m esptool --chip esp32c6 --port COM7 read-flash 0x8000 0xC00 installed-partitions.bin
 ```
 
-## Architecture
+For **8 MB**, compare it to the new release's table:
 
-The inherited architecture was:
+```powershell
+(Get-FileHash .\installed-partitions.bin -Algorithm SHA256).Hash
+(Get-FileHash .\ESP32C6_ECU-8MB-OTA.partitions.bin -Algorithm SHA256).Hash
+```
 
-`application -> TI ZNP over UART -> CC2530/CC2531 -> Zigbee APS`
+For **4 MB**, use `ESP32C6_ECU-4MB-noOTA.partitions.bin` in the second command.
+The two hashes must match. If they differ, stop: use the partition-change
+procedure below instead. Do not write a new partition table over existing data.
 
-The current architecture is:
+For an **8 MB** board with the matching layout, write the application to both
+firmware slots. This covers whichever slot the bootloader currently selects:
 
-`refactored application/services -> compatibility adapter -> native APsystems MAC/NWK/APS -> ESP32-C6 radio`
+```powershell
+py -m esptool --chip esp32c6 --port COM7 --baud 460800 write-flash 0x10000 ESP32C6_ECU-8MB-OTA.bin 0x310000 ESP32C6_ECU-8MB-OTA.bin
+```
 
-`ZIGBEE_A_TRANSPORT.ino` accepts the preserved `AF_DATA_REQUEST`-style calls,
-builds raw IEEE 802.15.4/NWK/APS frames, acknowledges and reassembles fragmented
-responses, and renders the subset of TI `AF_INCOMING_MSG` expected by the
-proven decoders. Pairing persists each inverter's PAN and short radio address.
+For a **4 MB** board with the matching layout, write its single application:
 
-Important modules include:
+```powershell
+py -m esptool --chip esp32c6 --port COM7 --baud 460800 write-flash 0x10000 ESP32C6_ECU-4MB-noOTA.bin
+```
 
-- `ZIGBEE_A_TRANSPORT.ino` and `ZIGBEE_COORDINATOR.ino` — native radio path;
-- `APS_CRYPTO.ino` — plaintext/APsystems AES envelope;
-- `POLL_SCHEDULER.ino` — cooperative fleet arbitration;
-- `INVERTER_INFO.ino` — model and firmware query;
-- `ENERGY_HISTORY.ino` — low-wear journal, statistics and backup/restore;
-- `GRID_PROFILE.ino` — guarded protection profile operations;
-- `SUNSPEC_MODBUS.ino` — read-only Modbus/SunSpec service; and
-- `PORTAL_WIFI.ino`, `WEB_UI.ino` and related pages — refactored local UI.
+These addresses come from this repository's partition files. The commands
+leave settings, pairing and history areas alone. The 8 MB command replaces both
+firmware copies, so it does not retain the old version as an OTA fallback.
+Keep power stable and wait for successful verification. Reset, then check the
+version, inverter list and production history. If an update fails, reconnect in
+BOOT mode and retry the same application-only command.
 
-The ZNP-to-native operation map is in [PORTING-NOTES.md](PORTING-NOTES.md).
-Security analysis is in [SECURITY-AUDIT.md](SECURITY-AUDIT.md).
+On Linux use `sha256sum` for the two table files; on macOS use `shasum -a 256`.
+The esptool command syntax is described in
+[Espressif's reference](https://docs.espressif.com/projects/esptool/en/latest/esp32c6/esptool/basic-commands.html).
+No USB write or power-loss test was performed as part of this documentation edit.
 
-## Release automation
+### Change layouts, or recover a board that needs a fresh installation
 
-Every push and pull request builds separate `4mb-noota` and `8mb-ota` bundles.
-Each contains application and merged images, bootloader, partition image,
-checksums and `BUILD-INFO.txt`; the 8 MB bundle also contains the ELF file.
-Artifacts are retained for 30 days. A pushed tag beginning with `v` publishes
-the same outputs as a permanent GitHub Release.
+1. Download settings and restorable history while the old firmware still works.
+2. Keep a CSV too if you need a record of the unfinished day.
+3. Follow [Install on a new board](#install-on-a-new-board) with the correct
+   merged image. This step erases data.
+4. Set up Wi-Fi, then restore settings and history using the next section.
 
-## Documentation map
+If you cannot reach the web interface, a complete USB read can preserve an
+emergency copy before an erase. Do not assume a raw image can be moved to a
+different board or layout. Ask for help before erasing the only copy of your data.
 
-- [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) — people, projects and ideas;
-- [UPSTREAM.md](UPSTREAM.md) — source lineage and retained/refactored areas;
-- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — licenses and dependencies;
-- [BUILD-VERIFIED.md](BUILD-VERIFIED.md) — current build/hardware evidence;
-- [LIMITATIONS.md](LIMITATIONS.md) — unvalidated and unsupported behavior;
-- [PORTING-NOTES.md](PORTING-NOTES.md) — native transport mapping;
-- [SECURITY-AUDIT.md](SECURITY-AUDIT.md) — CC25xx/Zigbee/AES findings;
-- [SUNSPEC.md](SUNSPEC.md) and [HomeAssistant.md](HomeAssistant.md) — integrations;
-- [DEFERRED-WORK.md](DEFERRED-WORK.md) — deliberately postponed improvements.
+## Restore settings or production data
 
-## License
+Restore **settings first**, then the matching production history. History stores
+values by inverter slot, so keep the original inverter order when restoring it.
+Settings restore does not restore history. History restore does not restore
+settings, pairing, or broker-retained Home Assistant counters.
 
-The application remains under the inherited MIT license in [LICENSE](LICENSE).
-Third-party components and referenced projects retain their own licenses.
+### Restore settings
+
+1. Sign in as `admin` and open **Menu > Settings backup**.
+2. Choose the settings `.json` file (maximum 32 KB).
+3. Leave **Restore Wi-Fi credentials, hostname and IP settings** unchecked to
+   keep the board's current connection. Check it only if you want the saved
+   network settings and know how to reconnect afterward.
+4. Leave **Restore antenna board and GPIO settings** unchecked unless the
+   saved wiring matches this board.
+5. Select **Validate and preview**. Check the ECU_ID, inverter count and radio
+   address. Preview does not change settings.
+6. Select **Restore settings and restart**, then accept the confirmation.
+7. Wait for restart. Sign in with the **administrator password from the backup**.
+   That password is restored even when the network checkbox is off.
+8. Check the inverter list, time, antenna choice and polling.
+
+If validation fails, keep the original file and read the error. Do not edit the
+checksum to bypass validation. If power fails during restore, the ECU keeps a
+pending restore file and retries at boot. If startup stops, save the serial
+error and troubleshoot storage; do not erase the pending restore.
+
+### Restore production history
+
+1. Open **Menu > Energy history** and download a backup of any history currently
+   on the destination board that you want to keep.
+2. In **Restore history**, choose the **restorable `.bin` backup**, not the CSV,
+   settings JSON, or firmware `.bin`.
+3. Submit the restore and accept its confirmation. Wait for the success message.
+4. Check several dates and inverter totals in the daily table.
+
+Restore **replaces** finished daily records; it does not merge two histories.
+It also resets today's counters, hourly chart and operating statistics. The ECU
+checks the uploaded records before replacing its history. Keep the backup if an
+upload fails and check available storage, especially when moving from 8 MB to
+4 MB. **Permanently wipe history** is not part of a normal restore or upgrade.
+
+## Replace a failed ECU board
+
+1. If the old ECU still works, download fresh settings and history backups.
+   Keep the MQTT broker's retained data too if you use Home Assistant MQTT.
+2. **Turn the old ECU off.** Two powered ECUs must not use the same installation
+   identity at the same time.
+3. Install firmware on the replacement board and set up its Wi-Fi. It is okay
+   if the fresh board creates a temporary new ECU_ID.
+4. Restore the old settings JSON. This replaces the temporary ECU_ID with the
+   **saved original ECU_ID** and restores the original radio IEEE address and
+   pairing records. Keep network and antenna restore unchecked unless you
+   specifically want those saved settings on this board.
+5. Sign in using the old backup's password. Check the previewed/restored ECU_ID
+   and inverter list. The replacement board keeps its own Wi-Fi MAC address,
+   so the router may give it a different IP address.
+6. Restore the matching history `.bin`. Keep the original inverter slot order.
+7. Check recent polling in daylight. Pairing records are restored, but continuity
+   on every hardware/inverter combination has not yet been field-tested. If an
+   inverter does not respond, inspect diagnostics and pair that inverter again.
+8. For Home Assistant MQTT, keep the original broker and its retained energy
+   checkpoint. The restored ECU_ID lets the new board recover those counters
+   and use the same discovery identities. See [counter recovery](HomeAssistant.md#mqtt-backups-and-counter-recovery).
+
+Without a settings backup, a new board cannot automatically recover the old
+ECU_ID, radio identity or pairing records. A history backup alone is not enough;
+you will need to configure and pair the inverters again. Do not copy a complete
+flash image to a different board as a substitute for settings restore.
+
+## Understand ECU_ID
+
+ECU_ID is this installation's 12-character hexadecimal identifier. It is used
+in inverter pairing, polling and control, and in Home Assistant MQTT identities.
+It is separate from the board's Wi-Fi MAC address and its radio IEEE address.
+
+On a fresh installation, firmware replaces the old default `D8A3011B9780` with
+a random ID and saves it. It only does this when **no pairing records exist**.
+Existing custom IDs and paired installations keep their current ID. Reboots,
+OTA and same-layout application-only USB updates keep the saved ID.
+
+Settings backup includes ECU_ID. Settings restore puts that value back before
+the radios start, including on a replacement board. Do not manually change an
+ID on a working paired installation. A full erase without a settings restore
+can create a new installation identity. The legacy MQTT client ID still follows
+the board MAC; Home Assistant's separate client ID follows ECU_ID.
+
+## Connect Home Assistant
+
+Use the consolidated [Home Assistant guide](HomeAssistant.md) for MQTT discovery,
+Energy dashboard setup, power limits, broker backups and the read-only Modbus
+alternative. It includes copy-ready Modbus YAML and troubleshooting.
+
+For existing Domoticz users, its MQTT formats and command topic are unchanged.
+Home Assistant can run alongside it on the same broker. Configure the broker
+in the existing MQTT page; the separate Home Assistant page enables discovery.
+
+## Troubleshooting and other features
+
+- **No fresh readings:** check daylight, time/location, signal, inverter power
+  and the last poll time. The default poll interval is five minutes.
+- **Night Mode:** power shows zero overnight; energy is kept. Invalid time or
+  location makes polling continue all day rather than stop unexpectedly.
+- **Output limit:** the control is 20–500 W **per connected input**, not a
+  whole-inverter limit or a percentage. A 100 W request on two inputs is about
+  200 W total. The 500 W setting requests normal maximum output.
+- **Diagnostics:** download the current report and any crash dump before
+  updating. Keep the matching firmware `.elf` for crash analysis. The optional
+  flight recorder writes once a minute while enabled; leave it off if you do
+  not need it. Live trace and hourly statistics stay in RAM.
+- **Grid protection:** these settings change inverter protection limits, not
+  firmware. Use only utility-approved values. YC600 writes are disabled.
+- **Remote access:** use a trusted network or VPN. Do not expose the ECU directly
+  to the Internet. Web passwords do not secure Modbus or the MQTT broker.
+
+## Developer and reference documents
+
+- [AGENTS.md](AGENTS.md): repository guidance for coding agents.
+- [DEVELOPMENT.md](DEVELOPMENT.md): source builds, Windows helpers, architecture
+  and release packaging. Dependency versions and CI commands live in
+  [.github/workflows/build.yml](.github/workflows/build.yml).
+- [BUILD-VERIFIED.md](BUILD-VERIFIED.md): completed checks and hardware limitations.
+- [SUNSPEC.md](SUNSPEC.md): Modbus register map.
+- [LIMITATIONS.md](LIMITATIONS.md), [DEFERRED-WORK.md](DEFERRED-WORK.md): known gaps.
+- [PORTING-NOTES.md](PORTING-NOTES.md), [SECURITY-AUDIT.md](SECURITY-AUDIT.md): radio
+  implementation and protocol analysis.
+
+## Credits and license
+
+This independent community project started from
+[`patience4711/ESP32-read-APS-inverters`](https://github.com/patience4711/ESP32-read-APS-inverters)
+at commit `7b0ff63`. It is not affiliated with APsystems or Espressif.
+See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md), [UPSTREAM.md](UPSTREAM.md) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and dependencies.
+The application uses the inherited MIT [LICENSE](LICENSE).
