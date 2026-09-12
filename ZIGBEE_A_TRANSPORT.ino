@@ -570,13 +570,8 @@ bool rawRadioStart() {
   rawRadioSetPan(zbOperationalPan);
   rawRadioSetPromiscuous(false);
 
-  uint8_t ieee[8] = {};
-  if (esp_read_mac(ieee, ESP_MAC_IEEE802154) == ESP_OK) {
-    for (uint8_t i = 0; i < 8; ++i) rawExtendedAddress[i] = ieee[7 - i];
-    esp_ieee802154_set_extended_address(rawExtendedAddress);
-  } else {
-    esp_ieee802154_get_extended_address(rawExtendedAddress);
-  }
+  if (!settingsRadioAddress(rawExtendedAddress) ||
+      esp_ieee802154_set_extended_address(rawExtendedAddress) != ESP_OK) return false;
 
   if (xTaskCreate(rawWorker, "aps_raw_radio", 6144, nullptr, 6,
                   &rawWorkerHandle) != pdPASS) return false;

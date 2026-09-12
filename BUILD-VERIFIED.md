@@ -1,5 +1,32 @@
 # Build and hardware verification
 
+## Settings backup and restore (2026-09-12)
+
+Both 4 MB and 8 MB variants compile with Arduino core 3.3.8. Each application
+uses 1,560,468 bytes; static globals use 90,128 bytes. No board was flashed.
+
+`tools/test_settings_backup.py` compiles the actual export, validation, upload,
+restore and radio-identity functions with ArduinoJson and fake filesystem/NVS
+stores. It passes round trips, malformed records, CRC/schema/value rejection,
+incomplete exports, original/restored radio addresses, orphan-peer preservation,
+inverter replacement, saved power limits, insufficient staging space,
+authentication, incomplete/oversized uploads, preview without writes and all
+four optional network/antenna restore combinations. Failure injection at each
+of 30 apply mutations retains the manifest, blocks startup and completes on
+retry. Production-history and current-day checkpoint sentinel files remain
+unchanged in every restore scenario.
+
+`tools/test_settings_ui.js` passes preview/confirmation, all restore selections,
+error handling, the file-size limit and stale-file-selection tests. The page was
+visually checked at 390 px width in Edge with the firmware stylesheet: no
+horizontal overflow; network/antenna options are unchecked and Restore is
+disabled before validation. Both new tests run in CI.
+
+Existing ECU identity, hostname, NTP/antenna, pairing-path/storage, pairing
+audit, ZNP parsing and pairing-status regressions also pass. Same-board restore,
+replacement-board pairing continuity, real flash power-loss recovery and Wi-Fi
+reconnection remain hardware checks.
+
 ## Wi-Fi hostname fixes (2026-09-12)
 
 Both 4 MB and 8 MB variants compile with Arduino core 3.3.8, each using

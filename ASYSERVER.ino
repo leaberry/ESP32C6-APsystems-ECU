@@ -12,6 +12,7 @@ static void sendStylesheet(AsyncWebServerRequest *request) {
 }
 
 void start_server() {
+  settingsRoutes();
 if( diagNose != 0 ) consoleOut("starting server");
 //server.addHandler(&ws);
 server.addHandler(&events);

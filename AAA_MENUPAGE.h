@@ -5,6 +5,7 @@ const char MENUPAGE[] PROGMEM = R"=====menu(
 <a class="menu-item" href="/time"><strong>Time and location</strong><span>Coordinates, time zone and daylight-aware polling</span></a>
 <a class="menu-item" href="/network"><strong>Network</strong><span>Hostname, DHCP, static addressing and Wi-Fi details</span></a>
 <a class="menu-item" href="/antenna"><strong>Antenna</strong><span>Internal, external or unmanaged antenna selection</span></a>
+<a class="menu-item" href="/settings"><strong>Settings backup</strong><span>Save configuration or restore a replacement ECU</span></a>
 <a class="menu-item" href="/inverters"><strong>Inverters</strong><span>Add, pair, edit or remove microinverters</span></a>
 <a class="menu-item" href="/energy"><strong>Energy history</strong><span>Hourly output today and recorded daily totals</span></a>
 <a class="menu-item" href="/system"><strong>System information</strong><span>Firmware, memory, radio, network and polling status</span></a>

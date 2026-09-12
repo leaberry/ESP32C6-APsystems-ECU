@@ -26,6 +26,7 @@ jobs:
         run: |
           python3 tools/test_device_settings.py
           node tools/test_antenna_ui.js
+          node tools/test_settings_ui.js
       - name: Test pairing protocol, persistence, and status
         run: |
           python3 tools/test_znp_pairing.py
@@ -51,6 +52,8 @@ jobs:
           # sunMoon still includes the removed legacy Time.h alias. Windows
           # resolves that mismatch case-insensitively; Linux runners do not.
           sed -i '/#include <Time.h>/d' "$HOME/Arduino/libraries/sunMoon/sunMoon.h"
+      - name: Test settings backup and interrupted restore
+        run: python3 tools/test_settings_backup.py
       - name: Test ECU identity initialization
         run: python3 tools/test_ecu_identity.py
       - name: Select ${{ matrix.name }} layout

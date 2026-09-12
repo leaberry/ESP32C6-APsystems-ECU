@@ -5,6 +5,7 @@ void SPIFFS_read() {
   //DebugPrintln("mounting FS...");
  if (SPIFFS.begin(true)) {
     Serial.println("mounted file system");
+    if (!settingsRestoreBoot()) return;
 
        if( file_open_for_read("/wificonfig.json") ) {
                 Serial.println("read wificonfig\n");
@@ -73,10 +74,7 @@ bool leesStruct(String whichfile) {
 // **************************************************************************** 
 //                      de gegevens opslaan in SPIFFS                         *  
 // ****************************************************************************
-void wifiConfigsave() {
-   Serial.println("saving config");
-
-    JsonDocument doc;
+void wifiConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();   
     //json["ip"] = static_ip;
     json["pswd"] = pswd;
@@ -90,6 +88,12 @@ void wifiConfigsave() {
     json["daylightPolling"] = daylightPolling;
     json["locationConfigured"] = locationConfigured;
     json["securityLevel"] = securityLevel;
+}
+
+void wifiConfigsave() {
+    JsonDocument doc;
+    wifiConfigDocument(doc);
+    JsonObject json = doc.as<JsonObject>();
     File configFile = SPIFFS.open("/wificonfig.json", "w");
     if (!configFile) {
       Serial.println("open file for writing failed!");
@@ -137,9 +141,7 @@ void basisConfigsave() {
     configFile.close();
 }
 
-void mqttConfigsave() {
-   //DebugPrintln("saving mqtt config");
-    JsonDocument doc;
+void mqttConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();
 // 
 //    json["Mqtt_Enabled"] = Mqtt_Enabled;
@@ -152,6 +154,12 @@ void mqttConfigsave() {
     json["Mqtt_Password"] = Mqtt_Password;
 //    json["Mqtt_Idx"] = Mqtt_Idx;
     json["Mqtt_Format"] = Mqtt_Format;    
+}
+
+void mqttConfigsave() {
+    JsonDocument doc;
+    mqttConfigDocument(doc);
+    JsonObject json = doc.as<JsonObject>();
     File configFile = SPIFFS.open("/mqttconfig.json", "w");
     if (!configFile) {
       //DebugPrintln("open file for writing failed");
@@ -180,7 +188,7 @@ bool file_open_for_read(const char* bestand)
             // Continue with fallback values
         } else {
         // no error so we can print the file
-            serializeJson(doc, Serial);  // always print
+            // Configuration includes passwords; never print the document.
         }
     } else {
         Serial.print(F("Cannot open config file: "));

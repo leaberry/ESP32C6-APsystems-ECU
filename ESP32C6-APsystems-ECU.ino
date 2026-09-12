@@ -30,7 +30,11 @@ void setup() {
 
 
   SPIFFS_read();
-  ecuIdentityBegin(); // Persist a default/unpaired ID before any radio or web startup.
+  if (!settingsBootReady()) {
+    Serial.println(F("Configuration unavailable or restore incomplete; reset to retry. Radios remain off."));
+    while (true) delay(1000);
+  }
+  if (!settingsHasRestoredIdentity()) ecuIdentityBegin(); // Persist a default/unpaired ID before any radio or web startup.
   flightRecorderBegin();
   pairAuditBeginStorage();
   // now we know the number of inverters we can find an interval between pollings
@@ -40,7 +44,7 @@ void setup() {
   preferences.begin("my_data", false); //open preferences for r/w
   //DebugPrint("apFlag = " + String(apFlag) );
 
-   for(int z=0; z < inverterCount; z++)
+   for(int z=0; z < 9; z++)
    {
     String key = "maxPwr" + String(z);
     desiredThrottle[z] = preferences.getInt(key.c_str(), -1);

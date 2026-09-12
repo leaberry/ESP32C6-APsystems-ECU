@@ -79,7 +79,7 @@ bool Polling=true, sunspecEnabled=true, flightRecorderEnabled=false;
 size_t strlcpy(char *out,const char *in,size_t n) { snprintf(out,n,"%s",in);return strlen(in); }
 '''
 storage = (root / 'SPIFFS_RW.ino').read_text()
-harness += storage[storage.index('void basisConfigDocument('):storage.index('void mqttConfigsave(')]
+harness += storage[storage.index('void basisConfigDocument('):storage.index('void mqttConfigDocument(')]
 harness += source
 harness += r'''
 void reset() {

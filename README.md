@@ -305,6 +305,54 @@ switching still need validation on physical hardware.
 Developer checks: `python3 tools/test_device_settings.py` (requires g++) and
 `node tools/test_antenna_ui.js`.
 
+## Settings backup and replacement boards
+
+**Menu > Settings backup** provides a separate JSON backup and restore. It includes:
+
+- ECU_ID and the radio's IEEE address;
+- inverter names, serials, types, panel configuration, calibration, saved power
+  limits and pairing records, including learned peers stored in NVS;
+- fleet, polling, SunSpec and flight-recorder settings;
+- location, timezone and NTP settings;
+- MQTT, Wi-Fi, hostname, static addressing, antenna and login settings.
+
+The file contains passwords in plain text. Keep it private. Download and restore
+require administrator authentication and the configured local-access check.
+Production history, today's checkpoint, live readings, diagnostic logs, crash
+dumps and inverter grid-protection settings are not included.
+
+To restore, choose the JSON file and select **Validate and preview**. Review the
+installation identity, inverter count and selected options, then choose
+**Restore settings and restart**. Network and antenna restore are unchecked by
+default, preserving the destination board's current connection and wiring.
+Login passwords always come from the backup. If network settings are restored,
+reconnect using the restored address or the router's new DHCP lease.
+
+For a replacement board, configure its Wi-Fi first and open Settings backup.
+Restoring preserves the original ECU_ID, radio IEEE address and paired-peer
+records; the replacement board's Wi-Fi MAC remains its own. Keep the old ECU
+powered off when transferring its identity. Antenna settings should only be
+restored when the saved wiring matches the destination. Pairing continuity with
+real inverters on replacement hardware still needs field verification.
+
+Backups use the versioned `aps-ecu-settings` format, with a 32 KB upload limit,
+strict value validation and a CRC32 corruption check. They contain logical
+settings rather than raw memory structures or a complete flash image. Uploads
+are held separately per request, and preview does not write any settings.
+Restore stages and verifies a complete manifest before restart, then applies
+and reads back all settings before starting either radio. An interrupted or
+failed apply retains the manifest for replay after reset; startup stops with a
+serial-console message if replay cannot complete. Do not erase or reformat
+storage while recovering a pending restore.
+
+Settings restore replaces the configured inverter list but leaves production
+history in place. Restore the matching history backup separately when moving
+an installation. If the destination contains records from another fleet, manage
+those explicitly on the Energy history page.
+
+Regression tests: `python3 tools/test_settings_backup.py` (requires ArduinoJson
+headers) and `node tools/test_settings_ui.js`.
+
 ## Production history backup and recovery
 
 The Energy history page offers two downloads and an explicit shutdown save:
