@@ -344,10 +344,25 @@ error and troubleshoot storage; do not erase the pending restore.
 4. Check several dates and inverter totals in the daily table.
 
 Restore **replaces** finished daily records; it does not merge two histories.
-It also resets today's counters, hourly chart and operating statistics. The ECU
-checks the uploaded records before replacing its history. Keep the backup if an
-upload fails and check available storage, especially when moving from 8 MB to
-4 MB. **Permanently wipe history** is not part of a normal restore or upgrade.
+**Today's total, hourly chart and operating statistics are cleared.** Restore
+also deletes the separate **Save today to flash now** checkpoint on that board.
+Saving today first therefore does **not** protect it from a history restore.
+
+A successful restore with an empty **today** is expected: the `.bin` contains
+finished days only. If no day had finished when you downloaded it, the backup
+can be empty and still restore successfully. Check earlier dates in the daily
+table to confirm any finished records in your backup were restored. New
+production starts accumulating again as inverter readings arrive.
+
+To keep a readable record of today, download CSV before restoring; CSV cannot
+be imported back. If possible, wait for the local day to finish and download a
+new history backup before moving to another board. For a normal same-layout
+OTA upgrade, use the checked daily-save option and **do not restore history**
+unless you actually need to replace its records.
+
+The ECU checks the uploaded records before replacing its history. Keep the
+backup if an upload fails and check available storage, especially when moving
+from 8 MB to 4 MB. **Permanently wipe history** is not part of a normal restore or upgrade.
 
 ## Replace a failed ECU board
 

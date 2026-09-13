@@ -1,5 +1,46 @@
 # Build and hardware verification
 
+## Issue #11 reporter verification (2026-09-13, v1.4.14)
+
+[The reporter's test results](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/11#issuecomment-5653722474) confirm the following on their installation:
+
+| Feature | Reported hardware result | Scope of verification |
+|---|---|---|
+| Custom NTP server | Verified: works | Their custom server; no claim about every server or failure mode |
+| Home Assistant MQTT | Verified: works | Basic HA MQTT integration; individual sensors, Energy statistics, throttling and recovery were not described |
+| Antenna switching | Verified: works | Reporter measured about +20 dB with the external antenna in their setup; advanced GPIO configurations and other boards remain unverified |
+| Hostname change | Verified: works | Their network; this does not establish every DHCP/DNS/cache behavior |
+| Settings backup/restore | Not tested by reporter | Explicitly excluded from their tests; same-board restore and replacement-board pairing continuity remain open |
+| Energy history restore | Restore accepted, today's display empty | Consistent with the implemented behavior below; the comment does not verify restored completed-day records |
+
+These are attributed field results, not independent reproduction. They update
+the earlier dated hardware-test gaps below without extending them to features
+the reporter did not describe.
+
+### Current-day restore code review
+
+- `energySendHistoryBackup()` sends only the finalized journal (or an empty
+  file when none exists). It does not export today's RAM or the separate
+  shutdown checkpoint.
+- `energyRestoreUploadFinish()` validates and replaces the journal, removes
+  the current-day checkpoint, then calls `energyHistoryBegin()`. That function
+  resets today's totals, fractional energy, hourly buckets and daily statistics
+  before loading the restored journal. A same-board saved checkpoint therefore
+  cannot recover today after an explicit history restore.
+- A zero-record backup passes the record-size and CRC validation loops. Restore
+  can legitimately report success with no finished days and an empty today.
+- The web success notice already says current-day RAM counters were reset.
+  Success means the uploaded journal was accepted, not that today's data was
+  present. This matches the reporter's symptom; it does not by itself prove
+  anything about the contents of their backup.
+- Settings restore is separate: it leaves history/checkpoint files alone but
+  restarts the ECU. The settings JSON does not contain today's data. Normal
+  reboot checkpoint recovery is different from importing a history backup.
+
+No production restore was performed during this review. See the README's
+[restore instructions](README.md#restore-production-history) for the user-facing
+consequences and the earlier native-journal hardware verification below.
+
 ## Broker connection test and ECU_ID warning (2026-09-12)
 
 The 4 MB and 8 MB builds compile locally. Host tests exercise the real connection
@@ -78,7 +119,7 @@ The legacy MQTT implementation, format builders and command handler have no diff
 
 Counter/discovery durability depends on retained broker persistence. An MQTT
 echo does not guarantee a broker disk flush. Broker persistence/restart behavior,
-live Home Assistant discovery and Energy statistics, real inverter throttling,
+detailed Home Assistant discovery and Energy statistics, real inverter throttling,
 replacement-board counter continuity and simultaneous MQTT client load remain
 integration/hardware checks. HA limit commands are RAM-only; only explicit HA
 configuration saves write the existing settings file. Existing history writes
@@ -121,8 +162,10 @@ versus global hostname reporting, startup failures, normalization and the
 31-character boundary, NVS open/write/readback failures, and success/reboot
 behavior for both setup and Network forms. The test also runs in CI.
 
-No board was flashed. DHCP packet advertisement and router lease/DNS/cache
-behavior still need hardware verification. No mDNS service was added.
+No board was flashed during that initial review. The Issue #11 report above
+now confirms the hostname change on the reporter's network. DHCP packet details
+and other routers' lease/DNS/cache behavior remain unverified. No mDNS service
+was added.
 
 ## Guarded ECU identity generation (2026-09-12)
 
@@ -156,8 +199,10 @@ The antenna template was rendered in a 390-pixel-wide headless Edge viewport
 with the firmware stylesheet. Unmanaged, XIAO and Advanced states were visually
 checked; the form has no horizontal overflow and remains valid with the enable
 pin disabled. XIAO wiring and its photo link were checked against Seeed's docs.
-Physical antenna switching, reception quality, and synchronization against a
-real private NTP server remain hardware checks. No device was flashed.
+At that initial review, physical antenna switching, reception quality and a
+real private NTP server had not been tested. The Issue #11 report above now
+confirms those functions on the reporter's setup. Advanced GPIO/polarity choices
+and other boards remain unverified. No device was flashed during this review.
 
 This document records evidence for the current source tree. It is not a claim
 that every supported inverter model or control path has been field-tested.
