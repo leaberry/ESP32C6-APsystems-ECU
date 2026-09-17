@@ -9,9 +9,11 @@ Use an **8 MB ESP32-C6** board if possible. It supports updates over Wi-Fi (OTA)
 A **4 MB ESP32-C6** also works, but updates require USB. Check the board's flash
 size; the chip name alone does not tell you the size.
 
-Plaintext DS3 pairing and polling have been tested on hardware. YC600, QS1,
-encrypted communication and replacement-board pairing still need more field
-testing. See [LIMITATIONS.md](LIMITATIONS.md).
+Plaintext DS3 pairing and polling have been tested on hardware. A reporter has
+also confirmed YC600 pairing and operation, plus separate Home Assistant MQTT
+devices and readings for two DS3s in v1.4.14. QS1, encrypted communication,
+physical power limits and replacement-board pairing still need field testing.
+See [LIMITATIONS.md](LIMITATIONS.md) for the scope of these results.
 
 ## Find the instructions you need
 

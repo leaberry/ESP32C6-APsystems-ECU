@@ -61,6 +61,13 @@ connected-panel power. Optional diagnostic entities include today's production,
 radio signal, panel voltage/current, ECU Wi-Fi signal and uptime. Some diagnostics
 are disabled by default; enable the ones you need in the device's entity list.
 
+In v1.4.14, a reporter confirmed that both DS3s appeared separately in HA using
+this mode. Their screenshot shows separate power, energy, temperature, voltage,
+frequency and panel readings. They also reported successful YC600 pairing and
+operation. See the [field verification record](BUILD-VERIFIED.md#issue-17-reporter-verification-2026-09-16-v1414)
+for the evidence and limits. Throttling was explicitly not tested; displaying
+the power-limit control does not confirm that an inverter accepts its commands.
+
 ## Energy dashboard with MQTT
 
 1. Open **Settings > Dashboards > Energy** in Home Assistant.

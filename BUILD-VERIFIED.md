@@ -1,5 +1,31 @@
 # Build and hardware verification
 
+## Issue #17 reporter verification (2026-09-16, v1.4.14)
+
+[The reporter's follow-up](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/17#issuecomment-5701304771)
+confirms native Home Assistant MQTT operation in their test installation after
+switching from the legacy format. Their comment spells the release `V1.14.14`;
+the discussion concerns v1.4.14.
+
+| Feature | Reported hardware result | Scope of verification |
+|---|---|---|
+| YC600 pairing and operation | Paired successfully and reported working well | One reporter's YC600; no detailed YC600 telemetry capture or control test supplied |
+| Multiple DS3s in Home Assistant | Both DS3s appear directly as separate devices with readings | Native HA MQTT discovery and separate telemetry in this installation |
+| DS3 sensor display | Screenshot shows solar power/energy, temperature, AC voltage, frequency and both panel powers for each DS3 | Display and separation confirmed; not a calibrated accuracy test or Energy dashboard statistics validation |
+| HA power-limit entity | Present for both DS3s, with unknown values | Discovery of the control only; physical throttling was explicitly not tested because of cloudy weather |
+| Existing Energy dashboard history migration | Planned by reporter | Preservation of their previous two years of history has not been confirmed |
+
+The [attached screenshot](https://github.com/user-attachments/files/32299564/mqtt_issue_v1.14.14.pdf)
+shows HA solar power of 16 W and 31 W alongside ECU readings of 15.6 W and
+31.1 W. The per-panel readings also agree to HA's displayed rounding. This
+supports correct separation of the two DS3s in native HA mode; it does not
+establish a change or fix to legacy format 2.
+
+These are attributed field results, not independent reproduction. Broker
+restart/persistence recovery, simultaneous HA/Domoticz load, physical power
+limits and long-term Energy statistics remain unverified by this report. The
+earlier dated test records below retain their original scope.
+
 ## Issue #11 reporter verification (2026-09-13, v1.4.14)
 
 [The reporter's test results](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/11#issuecomment-5653722474) confirm the following on their installation:

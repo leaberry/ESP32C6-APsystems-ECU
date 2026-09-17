@@ -31,7 +31,9 @@ list as a roadmap.
 - Exercise production-history rollover across local midnight and verify exactly
   one finalized record. Then test binary backup, same-file restore and guarded
   wipe on live hardware with a saved recovery copy.
-- Obtain encrypted, YC600 and QS1 hardware for model-specific validation.
+- Obtain encrypted and QS1 hardware for model-specific validation. YC600 pairing
+  and operation now have [reporter confirmation](BUILD-VERIFIED.md#issue-17-reporter-verification-2026-09-16-v1414);
+  detailed YC600 telemetry and physical control tests remain open.
 
 ## Diagnostics hardening
 
