@@ -41,7 +41,7 @@ void setup() {
   //int pollintervall = 300/inverterCount;
   // takes care for the return to the last webpage after reboot
   //read_eeprom(); // put the value of diagNose back
-  preferences.begin("my_data", false); //open preferences for r/w
+  preferences.begin(POWER_LIMIT_NAMESPACE, false); //open preferences for r/w
   //DebugPrint("apFlag = " + String(apFlag) );
 
    for(int z=0; z < 9; z++)

@@ -1,5 +1,38 @@
 # Build and hardware verification
 
+## Power-limit persistence follow-up (2026-09-18, local validation)
+
+The production Web UI test after PR #19 confirmed both a 100 W/input DS3
+command and its 500 W/input normal-maximum revert. Both returned HTTP 200,
+redirected to inverter details, and received inverter success acknowledgements.
+Low morning output did not permit a physical clipping test. During that test,
+settings export continued reporting an unknown limit: live commands wrote to
+`my-data`, but startup and settings backup/restore read `my_data`.
+
+All four paths now share `POWER_LIMIT_NAMESPACE` (`my_data`). The live-command
+writer uses its own Preferences handle, checks the write size and readback,
+and logs `limit save failed` on failure instead of claiming a successful save.
+Radio command success and flash persistence remain separate results. Home
+Assistant commands remain RAM-only.
+
+Old `my-data` values are intentionally not imported: they contain slot numbers
+without serial identity and may be stale after inverter changes or a settings
+restore. After installing the fix, explicitly save each desired persistent
+limit again in **Inverter details > Output limit > Save limit**, then download
+a new settings backup. Existing `my_data` values remain authoritative. Startup
+loads the remembered value; this change does not add automatic radio commands
+at boot or change the inverter's own persistence behavior.
+
+Host tests execute the production queued action, save helper, startup load
+block and backup/restore implementation. They cover every inverter slot,
+Web UI/legacy MQTT value boundaries, unknown limits, failure to open/write/read
+back NVS, and all 30 interrupted-restore mutation points. HA retained recovery
+and control tests and the inverter reply-decoding tests also pass. No new
+production firmware installation or power-loss persistence test was performed
+for this follow-up. Both 4 MB USB-only and 8 MB dual-OTA builds passed
+with ESP32 core 3.3.8; generated flash headers, partition layouts and image fit
+were checked.
+
 ## Issue #18 power limits and Web UI redirects (2026-09-18)
 
 [Issue #18](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/18)

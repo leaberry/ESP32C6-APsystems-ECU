@@ -132,19 +132,14 @@ int readInverterfiles() {
         consoleOut("throttle failed inv " + String(whichInv));
         Update_Log(2, term.c_str());
       }
-      //now save in preferences
-      //Preferences 'namespace' (map) in writemodus (false = write mode)
-      preferences.begin("my-data", false); 
+      // The inverter acknowledgement and flash persistence are separate results.
+      if (savePowerLimit(whichInv, desiredThrottle[whichInv])) {
+        consoleOut("Successfully saved power limit for inverter " + String(whichInv));
+      } else {
+        consoleOut("Power-limit storage failed for inverter " + String(whichInv));
+        Update_Log(2, "limit save failed");
+      }
 
-      // ake a key for this specific inverter (ed. "maxPwr2")
-      String key = "maxPwr" + String(whichInv);
-      // save
-      preferences.putInt(key.c_str(), desiredThrottle[whichInv]);
-      // close preferences 
-      preferences.end();
-      // Optioneel: Print een bevestiging naar de Seriële Monitor
-      consoleOut("Successfully saved: " + key + " = " + String(desiredThrottle[whichInv]));
-    
     //String bestand = "/Inv_Prop" + String(whichInv) + ".str"; // /Inv_Prop0.str
     //consoleOut("going to write " + bestand );
     //writeStruct(bestand, whichInv); // alles opslaan in SPIFFS
