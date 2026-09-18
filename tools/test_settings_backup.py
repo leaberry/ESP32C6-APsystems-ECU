@@ -29,6 +29,7 @@ struct String:std::string {
  using std::string::string;
  String(const std::string &s):std::string(s){}
  String(int n):std::string(std::to_string(n)){}
+ String(int n,int):std::string(std::to_string(n)){}
  bool isEmpty() const{return empty();}
  void trim(){auto a=find_first_not_of(" \r\n\t");*this=a==npos?"":substr(a,find_last_not_of(" \r\n\t")-a+1);}
  void toLowerCase(){for(char &c:*this)if(c>='A'&&c<='Z')c+=32;}
@@ -44,7 +45,8 @@ namespace ArduinoJson {
   static bool checkJson(JsonVariantConst v){return v.is<const char*>();}
  };
 }
-struct {void println(const char*){}} Serial;
+struct {template<class T>void println(T){}template<class T>void print(T){}} Serial;
+int desiredThrottle[9];bool corruptLimitRead=false;
 std::map<std::string,std::string> files;
 std::map<std::string,std::map<std::string,std::string>> nvs;
 int mutations=0,failAt=0;
@@ -81,7 +83,7 @@ struct Preferences {
  size_t putString(const char *k,const String &s){if(fault())return 0;nvs[ns][k]=s;return s.length();}
  bool getBool(const char *k,bool fallback){return isKey(k)?nvs[ns][k]=="1":fallback;}
  size_t putBool(const char *k,bool v){return putString(k,v?"1":"0");}
- int getInt(const char *k,int fallback){return isKey(k)?std::stoi(nvs[ns][k]):fallback;}
+ int getInt(const char *k,int fallback){return corruptLimitRead?fallback:isKey(k)?std::stoi(nvs[ns][k]):fallback;}
  size_t putInt(const char *k,int v){if(fault())return 0;nvs[ns][k]=std::to_string(v);return 4;}
  uint32_t getUInt(const char *k,uint32_t fallback){return isKey(k)?std::stoul(nvs[ns][k]):fallback;}
  size_t putUInt(const char *k,uint32_t v){if(fault())return 0;nvs[ns][k]=std::to_string(v);return 4;}
@@ -175,6 +177,22 @@ struct AsyncWebServerRequest {
 struct {template<class... T>void on(T...){}} server;
 '''
 harness+=source
+# Exercise the production startup load block.
+boot=(root/'ESP32C6-APsystems-ECU.ino').read_text()
+boot=boot[boot.index('  preferences.begin(POWER_LIMIT_NAMESPACE'):boot.index('   String key = "req";')]
+harness+='\nvoid loadBootLimits(){Preferences preferences;\n'+boot+'\npreferences.end();}\n'
+
+action=function((root/'HELPERS.ino').read_text(), '    if (actionFlag > 239 && actionFlag < 249)')
+harness+=r'''
+bool commandSucceeds=true;
+std::string lastLimitLog;
+void consoleOut(String){}
+void Update_Log(int,const char *message){lastLimitLog=message;}
+bool setMaxPower(int){return commandSucceeds;}
+'''
+harness+='void runLimitAction(){\n'+action+'}\n'
+
+
 harness+=r'''
 const char *fixture=R"JSON({"payload":{
  "sourceBoard":"010203040506","radioIEEE":"0807060504030201",
@@ -214,6 +232,37 @@ int main(){
  JsonDocument exported;assert(settingsBuildBackup(exported));assert(settingsValidate(exported));
  assert(exported["payload"]["peers"].size()==2&&exported["payload"]["inverters"][0]["powerLimit"]==600);
  std::string encoded;serializeJson(exported,encoded);JsonDocument roundtrip;assert(!deserializeJson(roundtrip,encoded));assert(settingsValidate(roundtrip));
+
+
+ // Run the same queued action used by the Web UI and legacy MQTT.
+ desiredThrottle[0]=100;actionFlag=240;runLimitAction();
+ assert(actionFlag==0&&lastLimitLog=="throttle inv 0 success");
+ loadBootLimits();assert(desiredThrottle[0]==100);
+ mutations=0;failAt=1;desiredThrottle[0]=200;actionFlag=240;runLimitAction();failAt=0;
+ assert(lastLimitLog=="limit save failed"&&desiredThrottle[0]==200);
+ loadBootLimits();assert(desiredThrottle[0]==100);
+ commandSucceeds=false;desiredThrottle[0]=200;actionFlag=240;runLimitAction();commandSucceeds=true;
+ assert(lastLimitLog=="throttle inv 0 failed");loadBootLimits();assert(desiredThrottle[0]==-1);
+ // Live save, startup and backup/restore agree; obsolete slot keys stay untouched.
+ nvs["my-data"]["maxPwr0"]="20";
+ for(int value:{20,100,500,700,-1}){
+  assert(savePowerLimit(0,value));loadBootLimits();assert(desiredThrottle[0]==value);
+  JsonDocument saved;assert(settingsBuildBackup(saved));
+  assert(saved["payload"]["inverters"][0]["powerLimit"]==value);
+  assert(settingsApply(saved));loadBootLimits();assert(desiredThrottle[0]==value);
+  assert(nvs["my-data"]["maxPwr0"]=="20");
+ }
+ for(int slot=0;slot<9;++slot)assert(savePowerLimit(slot,100+slot));
+ loadBootLimits();for(int slot=0;slot<9;++slot)assert(desiredThrottle[slot]==100+slot);
+ assert(!savePowerLimit(-1,100)&&!savePowerLimit(9,100));
+ for(int failure:{1,2}){
+  mutations=0;failAt=failure;assert(!savePowerLimit(0,200));failAt=0;
+  assert(nvs["my_data"]["maxPwr0"]=="100");
+ }
+ corruptLimitRead=true;assert(!savePowerLimit(0,200));corruptLimitRead=false;
+ assert(savePowerLimit(0,600));
+ nvs["my_data"].erase("maxPwr0");loadBootLimits();assert(desiredThrottle[0]==-1);
+ assert(savePowerLimit(0,600));
  // Refuse incomplete inverter records and unreadable NVS values on export.
  auto inverterFile=files["/Inv_Prop0.str"];files["/Inv_Prop0.str"]="short";
  JsonDocument rejected;assert(!settingsBuildBackup(rejected));files["/Inv_Prop0.str"]=inverterFile;
@@ -297,6 +346,7 @@ int main(){
 '''
 with tempfile.TemporaryDirectory() as directory:
     cpp,binary=Path(directory)/'test.cpp',Path(directory)/'test'
+    (Path(directory)/'Preferences.h').write_text('// Preferences fake is defined by the harness.\n')
     cpp.write_text(harness)
-    subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-I',str(include),'-I',str(root),str(cpp),'-o',str(binary)],check=True)
+    subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-I',str(include),'-I',directory,'-I',str(root),str(cpp),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)

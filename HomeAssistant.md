@@ -112,6 +112,19 @@ its own limit when the ECU restarts. Use an automation to deliberately reapply
 a desired target when the inverter is available. Real inverter controls still
 need model-specific hardware testing.
 
+Web UI and legacy/Domoticz limit commands save the remembered target to ECU
+flash, which is also used by startup and settings backup/restore. Loading that
+value at startup does not send a new command to the inverter. A storage failure
+is reported as `limit save failed` in the journal even if the inverter accepted
+the live command.
+
+Older firmware saved these commands in a different storage namespace. After
+installing the persistence fix, open **Inverter details > Output limit**, enter
+the desired target, and click **Save limit** for each inverter that needs a
+persistent value. Then download a new settings backup. Old values from the
+incorrect namespace are not imported automatically because their inverter slot
+may since have been reused. Existing startup/backup values are preserved.
+
 ## MQTT backups and counter recovery
 
 Keep the broker's data as well as the ECU's

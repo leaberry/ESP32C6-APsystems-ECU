@@ -1,3 +1,4 @@
+#include "POWER_LIMIT_STORAGE.h"
 #include "SETTINGS_FORMAT.h"
 #include "SETTINGS_UI.h"
 #include <nvs.h>
@@ -111,7 +112,7 @@ bool settingsNamespaceReadable(const char *name) {
 
 bool settingsBuildBackup(JsonDocument &doc) {
   if(!settingsNamespaceReadable("aps-wifi") || !settingsNamespaceReadable("aps-antenna") ||
-     !settingsNamespaceReadable("my_data")) return false;
+     !settingsNamespaceReadable(POWER_LIMIT_NAMESPACE)) return false;
   doc.clear(); JsonObject p=doc["payload"].to<JsonObject>();
   p["sourceBoard"]=settingsBoardId();
   uint8_t address[8]; if(!settingsRadioAddress(address)) return false;
@@ -126,7 +127,7 @@ bool settingsBuildBackup(JsonDocument &doc) {
   settingsAntennaDocument(p["antenna"].to<JsonObject>(),antenna);
   JsonArray inverters=p["inverters"].to<JsonArray>();
   // Export persisted inverter configuration; a half-written record is an error.
-  Preferences limits; bool haveLimits=limits.begin("my_data",true);
+  Preferences limits; bool haveLimits=limits.begin(POWER_LIMIT_NAMESPACE,true);
   bool good=true;
   for(int i=0;i<9 && good;++i) {
     String path="/Inv_Prop"+String(i)+".str";
@@ -224,7 +225,7 @@ bool settingsApply(JsonDocument &doc) {
   }
   radio.end(); if(!good) return false;
   Preferences limits;
-  if(!limits.begin("my_data",false)) return false;
+  if(!limits.begin(POWER_LIMIT_NAMESPACE,false)) return false;
   for(int i=0;i<9 && good;++i) {
     String path="/Inv_Prop"+String(i)+".str", key="maxPwr"+String(i);
     if((size_t)i<p["inverters"].size()) {
