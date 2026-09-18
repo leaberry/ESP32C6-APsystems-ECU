@@ -87,8 +87,8 @@ bool handleForms(AsyncWebServerRequest *request)
           
           actionFlag=240 + Inv; // save the settings and send zigbee to inverter
           Serial.println("actionFlag set to " + String(actionFlag));
-          //Serial.println("setting the return url to /details?inv=");
-          String toReturn = "/details?inv=" + String(Inv);
+          //Serial.println("setting the return url to /inverter-details?inv=");
+          String toReturn = "/inverter-details?inv=" + String(Inv);
           strlcpy(requestUrl, toReturn.c_str(), sizeof(requestUrl));
           Serial.println("requestUrl = " + String(requestUrl));
           return true;

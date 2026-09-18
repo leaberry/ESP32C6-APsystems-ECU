@@ -2,7 +2,7 @@
 static WiFiClient haNetwork;
 PubSubClient haClient(haNetwork);
 String haBase,haSession;
-static String haConnectedBroker;
+static String haConnectedBroker,haControlSession;
 static uint32_t haNextConnect=0,haNextWork=0,haNextState=0;
 static bool haDiscoveryPending=true;
 static int haDiscoveryCursor=-1,haStateCursor=-1,haControl=-1;
@@ -169,7 +169,7 @@ void haReceive(char *topic,uint8_t *payload,unsigned int length) {
   if(haControl>=0||actionFlag||!haFresh(which)||!polled[which]||pollingNightModeActive()) {
     haControlStatus[which]="rejected: busy or inverter unavailable";return;
   }
-  haControl=which;haControlValue=command["value"];haControlStatus[which]="pending";strlcpy(haControlSerial,Inv_Prop[which].invSerial,13);
+  haControl=which;haControlSession=haSession;haControlValue=command["value"];haControlStatus[which]="pending";strlcpy(haControlSerial,Inv_Prop[which].invSerial,13);
 }
 
 bool haOwnDiscoveryTopic(const String &topic) {
@@ -282,8 +282,9 @@ void haLoop() {
   haEnergyCommit();
   if(haControl>=0&&!actionFlag) {
     int which=haControl;haControl=-1;
+    if(!haClient.connected()||haControlSession!=haSession){haControlStatus[which]="failed: MQTT session changed";return;}
     // Serial identity is rechecked against the last observed telemetry slot.
-    if(which>=inverterCount||strcmp(haControlSerial,Inv_Prop[which].invSerial)||!haFresh(which)||!polled[which]){haControlStatus[which]="failed: inverter changed or unavailable";return;}
+    if(which>=inverterCount||strcmp(haControlSerial,Inv_Prop[which].invSerial)||!haFresh(which)||!polled[which]||pollingNightModeActive()){haControlStatus[which]="failed: inverter changed or unavailable";return;}
     desiredThrottle[which]=haControlValue;
     bool applied=setMaxPower(which);
     if(!applied)desiredThrottle[which]=-1;

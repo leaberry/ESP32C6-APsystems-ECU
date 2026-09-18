@@ -1,3 +1,4 @@
+#include "WEB_NAVIGATION.h"
 /*
  * changed the order of the handlers
 */
@@ -30,7 +31,7 @@ events.onConnect([](AsyncEventSourceClient *client){
 // ***********************************************************************************
 server.on("/back", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!loginBoth(request, "both")) return;
-    request->redirect( String(requestUrl) );
+    request->redirect(webReturnDestination(requestUrl, inverterCount));
 });
 
 server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -70,8 +71,7 @@ request->send_P(200, "text/html", DETAILSPAGE);
 //***********************************************************************
 server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
-  strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
-  Serial.println("get.Data url = " + String(requestUrl));
+  // Background telemetry must not change the browser return destination.
   handleDataRequests(request);
 });
 
@@ -389,6 +389,7 @@ server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest *request) {
 server.on("/setup", HTTP_GET, [](AsyncWebServerRequest *request) {
   if(checkRemote( request->client()->remoteIP().toString()) ) { request->redirect( "/denied" ); return; }
   if (!loginBoth(request, "admin")) return;
+  strlcpy(requestUrl, "/", sizeof(requestUrl));
   String toSend = F("<!DOCTYPE html><html><head><script type='text/javascript'>setTimeout(function(){ window.location.href='/back'; }, 5000 ); </script>");
   toSend += F("</head><body><center><h2>OK the accesspoint is started.</h2>Wait unil the led goes on.<br><br>Then go to the wifi-settings on your pc/phone/tablet and connect to ESP32-ECU");
   request->send ( 200, "text/html", toSend ); //zend bevestiging
@@ -459,7 +460,6 @@ server.on("/inverter/delete", HTTP_GET, [](AsyncWebServerRequest *request) {
 server.on("/inverter/select", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!loginBoth(request, "admin")) return;
     if (!request->hasParam("welke")) { request->send(400, "text/plain", "Missing inverter index"); return; }
-    strlcpy(requestUrl, request->url().c_str(), sizeof(requestUrl));
     //bool nothing = false;
     const String selection = request->arg("welke");
     int selectedIndex = -1;
@@ -471,6 +471,8 @@ server.on("/inverter/select", HTTP_GET, [](AsyncWebServerRequest *request) {
     } else if (!inverterRequestIndex(request, "welke", false, selectedIndex)) {
       request->send(404, "text/plain", "Unknown inverter"); return;
     }
+    String selectionReturnUrl = "/inverter/select?welke=" + selection;
+    strlcpy(requestUrl, selectionReturnUrl.c_str(), sizeof(requestUrl));
     iKeuze = selectedIndex;
     consoleOut("?INV iKeuze at enter = " + String(iKeuze));
      String bestand = "/Inv_Prop" + String(iKeuze) + ".str";
@@ -578,8 +580,7 @@ server.begin();
 }
 
 void confirm() {
-  String destination = String(requestUrl);
-  if (!destination.startsWith("/") || destination.indexOf("//") >= 0) destination = "/";
+  String destination = webReturnDestination(requestUrl, inverterCount);
   toSend = F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Applying changes · APsystems ECU</title><link rel=\"stylesheet\" type=\"text/css\" href=\"/stylesheet?v=1.4.14\"></head><body><main class=\"page\"><section class=\"card\"><span class=\"badge\">Saved</span><h1>Applying your changes</h1><p>The ECU will return automatically in a moment.</p></section></main><script>setTimeout(()=>location.href='");
   toSend += destination;
   toSend += F("',1800)</script></body></html>");

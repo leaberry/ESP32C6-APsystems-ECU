@@ -61,7 +61,7 @@ void MQTT_Receive_Callback(char *topic, byte *payload, unsigned int length)
     JsonDocument doc;       // We use json library to parse the payload                         
    //  The function deserializeJson() parses a JSON input and puts the result in a JsonDocument.
    // DeserializationError error = deserializeJson(doc, Payload); // Deserialize the JSON document
-    DeserializationError error = deserializeJson(doc, payload); // Deserialize the JSON document
+    DeserializationError error = deserializeJson(doc, payload, length); // Deserialize the JSON document
     if (error)            // Test if parsing succeeds.
     {
        consoleOut("mqtt no valid json ");
@@ -75,11 +75,15 @@ void MQTT_Receive_Callback(char *topic, byte *payload, unsigned int length)
     //if(doc.containsKey("throttle"))
     if (!doc["throttle"].isNull())
     {
+       if (!doc["throttle"].is<int>() || !doc["val"].is<int>()) {
+         consoleOut("invalid throttle command, skipping");
+         return;
+       }
        int invert = doc["throttle"].as<int>(); 
        int throtVal = doc["val"].as<int>(); 
        String term = "mqtt got message {\"throttle\":" + String(invert) + ",\"val\":" + String(throtVal) + "}";
        consoleOut(term);
-      if(invert > inverterCount || invert < 0 || throtVal > 700 || throtVal < 20 )
+      if(invert >= inverterCount || invert < 0 || throtVal > 700 || throtVal < 20 )
          {
          consoleOut("invalid value(s), skipping");
          return; 
