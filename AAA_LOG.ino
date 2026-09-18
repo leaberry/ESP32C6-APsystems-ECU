@@ -46,11 +46,11 @@ tr {width:94vw;}
 }
 </style>
 <script type="text/javascript" src="SECURITY"></script>
-<script>function cl() {window.location.href='/MENU';}</script>
+<script>function cl() {window.location.href='/menu';}</script>
 </head>
 <body><center>
 <div id='msect'>
-<div id='menu'><a href="/MENU" class='close'>&times;</a></div>
+<div id='menu'><a href="/menu" class='close'>&times;</a></div>
 
 <kop>ESP-ECU JOURNAL</kop>
 

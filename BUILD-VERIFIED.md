@@ -1,5 +1,45 @@
 # Build and hardware verification
 
+## Issue #18 power limits and Web UI redirects (2026-09-18)
+
+[Issue #18](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/18)
+reports that a DS3 accepted a 100 W per-input limit (about 200 W total) and
+returned to normal output at 500 W, despite an invalid-link page after saving.
+This is reporter evidence for that DS3 through the Web UI, not an independent
+radio test or an MQTT power-limit test.
+
+The confirmation used `/details?inv=N`; the registered page is
+`/inverter-details?inv=N`. The fix also preserves an edited target during live
+refresh and allows the same whole-watt targets as Home Assistant.
+
+The wider redirect audit checks server redirects, JavaScript navigation, meta
+refresh destinations, saved return paths and same-method route ordering against
+both application and captive-portal routes. Telemetry no longer overwrites the
+return path; inverter selection retains its required query parameter; the old
+journal template uses lowercase `/menu`. Saved return paths are restricted to
+pages with valid inverter indices, falling back to the dashboard for obsolete,
+incomplete or action URLs.
+
+Legacy/Domoticz MQTT now respects the payload length, rejects non-integer
+throttle fields and rejects the index equal to the inverter count. Its topic,
+JSON command shape, 20–700 W range and existing persistence path are preserved.
+Home Assistant retains its separate namespace, 20–500 W range and RAM-only
+limits; queued commands now recheck MQTT connection/session and night mode
+before execution, as well as the existing identity and telemetry checks.
+
+Both 8 MB dual-OTA and 4 MB USB-only firmware builds pass with ESP32 core
+3.3.8. The application fits the named partition in each generated image; flash
+size headers and the one-/two-application partition layouts were verified.
+The redirect audit checks 67 destinations against 48 application GET routes
+and seven captive-portal GET/ANY routes.
+
+Host regression coverage uses the production form/confirmation code, return-URL
+validator, MQTT callbacks, HA control loop and power-limit reply decoder. Tests
+cover form routing, edited-input preservation, malformed/truncated MQTT input,
+index/value boundaries, reconnects, unavailable inverters and confirmed/failed
+HA commands. These tests do not establish physical output, broker timing or
+flash persistence on a device. No firmware was deployed during this review.
+
 ## Issue #17 reporter verification (2026-09-16, v1.4.14)
 
 [The reporter's follow-up](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/17#issuecomment-5701304771)

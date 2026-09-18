@@ -72,13 +72,20 @@ const char *VERSION="test";
 int inverterCount=2,actionFlag=0,desiredThrottle[9];unsigned long pollIntervalSeconds=30;
 struct {char invSerial[13];char invLocation[33];int invType;bool conPanels[4];}Inv_Prop[9];
 struct {float pw_total,heath,acv,freq,power[4],dcv[4],dcc[4];bool radioMetricsValid;int radioRssi,radioLqi;}Inv_Data[9];
-bool polled[9],night=false,applySuccess=true;int commands=0;
+bool polled[9],night=false,applySuccess=true;int commands=0,lastCommandInverter=-1;
 bool pollingNightModeActive(){return night;}
 uint64_t energyTodayWhFor(int){return 42;}
 float round1(float v){return roundf(v*10)/10;}
-bool setMaxPower(int){++commands;return applySuccess;}
+bool setMaxPower(int which){++commands;lastCommandInverter=which;return applySuccess;}
 void haRegistryReceive(uint8_t*,size_t);
 '''
+harness+=r'''
+using byte=uint8_t;
+bool Polling=false;int iKeuze=0;
+struct {size_t write(uint8_t){return 1;}size_t write(const uint8_t*,size_t n){return n;}void println(){}}Serial;
+void consoleOut(String){}
+'''
+harness+='void MQTT_Receive_Callback'+(root/'MQTT.ino').read_text(encoding='utf-8').split('void MQTT_Receive_Callback',1)[1]
 harness+=(root/'HA_ENERGY.ino').read_text(encoding='utf-8')
 harness+=(root/'HOME_ASSISTANT.ino').read_text(encoding='utf-8')
 harness+=r'''
@@ -119,6 +126,50 @@ int main(){
  command(valid);assert(haControl==0);haConnectedBroker=haBrokerKey();haLoop();assert(commands==1&&desiredThrottle[0]==100&&haControlStatus[0]=="applied");
  applySuccess=false;command(valid);haLoop();assert(commands==2&&desiredThrottle[0]==-1);
  tick+=100000;command(valid);assert(haControl<0&&commands==2);
+
+ // Validate HA command boundaries, JSON types, busy/unavailable rejection and routing.
+ haTelemetry(0);applySuccess=true;
+ auto body=[&](const std::string &value){return std::string("{\"value\":")+value+",\"session\":\""+haSession+"\"}";};
+ for(const char *value:{"19","501","100.5","\"100\"","null","true"}){command(body(value));assert(haControl<0);}
+ actionFlag=24;command(body("100"));assert(haControl<0&&actionFlag==24);actionFlag=0;
+ night=true;command(body("100"));assert(haControl<0);night=false;
+ polled[0]=false;command(body("100"));assert(haControl<0);polled[0]=true;
+ for(int watts:{20,237,500}){command(body(std::to_string(watts)));assert(haControl==0);haLoop();assert(desiredThrottle[0]==watts&&haControlStatus[0]=="applied");}
+
+ // Serial-addressed HA commands must reach the matching inverter only.
+ inverterCount=2;haTelemetry(1);desiredThrottle[0]=500;
+ String secondTopic=haBase+"/inverter/"+Inv_Prop[1].invSerial+"/limit/set";
+ auto secondBody=body("237");haReceive(secondTopic.data(),(uint8_t*)secondBody.data(),secondBody.size());
+ assert(haControl==1);haLoop();assert(lastCommandInverter==1&&desiredThrottle[1]==237&&desiredThrottle[0]==500);
+ String unknownTopic=haBase+"/inverter/000000000000/limit/set";
+ haReceive(unknownTopic.data(),(uint8_t*)secondBody.data(),secondBody.size());assert(haControl<0);
+ inverterCount=1;
+ int appliedCommands=commands;
+ // A queued command may wait behind another action: never run it in a new session.
+ command(body("100"));assert(haControl==0);haClient.disconnect();haNextConnect=0;haLoop();
+ assert(haControl<0&&commands==appliedCommands&&haControlStatus[0]=="failed: MQTT session changed");
+ drain();haTelemetry(0);
+ command(body("100"));assert(haControl==0);night=true;haLoop();night=false;
+ assert(haControl<0&&commands==appliedCommands);
+ command(body("100"));assert(haControl==0);Inv_Prop[0].invSerial[11]='9';haLoop();Inv_Prop[0].invSerial[11]='1';
+ assert(haControl<0&&commands==appliedCommands);
+ // Legacy/Domoticz keeps its existing JSON command and 20..700 W range.
+ auto legacy=[](std::string body,unsigned int length){std::vector<byte> bytes(body.begin(),body.end());MQTT_Receive_Callback((char*)"ecu/in",bytes.data(),length);};
+ for(int slot:{0,1,8})for(int watts:{20,100,500,700}){
+  inverterCount=9;actionFlag=0;std::string b="{\"throttle\":"+std::to_string(slot)+",\"val\":"+std::to_string(watts)+"}";
+  legacy(b,b.size());assert(actionFlag==240+slot&&desiredThrottle[slot]==watts);
+ }
+ inverterCount=1;
+ for(const char *b:{"{\"throttle\":1,\"val\":100}","{\"throttle\":-1,\"val\":100}",
+   "{\"throttle\":0,\"val\":19}","{\"throttle\":0,\"val\":701}","{\"throttle\":0}",
+   "{\"throttle\":\"bad\",\"val\":100}","{\"throttle\":0,\"val\":100.5}","not json"}){
+  actionFlag=0;desiredThrottle[0]=123;legacy(b,strlen(b));assert(actionFlag==0&&desiredThrottle[0]==123);
+ }
+ // The payload may be followed by unrelated bytes, and must not be read past length.
+ std::string packet="{\"throttle\":0,\"val\":100}";
+ actionFlag=0;legacy(packet,packet.size()-1);assert(actionFlag==0);
+ legacy(packet+"garbage",packet.size());assert(actionFlag==240&&desiredThrottle[0]==100);
+ actionFlag=0;
  assert(haOwnDiscoveryTopic(haDiscoveryTopic(-1))&&!haOwnDiscoveryTopic("homeassistant/device/some_other_ecu/config"));
  // Inventory checkpoint must be acknowledged before emitting a new discovery topic.
  haInventoryBootstrap=true;haInventoryCorrupt=false;haInventoryAwaited=0;haDiscoveryCursor=-1;haRegistry.clear();haRegistry["topics"].to<JsonArray>();
