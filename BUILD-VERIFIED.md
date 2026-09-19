@@ -1,5 +1,69 @@
 # Build and hardware verification
 
+## Power-limit confirmation follow-up (2026-09-19)
+
+The decoder now skips intermediate control acknowledgments and waits for the
+model-specific limit readback, with bounded time and frame counts. It rejects
+malformed hexadecimal fields, missing frame terminators and mismatched limits.
+The command sequence clears old queued replies before transmission; standalone
+queries also clear old replies and stop on transmit failure. Confirmed Web UI
+and Domoticz limits then use the existing verified NVS persistence helper;
+Home Assistant remains RAM-only. Poll timing and energy-derived power averaging
+are unchanged.
+
+Host tests replay the actual `06DE02...` acknowledgment followed by DS3 limit
+readbacks for both 20 W and restoration to 500 W. They also cover ACK-only
+streams, malformed/truncated replies and real limit mismatches. Radio addressing,
+Web UI form, MQTT commands and persistence/interrupted-restore tests pass.
+Both ESP32 core 3.3.8 builds (4 MB and 8 MB) passed. The 8 MB application was
+deployed with user authorization, preserving settings, pairing, history and
+the 720 Wh pre-reboot checkpoint. On production DS3 hardware, Web UI set/revert
+commands both logged success. The 20 W/input request was confirmed in actual
+radio readback, RAM and settings export; output settled at 42 W while the
+controls remained at 441.1/438.1 W with unchanged physical limits. Restoration
+to 500 W/input was confirmed in all three places; output recovered to 432.8 W
+while the controls produced 445.3/441.7 W. All exported settings were
+unchanged apart from replacing the target's unknown saved limit with its
+confirmed normal maximum. MQTT remained disabled; its control paths were
+host-tested. Persistence was checked through NVS-backed settings export and
+host startup/restore tests, not a further production power cycle.
+
+
+## Directed power-limit commands (2026-09-19, local validation)
+
+Issue #18 reported that limiting one DS3 also limited another on the same PAN.
+The native transport used broadcast MAC, NWK and APS delivery even when the
+legacy command named one inverter. Power writes and their readback queries now
+use the selected inverter's learned PAN/source, unicast delivery and MAC ACKs.
+Missing, invalid or ambiguous peers fail without transmitting. Encryption and
+transmission failures are returned to the shared power-control caller.
+Web UI, Domoticz and Home Assistant all use that caller.
+
+`tools/test_power_limit_radio.py` runs the actual command builder, ZNP parser and
+raw frame builder with captured transmissions. It checks YC600/QS1/DS3 commands,
+three peers on one PAN, all three frames in the write/readback sequence, learned
+addresses, rejected peers, encryption and transmission failures, and unchanged
+polling/pairing broadcasts. Radio regression, reply-decoder and pairing-parser
+host tests pass, as do the Web UI form, HA/Domoticz command, pairing-path and
+settings-backup suites. Both pinned-core 3.3.8 firmware layouts are built locally.
+
+The local 8 MB build was subsequently deployed with user authorization on
+2026-09-19. A Web UI test set one plaintext DS3 to 20 W/input: output settled
+at 42.7 W total while the two controls produced 244.4 W and 239.4 W. Direct
+radio queries confirmed only the target changed; the same-PAN control kept
+its original 500 W/input limit and the separate-PAN control kept 475 W/input.
+The target was restored to its original 500 W/input, verified by radio readback.
+Both form submissions returned HTTP 200 and navigated back to inverter details.
+
+The first test also exposed a confirmation bug: the power-limit decoder
+consumed the intermediate `06DE02...` reply as a DS3 readback and reported zero,
+so the caller marked the operation failed and saved an unknown limit (-1),
+even though the inverter applied the requested setting. A later directed query
+returned the correct setting. The confirmation follow-up above subsequently
+fixed and verified confirmation/persistence for this sequence. YC600/QS1 and
+live MQTT control were not exercised on hardware. The v1.4.15 low-output test had not established
+isolation.
+
 ## Power-limit persistence follow-up (2026-09-18, local validation)
 
 The production Web UI test after PR #19 confirmed both a 100 W/input DS3

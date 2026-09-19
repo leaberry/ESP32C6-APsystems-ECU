@@ -400,16 +400,53 @@ static void rawWorker(void *) {
   }
 }
 
+// Power control has no target serial in its ASDU: broadcast delivery can
+// change every compatible inverter on the PAN. Include both readback commands.
+static bool isPowerControl(uint16_t cluster, const uint8_t *asdu, size_t length) {
+  return cluster == 0x0006 && length >= 11 &&
+      asdu[6] == 0xFB && asdu[7] == 0xFB && asdu[8] == 0x06 &&
+      ((asdu[9] == 0xAA && asdu[10] == 0x27) ||
+       (asdu[9] == 0x1C && asdu[10] == 0x8C) || asdu[9] == 0xDE);
+}
+
 static bool submitRawAps(uint16_t requestedDestination, uint8_t dstEp,
                          uint8_t srcEp, uint16_t cluster,
                          const uint8_t *asdu, uint16_t asduLength,
                          uint8_t radius, uint8_t options) {
   int which = requestedDestination == 0xFFFF
                   ? -1 : apsFindInverter(requestedDestination, nullptr);
+  const bool directed = isPowerControl(cluster, asdu, asduLength);
+  uint16_t destination = 0xFFFF;
+  uint16_t pan = rawCurrentPan;
+  if (directed) {
+    // Legacy short IDs alone are not unique across PANs. Refuse ambiguity.
+    int matches = 0;
+    for (int i = 0; i < inverterCount; ++i) {
+      if (strlen(Inv_Prop[i].invID) == 4 &&
+          hexLe16(Inv_Prop[i].invID) == requestedDestination) ++matches;
+    }
+    uint32_t peer = 0;
+    if (which < 0 || matches != 1 ||
+        !radioPreference(Inv_Prop[which].invSerial, &peer, false) ||
+        (peer >> 16) == 0 || (peer >> 16) == 0xFFFF ||
+        !pairValidAddress(peer & 0xFFFF)) {
+      diagnosticsAppend("power control rejected: missing or ambiguous radio peer");
+      return false;
+    }
+    for (int i = 0; i < inverterCount; ++i) {
+      uint32_t other = 0;
+      if (i != which && radioPreference(Inv_Prop[i].invSerial, &other, false) &&
+          other == peer) {
+        diagnosticsAppend("power control rejected: duplicate radio peer");
+        return false;
+      }
+    }
+    destination = peer & 0xFFFF;
+    pan = peer >> 16;
+  }
   apsExpectedWhich = which;
 
-  uint16_t pan = rawCurrentPan;
-  if (which >= 0) {
+  if (!directed && which >= 0) {
     uint32_t peer = 0;
     if (radioPreference(Inv_Prop[which].invSerial, &peer, false)) {
       pan = peer >> 16;
@@ -428,31 +465,34 @@ static bool submitRawAps(uint16_t requestedDestination, uint8_t dstEp,
   // Pairing control frames are plaintext even for encrypted inverter models.
   bool useEncryption = cluster == 0x0006 &&
       (which >= 0 ? apsInverterUsesEncryption(which) : apsAllInvertersEncrypted());
-  if (useEncryption && apsEncryptOutgoing(which, asdu, asduLength, encrypted,
-                                           sizeof(encrypted), &encryptedLength,
-                                           which < 0)) {
+  if (useEncryption) {
+    if (!apsEncryptOutgoing(which, asdu, asduLength, encrypted,
+                            sizeof(encrypted), &encryptedLength, which < 0)) {
+      diagnosticsAppend("APS encryption failed");
+      return false;
+    }
     asdu = encrypted;
     asduLength = encryptedLength;
   }
 
   uint8_t frame[128] = {};
   size_t p = 0;
-  frame[p++] = 0x41;  // MAC data, PAN compressed, no ACK for broadcast.
+  frame[p++] = directed ? 0x61 : 0x41;  // Request MAC ACK for unicast.
   frame[p++] = 0x88;
   frame[p++] = ++rawMacSequence;
   putLe16(frame, p, pan);
-  putLe16(frame, p, 0xFFFF);
+  putLe16(frame, p, destination);
   putLe16(frame, p, 0x0000);
 
   putLe16(frame, p, 0x1008);  // NWK data with source IEEE address.
-  putLe16(frame, p, 0xFFFF);
+  putLe16(frame, p, destination);
   putLe16(frame, p, 0x0000);
   frame[p++] = radius ? radius : 0x0F;
   frame[p++] = ++rawNwkSequence;
   memcpy(frame + p, rawExtendedAddress, sizeof(rawExtendedAddress));
   p += sizeof(rawExtendedAddress);
 
-  frame[p++] = 0x08;  // APS broadcast delivery.
+  frame[p++] = directed ? 0x00 : 0x08;  // APS unicast / broadcast delivery.
   frame[p++] = dstEp;
   putLe16(frame, p, cluster);
   putLe16(frame, p, 0x0F05);
@@ -465,8 +505,8 @@ static bool submitRawAps(uint16_t requestedDestination, uint8_t dstEp,
   bool ok = radioTransmit(frame, p, true, "APsystems request");
   char line[176];
   snprintf(line, sizeof(line),
-           "APS raw TX pan=0x%04X logical_dst=0x%04X target=%d cluster=0x%04X len=%u opts=0x%02X result=%s",
-           pan, requestedDestination, which, cluster, asduLength, options,
+           "APS raw TX pan=0x%04X logical_dst=0x%04X target=%d radio_dst=0x%04X cluster=0x%04X len=%u opts=0x%02X result=%s",
+           pan, requestedDestination, which, destination, cluster, asduLength, options,
            ok ? "OK" : "FAILED");
   diagnosticsAppend(String(line));
   return ok;

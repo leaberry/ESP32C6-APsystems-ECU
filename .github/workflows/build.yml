@@ -58,6 +58,7 @@ jobs:
         run: |
           python3 tools/test_home_assistant.py
           python3 tools/test_power_limit.py
+          python3 tools/test_power_limit_radio.py
           python3 tools/test_web_redirects.py
           python3 tools/test_power_limit_form.py
           node tools/test_power_limit_ui.js
