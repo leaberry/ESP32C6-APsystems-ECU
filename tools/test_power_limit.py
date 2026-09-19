@@ -10,13 +10,17 @@ harness=r'''
 #include <cstdlib>
 #include <cassert>
 #include <iostream>
+#include <deque>
+#include <cctype>
 #define F(x) x
 #define CC2530_MAX_SERIAL_BUFFER_SIZE 1024
 struct String:std::string{using std::string::string;String(int v):std::string(std::to_string(v)){}String(std::string s):std::string(s){}};
 void consoleOut(String){}void delayMicroseconds(int){}
 int readCounter=1,desiredThrottle[9];struct{int invType,calib;}Inv_Prop[9];
 std::string reply;
-char *readZB(char *s){strcpy(s,reply.c_str());return s;}
+std::deque<std::string> queued;
+uint32_t clockMs=0;uint32_t millis(){return clockMs;}
+char *readZB(char *s){clockMs+=500;if(!queued.empty()){reply=queued.front();queued.pop_front();}strcpy(s,reply.c_str());return s;}
 char *split(char *s,const char *marker){char *p=strstr(s,marker);if(!p)return nullptr;*p=0;return p+strlen(marker);}
 '''+ 'int decodeQueryAnswer(int welke)'+source+r'''
 int main(){
@@ -27,6 +31,21 @@ int main(){
   assert(decodeQueryAnswer(0)==0);desiredThrottle[0]+=10;assert(decodeQueryAnswer(0)!=0);
  }
  for(const char *bad:{"4481","4481FBFB","not a reply"}){reply=bad;assert(decodeQueryAnswer(0)!=0);}
+ // Actual production ordering: intermediate ACK, then the fragmented DS3 readback.
+ Inv_Prop[0]={2,0};desiredThrottle[0]=20;
+ queued={"4481FBFB06DE02000000000000FEFE","4481FBFB5CDDDE0104014B0013FEFE"};
+ assert(decodeQueryAnswer(0)==0&&queued.empty());
+ desiredThrottle[0]=500;
+ queued={"4481FBFB06DE02000000000000FEFE","4481FBFB5CDDDE010420670013FEFE"};
+ assert(decodeQueryAnswer(0)==0&&queued.empty());
+ // ACK-only streams are bounded; an unrelated reply cannot imply success.
+ reply="4481FBFB06DE02000000000000FEFE";auto before=clockMs;
+ assert(decodeQueryAnswer(0)!=0&&clockMs-before<=4000);
+ for(const char* bad:{"4481FBFB5CDDDE0104ZZZZ0013FEFE","4481FBFB5CDDDE01042067"}){
+  reply=bad;assert(decodeQueryAnswer(0)!=0);
+ }
+ queued={"4481FBFB06DE02000000000000FEFE","4481FBFB5CDDDE0104014B0013FEFE"};
+ assert(decodeQueryAnswer(0)!=0); // Real readback mismatch must still fail.
  readCounter=0;assert(decodeQueryAnswer(0)==50);
  std::cout<<"PASS power-limit replies: YC600/QS1/DS3, calibration, mismatch, truncated and missing replies\n";
 }

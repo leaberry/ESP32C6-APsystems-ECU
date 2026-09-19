@@ -16,7 +16,8 @@ void querying(int which) {
       return;
     }
     
-    sendZB(queryCommand);
+    empty_serial2();
+    if (!sendZB(queryCommand)) return;
 
     // decodeQueryAnswer will read and analyze the answer   
     errorCode = decodeQueryAnswer(which);     
@@ -45,42 +46,23 @@ int decodeQueryAnswer(int welke)
     char *payload;
     int fault=0; 
     consoleOut("decoding inverter " + String(welke));
-    //retrieve the answer
-    strcpy(messageToDecode, readZB(s_d));
-    // for testing we used these fake answers
-    #ifdef TEST
-    if(Inv_Prop[welke].invType != 2) {
-    strcpy(messageToDecode, "FE0164010064FE0345C43A1000A8FE034480001400D3FE0345C43A1000A8FE6E4481000006013A101414006900C3B77000005A408000158215FBFB4DDE041105440FE5020F32B003CF05440FE5020F32B0066604CC0EA3A804D70214050C100FD80ED07A0F32B0056A054F019000641F3FE480068ACE8ACE000130103030190604001D21DB3B6600000000FEFE3A100E00");
-    readCounter = 120;
-    } else {
-    readCounter = 120;
-    strcpy(messageToDecode, "FE0164010064FE0345C4A2F600D6FE034480001400D3FE0345C4A2F600D6FE0345C4A2F600D6FE7D448100000601A2F61414008000CC73F7000069704000202594FBFB5CDDDE010426E20013BA14B413EC000A032000500003DD03A403200003E80000000000640003DD03A503350304012C060D03FF045F0E93140E3204890258001374136F125C0014032007D023A6031401BF03D9FFFFFFFFFFFF23A6C8FF1C01FEFEA2F6734E");
-    }
-    #endif
-    
-    if (readCounter == 0) {
-        consoleOut(F("decodeQueryAnswer: no answer on request"));  
-        return 50; //no answer
-      }          
- 
-    if (strstr(messageToDecode, "4481") == NULL)
-    {
-      consoleOut("no  AF_INCOMING_MSG"); // this is the real answer
-      fault=13;
-    }
-    if(fault > 9 ) {
-       memset(&messageToDecode, 0, sizeof(messageToDecode)); //zero out 
-       delayMicroseconds(250); 
-      return fault;
-    }
-    
-   // if we are here we should have a string containing 4481, we analyse it defferently for YC600 an DS3
-    payload = split(messageToDecode, "FBFB"); // remove the 0000 as well   
-     //   */
-    // for test we give payload a value
-    if (!payload || strlen(payload) < 14) return 15;
-    consoleOut("payload " + String(payload) );
-    
+    // Control acknowledgments may arrive before the fragmented limit readback.
+    // Bound both time and frame count, and never interpret an ACK as a limit.
+    const uint32_t started = millis();
+    for (unsigned attempt = 0; attempt < 8 && millis() - started < 4000; ++attempt) {
+      strcpy(messageToDecode, readZB(s_d));
+      if (readCounter == 0) return 50;
+      if (!strstr(messageToDecode, "4481")) continue;
+      payload = split(messageToDecode, "FBFB");
+      if (!payload) continue;
+      const bool ds3 = Inv_Prop[welke].invType == 2;
+      if (strncmp(payload, ds3 ? "5CDDDE0104" : "4DDE", ds3 ? 10 : 4)) {
+        consoleOut("ignoring non-readback power-control response");
+        continue;
+      }
+      if (strlen(payload) < 14 || !strstr(payload, "FEFE")) return 15;
+      consoleOut("payload " + String(payload));
+
     // we must handle the DS3 and YC600 differently 
     
     if(Inv_Prop[welke].invType != 2) {
@@ -97,6 +79,7 @@ int decodeQueryAnswer(int welke)
         char before[5];
         strncpy(before, ptr - 4, 4);
         before[4] = '\0';
+        for (int i = 0; i < 4; ++i) if (!isxdigit((unsigned char)before[i])) return 15;
         int decimalValue = (int)strtol(before, NULL, 16) / 28.89; // convert from hex string to int
         //we must compare decimalValue with maxPower
         // so we have calculate it back with the calibrateFactor
@@ -120,6 +103,7 @@ int decodeQueryAnswer(int welke)
     //strcpy(payload, "FBFB5CDDDE0104 26E2  0013BA14B413EC000A032000500003DD03A403200003E80000000000640003DD03A503350304012C060D03FF045F0E93140E3204890258001374136F125C0014032007D023A6031401BF03D9FFFFFFFFFFFF23A6C8FF1C01FEFEA2F6734E");
      
      char powval[5] = {0}; // 4 chars + null terminator
+     for (int i = 10; i < 14; ++i) if (!isxdigit((unsigned char)payload[i])) return 15;
      memcpy(powval, payload + 10, 4); // copy "26E2"
      int decimalValue = (int)strtol(powval, NULL, 16) / 16.59;
      String term="power value DS3 = " + String(powval) + " this is dec. " + String(decimalValue);
@@ -134,4 +118,6 @@ int decodeQueryAnswer(int welke)
     }
     
     return 0;
+    }
+    return 50; // No matching readback before the bounded receive window ended.
 } 

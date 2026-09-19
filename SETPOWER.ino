@@ -2,8 +2,10 @@
 
 bool setMaxPower(int which) 
 {
+  if (which < 0 || which >= inverterCount || zigbeeUp != 1) return false;
   // if there is no coordinator, this command fails
 
+  empty_serial2(); // Discard replies queued before this command sequence.
   int Scaled;
   char sendCommand[85];
   char ecu_id_reverse[13];
@@ -70,20 +72,14 @@ bool setMaxPower(int which)
   }
       // we have the command ready specific for the invertertype
       // we send it now and discard the answer
-      if(zigbeeUp == 1) sendZB(sendCommand);
-      //we discard this inMessage also
-      if( waitSerial2Available() ) {
-          empty_serial2(); // clear the incoming data
-      }
+      if (!sendZB(sendCommand)) return false;
+
         
       //now we send a nonsense command this should look like
       //24013A101414060000050F1380971B01B3D6FBFB06DE00000000000000FEFE
       snprintf(sendCommand, sizeof(sendCommand), "2401%s1414060001000F13%sFBFB06DE00000000000000FEFE", Inv_Prop[which].invID, ecu_id_reverse);
-      if(zigbeeUp == 1) sendZB(sendCommand);
-      //we discard this inMessage also
-      if( waitSerial2Available() ) {
-            empty_serial2(); // clear the incoming data
-      }
+      if (!sendZB(sendCommand)) return false;
+
       // now we should send the inverterquery to find out whether the command succeeded or not.
    
     // now we can send the query which is the same for both invertertypes
@@ -94,7 +90,7 @@ bool setMaxPower(int which)
         return false;
       }
     
-    sendZB(sendCommand);
+    if (!sendZB(sendCommand)) return false;
     // it seems that the response is the same as from the query command so we decode query answer
     errorCode = decodeQueryAnswer(which); //chec for callibration value    
     
