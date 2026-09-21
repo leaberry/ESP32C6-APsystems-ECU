@@ -1,5 +1,31 @@
 # Build and hardware verification
 
+## Integrated recorder and clear-logs action (2026-09-21)
+
+The issue #24 diagnostic branch is merged with the polling and journal fixes.
+The v2 poll log distinguishes seen identities from accepted telemetry, records
+PAN-group and round masks, and counts stale, duplicate and invalid replies by
+reason. It uses the existing persisted flight-recorder switch, off by default.
+Disabled recording creates no new detailed poll records, counter updates or
+periodic recorder writes; old logs remain downloadable after restart.
+
+**Diagnostic snapshot > Clear recorded logs** removes the health log, both
+poll-log versions and pending poll records. It preserves the enabled setting,
+configuration, pairing history, production history and crash partition. Files
+stay absent while disabled and are recreated lazily when enabled recording
+continues. Health writes, setting changes, downloads and clearing use a
+recursive storage mutex; the poll companion retains its own storage lock.
+The action requires administrator authentication, allowed remote access and a
+POST with the diagnostics action header. Failures are reported to the user.
+
+Host tests cover the integrated collector, radio counters, storage bounds,
+disabled operation, reboot downloads, deletion failures, active-attempt
+cancellation, clearing both formats, preserved unrelated files, automatic
+recording resumption, storage retry pacing and the button's error handling.
+Both ESP32 core 3.3.8 layouts are built locally. The DS3 production test below
+applies to `e8b8c4e`; this combined recorder/clear-button build has not yet been
+deployed or hardware-tested. No production logs were cleared during development.
+
 ## Issue #24: polling replies and journal corruption (2026-09-21)
 
 Built from main at `def929e`. The reporter's diagnostics showed YC600 replies

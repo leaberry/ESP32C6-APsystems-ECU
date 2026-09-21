@@ -65,7 +65,10 @@ void pollingCollect(int which, bool fleet) {
                         " after=" + String(backoffMs) + "ms");
       delay(backoffMs);
     }
-    if (sendZB(pollCommand)) accepted = readPollReplies(wanted, accepted, since);
+    pollDiagnosticsStart(which, attempt + 1, wanted);
+    const bool txOk = sendZB(pollCommand);
+    if (txOk) accepted = readPollReplies(wanted, accepted, since);
+    pollDiagnosticsFinish(txOk, (accepted & (1U << which)) ? 0 : 50, accepted);
     if (accepted & (1U << which)) break;
   }
   if (fleet) pollRoundAccepted = accepted;

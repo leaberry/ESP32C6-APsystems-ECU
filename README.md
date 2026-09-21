@@ -421,7 +421,10 @@ For existing Domoticz users, its MQTT formats and command topic are unchanged.
 Home Assistant can run alongside it on the same broker. Configure the broker
 in the existing MQTT page; the separate Home Assistant page enables discovery.
 
-## Troubleshooting and other features
+## Troubleshooting
+
+For missing inverter readings or intermittent failures, see [Polling diagnostics](POLL-DIAGNOSTICS.md). The recorder is included, off by default, and can be enabled or cleared from the web interface.
+ and other features
 
 - **No fresh readings:** check daylight, time/location, signal, inverter power
   and the last poll time. The default poll interval is five minutes.

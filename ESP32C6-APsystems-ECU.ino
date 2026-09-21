@@ -35,6 +35,7 @@ void setup() {
     while (true) delay(1000);
   }
   if (!settingsHasRestoredIdentity()) ecuIdentityBegin(); // Persist a default/unpaired ID before any radio or web startup.
+  pollDiagnosticsBegin();
   flightRecorderBegin();
   pairAuditBeginStorage();
   // now we know the number of inverters we can find an interval between pollings

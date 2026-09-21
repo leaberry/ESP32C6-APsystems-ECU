@@ -26,6 +26,10 @@ code = r'''
 #include <vector>
 using std::min;
 using String=std::string;
+#include "POLL_DIAGNOSTICS.h"
+void pollDiagnosticsCount(PollDiagCounter,uint32_t){}
+void pollDiagnosticsRaw(uint16_t,uint16_t){}
+constexpr int pdTRUE=1;
 constexpr uint8_t YC600_MAX_NUMBER_OF_INVERTERS=9;
 bool pairReceiveActive(){return false;}
 bool radioPreference(const char*,uint32_t*,bool){return true;}
@@ -70,6 +74,6 @@ int main(){
 with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp)
     (p/'test.cpp').write_text(code, encoding='utf-8')
-    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=undefined',
+    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsanitize=undefined', '-I', str(root),
                     str(p/'test.cpp'), '-o', str(p/'test')], check=True)
     subprocess.run([str(p/'test')], check=True)

@@ -68,6 +68,14 @@ bool apsDecryptIncoming(uint16_t,const uint8_t* a,size_t n,uint8_t* out,size_t,s
  if(n<8||a[6]!=0xfb||a[7]!=0xfb)return false;memcpy(out,a,n);*len=n;return true;
 }
 void pollPublishTelemetry(int);
+#include "POLL_DIAGNOSTICS.h"
+uint32_t diagCounts[PD_COUNT]={};uint16_t diagSeen=0,diagAccepted=0;
+void pollDiagnosticsCount(PollDiagCounter c,uint32_t n){diagCounts[c]+=n;}
+void pollDiagnosticsReply(int i){if(i>=0)diagSeen|=1U<<i;}
+void pollDiagnosticsAccepted(int i){diagAccepted|=1U<<i;}
+void pollDiagnosticsStart(int,uint8_t,uint16_t){}
+void pollDiagnosticsFinish(bool,int,uint16_t){}
+
 '''
 transport = (root/'ZIGBEE_A_TRANSPORT.ino').read_text(encoding='utf-8')
 start = transport.index('struct ApsRxFrame {')
@@ -146,6 +154,9 @@ int main(){
   f=reply(1);f.data[5]=0x99;queue.push_back(f);
  };
  pollingForRound(1);assert(sends==2&&!polled[1]&&published[1]==0&&!pollingRoundSucceeded());
+ assert(diagCounts[PD_BAD_CHECKSUM]==2&&diagCounts[PD_BAD_LENGTH]==4&&diagCounts[PD_BAD_KIND]==2&&diagCounts[PD_BAD_VALUE]==2);
+ assert(diagCounts[PD_STALE]==2&&diagCounts[PD_UNEXPECTED]==8&&diagCounts[PD_DUPLICATE]>=1);
+ assert(diagSeen==31&&diagAccepted==31);
  // Target times out twice, then recovers during a subsequent inverter's poll.
  reset();onSend=[](int i){if(i==1)for(int j:{3,0,2,1})queue.push_back(reply(j));else if(i==4)queue.push_back(reply(i));};
  for(int i=0;i<5;++i)pollingForRound(i);

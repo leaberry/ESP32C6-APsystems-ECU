@@ -28,6 +28,8 @@ struct String:std::string {
  String(std::string s):std::string(s){} String(int n):std::string(std::to_string(n)){}
  void toCharArray(char* p,size_t n){snprintf(p,n,"%s",c_str());}
 };
+#include "POLL_DIAGNOSTICS.h"
+void pollDiagnosticsCount(PollDiagCounter,uint32_t){}
 struct {template<typename... A>void printf(A...){} void println(String){}} Serial;
 void consoleOut(String){} void diagnosticsAppend(String){}
 String ECU_REVERSE(){return "80971B01A3D8";}
@@ -97,5 +99,5 @@ int main(){
 with tempfile.TemporaryDirectory() as tmp:
     p=Path(tmp)
     (p/'test.cpp').write_text(harness,encoding='utf-8')
-    subprocess.run(['g++','-std=c++17',str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+    subprocess.run(['g++','-std=c++17','-I',str(root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
     subprocess.run([str(p/'test')],check=True)
