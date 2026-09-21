@@ -1,5 +1,38 @@
 # Build and hardware verification
 
+## Issue 24 diagnostic branch (2026-09-20)
+
+`ESP32C6-ECU_v1_4_16-poll-diag1` adds a companion poll-attempt log under the
+existing flight-recorder opt-in. It preserves the production poll requests,
+retry policy, decoder and HA availability behavior. Capture instructions and
+counter definitions are in [ISSUE-24-DIAGNOSTICS.md](ISSUE-24-DIAGNOSTICS.md).
+
+Host checks passed:
+
+- `tools/test_poll_diagnostics.py`: actual recorder, polling and flight-loop
+  functions with fake clocks/storage; attempt deltas, identity masks, initial
+  success, timeout/recovery, exhausted retries, TX failure, opt-in gating,
+  no retroactive writes, batch timing, storage-failure backoff, reboot recovery,
+  corruption, pending-buffer overflow, bounded 256-record storage and export,
+  and counter/millisecond wrap.
+- `tools/test_poll_radio_diagnostics.py`: production receive and transmit
+  functions with synthetic frames; queue overflow, parser filters, missing
+  and evicted fragments, failed ACKs, successful reassembly, incoming APS ACK
+  flag, separate CCA/coexistence counters and exhausted radio retries.
+- Existing power-control radio, persistent pairing audit and Home Assistant
+  retained recovery/control tests.
+
+Both named layouts compiled with ESP32 core 3.3.8. Each application image is
+1,612,816 bytes; generated partition tables confirm 3,145,728-byte OTA slots
+for 8 MB and a 3,538,944-byte factory slot for 4 MB. Global variables use
+98,928 bytes. The staged firmware sources match, and the branch retains its
+default 8 MB partition map. Application/ELF bundles include SHA-256 checksums.
+
+No YC600 hardware, live OTA, flash-wear/latency, download heap pressure or
+physical power-loss testing was performed. These tests do not establish an
+RF fix. An unfinished attempt and pending batch can be lost during a reset;
+the original health recorder and ESP-IDF crash dump remain separate evidence.
+
 ## Power-limit confirmation follow-up (2026-09-19)
 
 The decoder now skips intermediate control acknowledgments and waits for the

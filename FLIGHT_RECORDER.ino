@@ -223,6 +223,7 @@ void flightRecorderSetEnabled(bool enabled) {
 
 void flightRecorderLoop() {
   const uint32_t now = millis();
+  static uint32_t lastPollFlushMs = 0;
   const bool connected = WiFi.status() == WL_CONNECTED;
 
   if (flightWifiEventHandled != flightWifiEventCount) {
@@ -256,6 +257,12 @@ void flightRecorderLoop() {
     const uint8_t event = ESP.getFreeHeap() < 50000U ? FLIGHT_LOW_MEMORY
                                                      : FLIGHT_HEARTBEAT;
     flightWrite(event);
+  }
+  // Keep companion writes on the main loop. Enabling/disabling the health
+  // recorder can call flightWrite() from an asynchronous HTTP handler.
+  if (flightRecorderEnabled && (uint32_t)(now - lastPollFlushMs) >= FLIGHT_INTERVAL_MS) {
+    lastPollFlushMs = now; // Back off for a full minute even when storage fails.
+    pollDiagnosticsFlush();
   }
 }
 

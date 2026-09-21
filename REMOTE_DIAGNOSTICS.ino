@@ -116,6 +116,8 @@ String diagnosticsReportText() {
   }
   report += F("\nTRACE (bounded to the newest 96 entries)\n----------------------------------------\n");
   report += diagnosticsText();
+  report += F("\nPOLL ATTEMPTS (newest 12; RAM or persisted with flight recorder)\n");
+  report += pollDiagnosticsReport(12);
   report += F("\nPERSISTENT FLIGHT RECORDER (newest 30 records)\n------------------------------------------------\n");
   report += flightRecorderReport(30);
   report += F("\nPERSISTENT PAIRING LOG (newest 3 attempts)\n");

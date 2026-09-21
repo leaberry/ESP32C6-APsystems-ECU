@@ -17,10 +17,12 @@ void polling(int which) {
   // clears late replies from another inverter on the same PAN. Always start a
   // transaction with a clean application queue so stale profile/info traffic
   // cannot be decoded as fresh telemetry.
+  pollDiagnosticsStart(which, 1);
   empty_serial2();
-  sendZB(pollCommand);
+  bool txOk = sendZB(pollCommand);
 
   errorCode = decodePollAnswer(which);
+  pollDiagnosticsFinish(txOk, errorCode);
   if (errorCode != 0) {
     // Same-PAN inverters answer the APsystems broadcast together. A collision
     // can occasionally interrupt one inverter between APS fragments; retry
@@ -29,9 +31,11 @@ void polling(int which) {
     diagnosticsAppend("poll retry inverter=" + String(which) +
                       " after=" + String(backoffMs) + "ms");
     delay(backoffMs);
+    pollDiagnosticsStart(which, 2);
     empty_serial2();
-    sendZB(pollCommand);
+    txOk = sendZB(pollCommand);
     errorCode = decodePollAnswer(which);
+    pollDiagnosticsFinish(txOk, errorCode);
   }
   if (errorCode == 0) {
     polled[which] = true;
