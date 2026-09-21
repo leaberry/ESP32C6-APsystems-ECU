@@ -1,5 +1,38 @@
 # Build and hardware verification
 
+## Issue #24: polling replies and journal corruption (2026-09-21)
+
+Built from main at `def929e`. The reporter's diagnostics showed YC600 replies
+arriving during other inverters' poll transactions. Fleet polling now collects
+validated telemetry from every configured responder on the current PAN, accepts
+one sample per inverter per round, and skips already successful targets. A late
+recovery counts toward the final round result; missing inverters remain failed.
+Single-inverter manual polls and control-response matching stay isolated.
+
+Telemetry acceptance checks the serial, PAN, cluster/endpoints, model reply
+opcode, envelope length, checksum and required fields. Receive timestamps
+survive raw queues and fragment reassembly, preventing pre-round queued data
+or partial responses from counting as fresh telemetry. Reassembly has room for
+all nine supported inverters. Existing energy accounting and MQTT payloads are
+preserved.
+
+The crash dump's overwritten pointer matched the bytes from a long throttle
+message written into the final journal slot. Journal messages now have bounded
+copies and room for 63 characters. Rendering uses an escaped, dynamically sized
+string instead of fixed row/page buffers.
+
+Host regression tests exercise the production collector, energy decoder,
+round handling, fragment parser, journal writer and renderer. Coverage includes
+out-of-order and duplicate replies, malformed/control frames, stale fragments,
+different PANs, late recovery, transmit failures, all nine simultaneous fragment
+sessions, and the exact last-slot message that corrupted memory. Existing
+power-control addressing and reply tests also pass. Both pinned ESP32 core
+3.3.8 firmware layouts are built locally.
+
+No firmware was flashed for this change. YC600 radio reliability still needs
+confirmation on the reporter's installation; host tests do not establish RF
+behavior or prove that every collision will be recovered.
+
 ## Power-limit confirmation follow-up (2026-09-19)
 
 The decoder now skips intermediate control acknowledgments and waits for the

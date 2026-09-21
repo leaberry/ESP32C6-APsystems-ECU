@@ -304,7 +304,7 @@ bool apFlag=false;
  typedef struct {
   char date[14] ;
   int  kind ; // zigbee, system, mqtt, pairing
-  char  message[13] ;
+  char  message[64] ;
 } logEvent;
 logEvent Log_Events[Log_MaxEvents];
 bool Log_MaxReached = false;

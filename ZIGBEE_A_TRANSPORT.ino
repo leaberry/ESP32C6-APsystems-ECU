@@ -7,6 +7,7 @@
  * places reassembled ASDUs in the legacy decoder queue.
  */
 
+#include "POLL_TELEMETRY.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
@@ -21,9 +22,11 @@ constexpr uint8_t APS_CHANNEL = 16;
 constexpr uint8_t RAW_RX_QUEUE_DEPTH = 24;
 constexpr uint8_t RAW_MAX_BLOCKS = 8;
 constexpr uint8_t RAW_BLOCK_BYTES = 112;
-constexpr uint8_t RAW_REASSEMBLY_SLOTS = 4;
+constexpr uint8_t RAW_REASSEMBLY_SLOTS = YC600_MAX_NUMBER_OF_INVERTERS;
 
 struct ApsRxFrame {
+  uint32_t receivedAt;
+  uint16_t pan;
   uint16_t cluster;
   uint16_t source;
   uint8_t sourceEp;
@@ -35,6 +38,7 @@ struct ApsRxFrame {
 };
 
 struct RawRxFrame {
+  uint32_t receivedAt;
   uint8_t captured;
   uint8_t channel;
   int8_t rssi;
@@ -59,6 +63,7 @@ struct RawReassembly {
   uint8_t lengths[RAW_MAX_BLOCKS];
   uint8_t blocks[RAW_MAX_BLOCKS][RAW_BLOCK_BYTES];
   uint32_t updatedAt;
+  uint32_t receivedAt;
 };
 
 QueueHandle_t apsRxQueue = nullptr;
@@ -249,6 +254,8 @@ static RawReassembly *sessionFor(uint16_t pan, uint16_t source,
 static void deliverAsdu(RawReassembly *session) {
   if (!session || !apsRxQueue) return;
   ApsRxFrame complete = {};
+  complete.receivedAt = session->receivedAt;
+  complete.pan = session->pan;
   complete.cluster = session->cluster;
   complete.source = session->nwkSource;
   complete.sourceEp = session->sourceEp;
@@ -337,6 +344,8 @@ static void processApsFrame(const RawRxFrame &rx) {
   if (!fragmentation) {
     if (!payloadLength || payloadLength > 300 || !apsRxQueue) return;
     ApsRxFrame frame = {};
+    frame.receivedAt = rx.receivedAt;
+    frame.pan = pan;
     frame.cluster = cluster;
     frame.source = nwkSource;
     frame.sourceEp = sourceEp;
@@ -371,6 +380,7 @@ static void processApsFrame(const RawRxFrame &rx) {
     // Preserve the weakest fragment's radio metadata. A reassembled APS
     // response is only as reliable as its weakest received fragment.
     if (!session->receivedMask) {
+      session->receivedAt = rx.receivedAt;
       session->rssi = rx.rssi;
       session->lqi = rx.lqi;
     } else {
@@ -524,6 +534,7 @@ extern "C" void IRAM_ATTR esp_ieee802154_receive_done(
     RawRxFrame copy = {};
     uint8_t count = min((uint16_t)sizeof(copy.bytes),
                         (uint16_t)(frame[0] + 1U));
+    copy.receivedAt = millis();
     copy.captured = count;
     copy.channel = info->channel;
     copy.rssi = info->rssi;
@@ -673,6 +684,21 @@ bool sendZB(char command[]) {
   return false;
 }
 
+// Explicit declaration keeps Arduino from generating this before ApsRxFrame.
+static void formatApsReply(const ApsRxFrame &f, char *out);
+static void formatApsReply(const ApsRxFrame &f, char *out) {
+    strcpy(out, "FE0164010064FE034480001400D3");
+    char header[80];
+    uint8_t length = (uint8_t)min((uint16_t)255, f.len);
+    snprintf(header, sizeof(header),
+             "FE%02X44810000%02X%02X%02X%02X%02X%02X00%02X000000000000%02X",
+             (unsigned)(17 + length), f.cluster & 0xff, f.cluster >> 8,
+             f.source & 0xff, f.source >> 8, f.sourceEp, f.destEp, f.lqi,
+             length);
+    strncat(out, header, CC2530_MAX_SERIAL_BUFFER_SIZE - strlen(out) - 1);
+    appendHex(out, CC2530_MAX_SERIAL_BUFFER_SIZE, f.data, length);
+}
+
 char *readZB(char out[]) {
   out[0] = 0;
   if (!apsRxQueue) return out;
@@ -707,21 +733,51 @@ char *readZB(char out[]) {
       Inv_Data[which].radioMetricsValid = true;
     }
 
-    strcpy(out, "FE0164010064FE034480001400D3");
-    char header[80];
-    uint8_t length = (uint8_t)min((uint16_t)255, f.len);
-    snprintf(header, sizeof(header),
-             "FE%02X44810000%02X%02X%02X%02X%02X%02X00%02X000000000000%02X",
-             (unsigned)(17 + length), f.cluster & 0xff, f.cluster >> 8,
-             f.source & 0xff, f.source >> 8, f.sourceEp, f.destEp, f.lqi,
-             length);
-    strncat(out, header, CC2530_MAX_SERIAL_BUFFER_SIZE - strlen(out) - 1);
-    appendHex(out, CC2530_MAX_SERIAL_BUFFER_SIZE, f.data, length);
+    formatApsReply(f, out);
     readCounter = strlen(out) / 2;
     return out;
   }
   readCounter = 0;
   return out;
+}
+
+// Poll broadcasts can produce replies from every inverter on the PAN. Keep
+// all validated telemetry, independently of the strict control-command reader.
+uint16_t readPollReplies(uint16_t wanted, uint16_t accepted, uint32_t since) {
+  if (!apsRxQueue) return accepted;
+  const uint32_t started = millis();
+  while ((accepted & wanted) != wanted) {
+    const uint32_t elapsed = millis() - started;
+    if (elapsed >= 3200) break;
+    ApsRxFrame f = {};
+    if (xQueueReceive(apsRxQueue, &f, pdMS_TO_TICKS(3200 - elapsed)) != pdTRUE) break;
+    if ((int32_t)(f.receivedAt - since) < 0 || f.pan != rawCurrentPan ||
+        f.cluster != 0x0106 || f.sourceEp != 0x14 || f.destEp != 0x14) continue;
+    uint8_t decoded[300];
+    size_t length = 0;
+    if (!apsDecryptIncoming(f.source, f.data, f.len, decoded, sizeof(decoded),
+                            &length, nullptr)) continue;
+    // Match the clear serial, not a short address that can recur on another PAN.
+    int which = -1;
+    for (int i = 0; i < inverterCount; ++i) {
+      uint8_t serial[6];
+      if ((wanted & (1U << i)) && apsSerialToBcd(Inv_Prop[i].invSerial, serial) &&
+          length >= 6 && !memcmp(serial, decoded, 6)) { which = i; break; }
+    }
+    if (which < 0 || (accepted & (1U << which)) ||
+        !pollTelemetryValid(decoded, length, Inv_Prop[which].invType)) continue;
+    memcpy(f.data, decoded, length);
+    f.len = length;
+    char message[CC2530_MAX_SERIAL_BUFFER_SIZE] = {};
+    formatApsReply(f, message);
+    if (decodePollMessage(which, message) != 0) continue;
+    Inv_Data[which].radioRssi = f.rssi;
+    Inv_Data[which].radioLqi = f.lqi;
+    Inv_Data[which].radioMetricsValid = true;
+    accepted |= 1U << which;
+    pollPublishTelemetry(which);
+  }
+  return accepted;
 }
 
 bool waitSerial2Available() {
