@@ -29,9 +29,25 @@ sessions, and the exact last-slot message that corrupted memory. Existing
 power-control addressing and reply tests also pass. Both pinned ESP32 core
 3.3.8 firmware layouts are built locally.
 
-No firmware was flashed for this change. YC600 radio reliability still needs
-confirmation on the reporter's installation; host tests do not establish RF
-behavior or prove that every collision will be recovered.
+With user authorization, the 8 MB application from commit `e8b8c4e` was
+subsequently installed on the production ECU using same-layout OTA. The saved
+707 Wh daily checkpoint restored exactly. All three DS3s resumed polling at the
+unchanged 45-second interval, including two sharing a PAN and one on another
+PAN. A 301-second observation recorded seven successful complete fleet rounds,
+with no missed inverter cycles or unexpected reset. Maximum observed response
+gaps were 49 / 51 / 45 seconds. Final power was 354.1 / 363.7 / 361.3 W, and
+current-day totals increased to 273 / 279 / 279 Wh. Free heap finished at
+160,324 bytes.
+
+ECU identity, inverter order, learned peers and every exported setting were
+preserved. The 1,968-byte finalized history and previous crash dump were
+byte-for-byte unchanged. Settings validation, Web UI and SunSpec Modbus reads
+passed. No pairing or power-limit command was sent. The previous firmware and
+pre-update backups were retained for rollback; hourly RAM statistics restart
+with reboot as documented.
+
+This verifies the DS3 polling regression on production hardware. YC600 radio
+reliability still needs confirmation on the reporter's installation.
 
 ## Power-limit confirmation follow-up (2026-09-19)
 
