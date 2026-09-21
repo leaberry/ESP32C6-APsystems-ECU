@@ -22,9 +22,25 @@ Host tests cover the integrated collector, radio counters, storage bounds,
 disabled operation, reboot downloads, deletion failures, active-attempt
 cancellation, clearing both formats, preserved unrelated files, automatic
 recording resumption, storage retry pacing and the button's error handling.
-Both ESP32 core 3.3.8 layouts are built locally. The DS3 production test below
-applies to `e8b8c4e`; this combined recorder/clear-button build has not yet been
-deployed or hardware-tested. No production logs were cleared during development.
+Both ESP32 core 3.3.8 layouts passed local builds. With user authorization,
+combined commit `3afd51e` was deployed through matching-layout 8 MB OTA. The
+1,352 Wh checkpoint (444 / 454 / 454 Wh) restored exactly. All three production
+DS3s passed eight complete rounds in a 305-second observation, covering both
+the shared-PAN pair and the separate-PAN inverter. The interval remained 45
+seconds; maximum observed response gaps were 46 / 48 / 46 seconds.
+There were no missed cycles or unexpected resets. Final output was
+474.9 / 486.7 / 482.5 W, with daily totals 484 / 495 / 495 Wh. Free heap ended
+at 152,380 bytes.
+
+Every exported setting, ECU identity, inverter order and learned peer was
+preserved. Finalized history (1,968 bytes) and the existing crash dump matched
+the backups byte-for-byte. Web UI, settings validation, NTP/hostname and
+SunSpec Modbus checks passed. The v2 log endpoint and clear button are available;
+recording stayed disabled and the poll log remained empty. Production logs
+were not cleared. Enabled recording and deletion are host-tested, not exercised
+on production hardware. No pairing or power-limit command was sent. Previous
+firmware and backups are retained for rollback. YC600 verification still needs
+the reporter's hardware.
 
 ## Issue #24: polling replies and journal corruption (2026-09-21)
 
