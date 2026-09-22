@@ -1,5 +1,32 @@
 # Build and hardware verification
 
+## Issue #24: YC600/QS1 checksum regression (2026-09-22)
+
+The reporter's `poll-fix2` logs show four rounds accepting both DS3s and no
+YC600s, with 73 checksum rejections. All three YC600s successfully paired.
+The crash dump is byte-identical to the previous submission, not new crash
+evidence. The new universal additive-checksum requirement was incorrect:
+existing YC600 and QS1 samples in `test.ino` have zero trailer bytes despite
+nonzero sums. The previous synthetic tests reproduced that same assumption.
+
+`ESP32C6-ECU_v1_4_16-poll-fix3` applies the verified additive checksum only
+to DS3 replies. YC600/QS1 retain identity, PAN, endpoint, opcode, envelope,
+freshness and required-value validation. No undocumented checksum rule is
+imposed on their trailer. Recorder diagnostics and the clear-logs action remain.
+
+Host tests replay the unchanged historical YC600/QS1 payloads through the
+production collector and decoder, check decoded frequency, and use their
+payloads for mixed-model round tests. These tests failed before the fix and
+pass afterward. Malformed legacy messages and corrupt/zero DS3 checksums
+remain rejected. Polling reassembly, radio diagnostics, recorder storage and
+clearing, event-log bounds and power-control radio regression tests also pass.
+
+Both 8 MB OTA and 4 MB USB layouts passed local builds with ESP32 core
+3.3.8 (1,618,438 bytes of compiled program and 105,872 bytes of global RAM).
+
+Hardware validation of this revision remains pending; earlier DS3 hardware
+results below apply to earlier builds, not `poll-fix3`.
+
 ## Integrated recorder and clear-logs action (2026-09-21)
 
 The issue #24 diagnostic branch is merged with the polling and journal fixes.
@@ -52,7 +79,8 @@ recovery counts toward the final round result; missing inverters remain failed.
 Single-inverter manual polls and control-response matching stay isolated.
 
 Telemetry acceptance checks the serial, PAN, cluster/endpoints, model reply
-opcode, envelope length, checksum and required fields. Receive timestamps
+opcode, envelope length, DS3 checksum and required fields (see the correction
+above for YC600/QS1). Receive timestamps
 survive raw queues and fragment reassembly, preventing pre-round queued data
 or partial responses from counting as fresh telemetry. Reassembly has room for
 all nine supported inverters. Existing energy accounting and MQTT payloads are

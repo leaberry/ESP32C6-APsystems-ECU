@@ -1,6 +1,7 @@
 """Run production telemetry validation, collection and round handling with fake RF."""
 from pathlib import Path
 import subprocess
+import re
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
@@ -109,12 +110,26 @@ bool sendZB(char* cmd){
 }
 '''
 code += (root/'ZIGBEE_POLLING.ino').read_text(encoding='utf-8')
+# Keep the historical YC600/QS1 payloads unchanged: their zero trailer is
+# deliberately not manufactured with the DS3 checksum helper.
+captures = re.findall(r'[0-9A-Fa-f]{12}FBFB51[0-9A-Fa-f]+?FEFE',
+                      (root/'test.ino').read_text(encoding='utf-8'))
+assert len(captures) == 2
+code += '\nconst char* legacyCaptures[] = {' + ','.join('"'+s+'"' for s in captures) + '};\n'
 code += r'''
+ApsRxFrame capturedReply(int i){
+ ApsRxFrame f={};f.receivedAt=now;f.pan=pans[i];f.cluster=0x0106;
+ f.sourceEp=f.destEp=0x14;f.lqi=200;f.rssi=-60;
+ const char* hex=legacyCaptures[Inv_Prop[i].invType];f.len=strlen(hex)/2;
+ for(size_t j=0;j<f.len;++j){unsigned b;sscanf(hex+2*j,"%2x",&b);f.data[j]=b;}
+ return f;
+}
 void checksum(ApsRxFrame &f){
  uint16_t sum=0;for(size_t i=8;i<size_t(f.len-4);++i)sum+=f.data[i];
  f.data[f.len-4]=sum>>8;f.data[f.len-3]=sum;
 }
 ApsRxFrame reply(int i){
+ if(Inv_Prop[i].invType!=2){auto f=capturedReply(i);apsSerialToBcd(Inv_Prop[i].invSerial,f.data);return f;}
  ApsRxFrame f={};f.receivedAt=now;f.pan=pans[i];f.cluster=0x0106;
  f.sourceEp=f.destEp=0x14;f.lqi=200;f.rssi=-60;
  f.len=Inv_Prop[i].invType==2?105:94;apsSerialToBcd(Inv_Prop[i].invSerial,f.data);
@@ -134,6 +149,28 @@ int main(){
  for(size_t i=0;i<strlen(captured);i+=2){unsigned b;sscanf(captured+i,"%2x",&b);bytes.push_back(b);}
  assert(pollTelemetryValid(bytes.data(),bytes.size(),2));
  for(int i=0;i<5;++i){auto f=reply(i);assert(pollTelemetryValid(f.data,f.len,Inv_Prop[i].invType));}
+ // Replay unmodified historical payloads through validation and actual decoder.
+ for(int i:{1,3}){
+  auto f=capturedReply(i);assert(f.len==94 && f.data[90]==0 && f.data[91]==0);
+  uint16_t sum=0;for(int j=8;j<90;++j)sum+=f.data[j];assert(sum!=0);
+  assert(pollTelemetryValid(f.data,f.len,Inv_Prop[i].invType));
+  char saved[13];memcpy(saved,Inv_Prop[i].invSerial,13);
+  for(int j=0;j<6;++j)snprintf(Inv_Prop[i].invSerial+2*j,3,"%02X",f.data[j]);
+  reset();onSend=[i](int){queue.push_back(capturedReply(i));};polling(i);
+  assert(polled[i] && published[i]==1 && decodedCount[i]==1);
+  assert(Inv_Data[i].freq>49 && Inv_Data[i].freq<51);
+  memcpy(Inv_Prop[i].invSerial,saved,13);
+  // Legacy replies still reject truncation, bad delimiters/opcodes and zero divisor.
+  auto bad=f;--bad.len;assert(pollTelemetryCheck(bad.data,bad.len,Inv_Prop[i].invType)==POLL_BAD_LENGTH);
+  bad=f;bad.data[6]=0;assert(pollTelemetryCheck(bad.data,bad.len,Inv_Prop[i].invType)==POLL_BAD_LENGTH);
+  bad=f;bad.data[93]=0;assert(pollTelemetryCheck(bad.data,bad.len,Inv_Prop[i].invType)==POLL_BAD_LENGTH);
+  bad=f;bad.data[9]=0xbb;assert(pollTelemetryCheck(bad.data,bad.len,Inv_Prop[i].invType)==POLL_BAD_KIND);
+  bad=f;bad.data[12]=bad.data[13]=bad.data[14]=0;
+  assert(pollTelemetryCheck(bad.data,bad.len,Inv_Prop[i].invType)==POLL_BAD_VALUE);
+ }
+ // DS3 still requires its checksum, including when the received trailer is zero.
+ {auto f=reply(0);f.data[f.len-4]=f.data[f.len-3]=0;
+  assert(pollTelemetryCheck(f.data,f.len,2)==POLL_BAD_CHECKSUM);}
  // Mixed DS3/YC600/QS1 replies, different order, duplicate, and second PAN.
  reset();onSend=[](int i){if(i==0){for(int j:{2,2,3,1,0})queue.push_back(reply(j));}else queue.push_back(reply(i));};
  for(int i=0;i<5;++i)pollingForRound(i);
@@ -142,18 +179,18 @@ int main(){
  // Never count a mere reply identity: reject bad length, checksum, opcode,
  // terminator, frequency divisor, other PAN/cluster/endpoint, stale and unknown UID.
  reset();onSend=[](int){
-  auto f=reply(1);f.data[40]^=1;queue.push_back(f);
+  auto f=reply(0);f.data[40]^=1;queue.push_back(f);
   f=reply(1);--f.len;queue.push_back(f);
   f=reply(1);f.data[9]=0xde;checksum(f);queue.push_back(f);
   f=reply(1);f.data[f.len-1]=0;queue.push_back(f);
-  f=reply(1);f.data[12]=0;checksum(f);queue.push_back(f);
+  f=reply(1);f.data[12]=f.data[13]=f.data[14]=0;checksum(f);queue.push_back(f);
   f=reply(1);f.pan=0xCAFE;queue.push_back(f);
   f=reply(1);f.cluster=1;queue.push_back(f);
   f=reply(1);f.sourceEp=1;queue.push_back(f);
   f=reply(1);f.receivedAt=999;queue.push_back(f);
   f=reply(1);f.data[5]=0x99;queue.push_back(f);
  };
- pollingForRound(1);assert(sends==2&&!polled[1]&&published[1]==0&&!pollingRoundSucceeded());
+ pollingForRound(1);assert(sends==2&&!polled[0]&&!polled[1]&&published[1]==0&&!pollingRoundSucceeded());
  assert(diagCounts[PD_BAD_CHECKSUM]==2&&diagCounts[PD_BAD_LENGTH]==4&&diagCounts[PD_BAD_KIND]==2&&diagCounts[PD_BAD_VALUE]==2);
  assert(diagCounts[PD_STALE]==2&&diagCounts[PD_UNEXPECTED]==8&&diagCounts[PD_DUPLICATE]>=1);
  assert(diagSeen==31&&diagAccepted==31);
@@ -180,7 +217,7 @@ int main(){
  reset();now=0xfffffff0;pollingRoundBegin();now=5;
  onSend=[](int){auto f=reply(1);f.receivedAt=0xffffffe0;queue.push_back(f);queue.push_back(reply(1));};
  polling(1);assert(published[1]==1);
- std::cout<<"PASS telemetry collection: all responders, duplicates, validation, stale frames, late recovery, retries, PAN isolation, manual polls and TX failures\n";
+ std::cout<<"PASS telemetry collection: captured YC600/QS1 decoding, DS3 checksum rejection, all responders, duplicates, validation, stale frames, late recovery, retries, PAN isolation, manual polls and TX failures\n";
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:

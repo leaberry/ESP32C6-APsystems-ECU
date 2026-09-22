@@ -42,7 +42,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_16-poll-fix2"
+#define VERSION  "ESP32C6-ECU_v1_4_16-poll-fix3"
 
 #include <TimeLib.h>
 #include <time.h>

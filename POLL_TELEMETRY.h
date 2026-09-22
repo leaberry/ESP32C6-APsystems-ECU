@@ -6,7 +6,7 @@ enum PollTelemetryCheck : uint8_t {
   POLL_VALID, POLL_BAD_LENGTH, POLL_BAD_KIND, POLL_BAD_CHECKSUM, POLL_BAD_VALUE
 };
 
-// UID | FB FB | length (command + body) | command | body | sum16 | FE FE.
+// UID | FB FB | length (command + body) | command | body | trailer | FE FE.
 // Check every field before the legacy decoder can update energy baselines.
 inline PollTelemetryCheck pollTelemetryCheck(const uint8_t *data, size_t size, int model) {
   if (!data || size < 14 || data[6] != 0xFB || data[7] != 0xFB ||
@@ -17,6 +17,10 @@ inline PollTelemetryCheck pollTelemetryCheck(const uint8_t *data, size_t size, i
   // Highest energy field read for four inputs ends at byte 66 (DS3) or 55.
   if (size < (model == 2 ? 70U : 59U)) return POLL_BAD_LENGTH;
   if (model != 2 && !(data[12] || data[13] || data[14])) return POLL_BAD_VALUE;
+  // Only DS3 (0xBB) telemetry has a verified additive trailer checksum.
+  // Historical YC600/QS1 (0xB1) captures have 0000 here despite a nonzero
+  // sum. Keep their envelope/opcode/value checks without imposing DS3's rule.
+  if (model != 2) return POLL_VALID;
   uint16_t sum = 0;
   for (size_t i = 8; i < size - 4; ++i) sum += data[i];
   return sum == (uint16_t)((data[size - 4] << 8) | data[size - 3]) ? POLL_VALID : POLL_BAD_CHECKSUM;
