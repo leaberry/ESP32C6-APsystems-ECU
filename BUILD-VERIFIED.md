@@ -1,5 +1,32 @@
 # Build and hardware verification
 
+## Issue #25: DS3-H pairing format and targeted diagnostics (2026-09-24)
+
+The `pair-diag1` candidate recognizes the observed 13-byte FF0E direct pairing
+reply alongside the existing 8-byte format. It still requires a fresh
+serial-matched operating-PAN reply and successful persistence; discovery-only
+contact cannot overwrite an existing pairing. The unknown reversed-serial
+announcement is not treated as confirmation.
+
+Opt-in, bounded RAM diagnostics now keep per-phase frame/rejection counts and
+first/latest target-related samples, with time, routing headers, reply length,
+status bytes and match/reject reason. They are included in the authenticated
+pairing-log and diagnostic-report downloads. No additional flash writes or
+changes to the persistent pairing-audit layout are introduced. Download after
+pairing and before restarting or another attempt. See
+[issue #25 capture instructions](ISSUE-25-DIAGNOSTICS.md).
+
+Captured-envelope and orchestration tests pass, including legacy pairing,
+malformed and foreign frames, discovery-only failure, operating-PAN success,
+conflicting sources, persistence failure, disabled recording and bounded
+per-phase sampling. Hardware confirmation remains pending; this is not a claim
+of working DS3-H network migration or AES telemetry.
+
+All Python/C++ and JavaScript checks in CI pass. Both 8 MB OTA and 4 MB
+USB layouts compile with ESP32 core 3.3.8: 1,621,664 bytes of compiled
+program and 107,856 bytes of global RAM. Firmware identifies as
+`ESP32C6-ECU_v1_4_16-pair-diag1`. No hardware deployment has been performed.
+
 ## Issue #24: YC600/QS1 checksum regression (2026-09-22)
 
 The reporter's `poll-fix2` logs show four rounds accepting both DS3s and no

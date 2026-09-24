@@ -1,3 +1,4 @@
+#include "PAIRING_DIAGNOSTICS.h"
 /* Raw 802.15.4 trace and APsystems proprietary pairing-reply parser. */
 
 bool rawRadioSetPan(uint16_t pan);
@@ -25,6 +26,7 @@ uint16_t radioTraceDropped = 0;
 bool radioTraceActive = false;
 portMUX_TYPE pairReceiveMux = portMUX_INITIALIZER_UNLOCKED;
 PairReplySession pairReceiveSession;
+PairDiagnosticCapture pairDiagnosticCapture;
 int8_t pairReceiveRssi = 0;
 uint8_t pairReceiveLqi = 0;
 }  // namespace
@@ -35,6 +37,7 @@ void radioTraceObserve(const uint8_t *frame, uint8_t captured,
   if (!frame || channel != 16) return;
   PairReply latest;
   portENTER_CRITICAL(&pairReceiveMux);
+  pairDiagnosticCapture.observe(frame, captured, pairReceiveSession.target, millis(), rssi, lqi);
   bool changed = pairReceiveSession.observe(frame, captured);
   if (changed) { latest = pairReceiveSession.latest; pairReceiveRssi = rssi; pairReceiveLqi = lqi; }
   if (radioTraceActive) {
@@ -114,6 +117,7 @@ bool radioTraceBegin() {
   // filtering during the handshake; direct replies use the selected PAN.
   bool filtered = rawRadioSetPromiscuous(false);
   portENTER_CRITICAL(&pairReceiveMux);
+  pairDiagnosticCapture.begin(flightRecorderEnabled, millis());
   radioTraceCount = 0;
   radioTraceDropped = 0;
   radioTraceActive = filtered;
@@ -126,6 +130,7 @@ bool radioTraceBegin() {
 void radioTraceEnd() {
   portENTER_CRITICAL(&pairReceiveMux);
   radioTraceActive = false;
+  pairDiagnosticCapture.active = false;
   portEXIT_CRITICAL(&pairReceiveMux);
   bool filtered = rawRadioSetPromiscuous(false);
   char line[192];
@@ -152,4 +157,50 @@ void radioTraceEnd() {
     line[used] = 0;
     diagnosticsAppend(String(line));
   }
+}
+
+// Phases 0-3 handshake, 4 settle, 5-7 operating-PAN verification,
+// 8-10 saved-PAN verification, 11 restore. No writes from the radio worker.
+void pairDiagnosticsStage(uint8_t phase, uint16_t pan) {
+  portENTER_CRITICAL(&pairReceiveMux);
+  pairDiagnosticCapture.stage(phase, pan);
+  portEXIT_CRITICAL(&pairReceiveMux);
+}
+
+String pairDiagnosticsReport() {
+  String out = F("\nPAIRING DETAIL (RAM; last attempt, lost on restart)\n"
+    "Opt-in at pairing start using the flight recorder switch. No raw payloads or keys.\n"
+    "Phases: 0-3 handshake, 4 settle, 5-7 operating verification, 8-10 saved-network verification.\n"
+    "identity: 1=serial seen, 2=reversed serial seen, 3=both; a relay echo is not a reply.\n"
+    "Samples retain first two and latest two relevant frames per phase. Zero status bytes on nonextended frames are not decoded status.\n");
+  bool enabled, active;
+  portENTER_CRITICAL(&pairReceiveMux);
+  enabled=pairDiagnosticCapture.enabled; active=pairDiagnosticCapture.active;
+  portEXIT_CRITICAL(&pairReceiveMux);
+  if (!enabled) return out + F("No detail captured: enable the flight recorder before pairing.\n");
+  if (active) return out + F("Pairing in progress; download again after it finishes.\n");
+  char line[260];
+  for (uint8_t i=0;i<12;++i) {
+    PairDiagnosticPhase p;
+    portENTER_CRITICAL(&pairReceiveMux);
+    p=pairDiagnosticCapture.phases[i];
+    portEXIT_CRITICAL(&pairReceiveMux);
+    if (!p.entered) continue;
+    snprintf(line,sizeof(line),"phase=%u requested_pan=%04X frames=%lu relevant=%lu matched=%lu omitted=%lu\n",
+      i,p.requestedPan,(unsigned long)p.frames,(unsigned long)p.relevant,
+      (unsigned long)p.matched,(unsigned long)(p.relevant>4?p.relevant-4:0)); out+=line;
+    for(uint8_t reason=1;reason<9;++reason) {
+      if (!p.rejected[reason]) continue;
+      snprintf(line,sizeof(line),"  rejected %s=%lu\n",pairReplyCheckName((PairReplyCheck)reason),
+        (unsigned long)p.rejected[reason]); out+=line;
+    }
+    for(uint8_t j=0;j<4 && j<p.relevant;++j) {
+      const PairDiagnosticSample &s=p.samples[j];
+      snprintf(line,sizeof(line),"  ms=%lu pan=%04X src=%04X mac_src=%04X nwk=%04X cluster=%04X bytes=%u payload=%u prefix=%04X status=%02X%02X%02X%02X%02X identity=%u check=%s rssi=%d lqi=%u\n",
+        (unsigned long)s.elapsed,s.pan,s.source,s.macSource,s.nwk,s.cluster,s.bytes,s.payloadBytes,s.prefix,
+        s.status[0],s.status[1],s.status[2],s.status[3],s.status[4],s.identity,pairReplyCheckName((PairReplyCheck)s.reason),s.rssi,s.lqi);
+      out+=line;
+    }
+  }
+  return out;
 }

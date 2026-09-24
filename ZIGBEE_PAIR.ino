@@ -68,6 +68,7 @@ bool pairing(int which) {
             snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF14010103000F0600%s", ecu_id_reverse);
        }
     // Reassert PAN for every step; never let another receive operation choose it.
+    pairDiagnosticsStage(y, 0xFFFF);
     sequenceOk = apsUsePairingPan(true);
     if (!sequenceOk) { pairAuditStep(PA_COMMAND, false, y, 0xFFFF); break; }
     consoleOut("pair command " + String(y) + " = " + String(pairCmd));
@@ -80,6 +81,7 @@ bool pairing(int which) {
 
   // A discovery/status reply on FFFF proves contact, not successful migration.
   // Query again on the operational PAN after the four-command handshake settles.
+  pairDiagnosticsStage(4, zbOperationalPan);
   bool restored = apsUsePairingPan(false);
   if (sequenceOk && restored) {
     consoleOut("pairing: settling before operating-PAN verification");
@@ -89,6 +91,7 @@ bool pairing(int which) {
       snprintf(pairCmd, sizeof(pairCmd),
                "24020FFFFFFFFFFFFFFFFF14FFFF140C0201000F0600%s",
                Inv_Prop[which].invSerial);
+      pairDiagnosticsStage(5 + attempt, zbOperationalPan);
       sequenceOk = apsUsePairingPan(false) && sendZB(pairCmd);
       pairAuditStep(PA_VERIFY_QUERY, sequenceOk, attempt, zbOperationalPan);
       if (sequenceOk) delay(4700);
@@ -106,6 +109,7 @@ bool pairing(int which) {
     pairReceiveBegin(Inv_Prop[which].invSerial, previousPan);
     pairReceiveVerify();
     for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
+      pairDiagnosticsStage(8 + attempt, previousPan);
       sequenceOk = apsUseSpecificPan(previousPan, "saved pairing verification") && sendZB(pairCmd);
       pairAuditStep(PA_SAVED_NETWORK, sequenceOk, attempt, previousPan);
       if (sequenceOk) delay(4700);

@@ -122,6 +122,7 @@ String diagnosticsReportText() {
   report += flightRecorderReport(30);
   report += F("\nPERSISTENT PAIRING LOG (newest 3 attempts)\n");
   report += pairingAuditReport(3);
+  report += pairDiagnosticsReport();
   return report;
 }
 

@@ -114,7 +114,7 @@ server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) 
 server.on("/diagnostics/pairing-log", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
-  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain; charset=utf-8", pairingAuditReport(24));
+  AsyncWebServerResponse *response = request->beginResponse(200, "text/plain; charset=utf-8", pairingAuditReport(24) + pairDiagnosticsReport());
   response->addHeader("Content-Disposition", "attachment; filename=aps-ecu-pairing-log.txt");
   response->addHeader("Cache-Control", "no-store");
   request->send(response);

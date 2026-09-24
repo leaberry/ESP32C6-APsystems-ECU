@@ -69,7 +69,7 @@ struct Inverter { char invSerial[13]="704000007719"; char invID[5]="0869"; };
 Inverter Inv_Prop[1];
 int inverterCount=1, apsExpectedWhich=-1, saves=0, normalOps=0, queryCount=0;
 bool saveOk=true, replyOnOperating=true, dropAll=false, injectConflict=false;
-bool injectAnnouncement=false;
+bool injectAnnouncement=false, extendedReply=false;
 int failTx=-1, txCount=0;
 uint16_t lastCluster=0;
 uint16_t savedPan=0, savedSource=0;
@@ -83,6 +83,9 @@ String ECU_REVERSE() { return "80971B01A3D8"; }
 void empty_serial2() {}
 void sendNO() { ++normalOps; }
 void checkCoordinator() {}
+uint32_t nowMs=0;
+uint32_t millis(){return nowMs;}
+bool flightRecorderEnabled=true;
 void delay(unsigned);
 bool sendZB(char[]);
 std::vector<uint8_t> unhex(const std::string &s) {
@@ -121,6 +124,7 @@ void observe(std::vector<uint8_t> b) {
   radioTraceObserve(b.data(),b.size(),16,-47,10);
 }
 void delay(unsigned duration) {
+  nowMs+=duration;
   if(duration!=4700 || dropAll) return;
   // More relay traffic than fits in the diagnostic buffer BEFORE the reply.
   for(int n=0;n<80;++n) observe(unhex(captured[0]));
@@ -136,6 +140,10 @@ void delay(unsigned duration) {
       b[26]=0x34;b[27]=0x12;
     }
   }
+  if(extendedReply && !injectAnnouncement) {
+    b[26]=0xff;b[27]=0x0e;
+    b.insert(b.end()-2,{0,0xb8,0x20,0,0});b[0]+=5;
+  }
   observe(b);
   if(injectConflict && currentPan==0xA3D8) {
     b[8]=b[14]=0x33; b[9]=b[15]=0x22; observe(b);
@@ -145,7 +153,7 @@ void reset() {
   pairReceiveStop();
   saves=normalOps=queryCount=txCount=0;failTx=-1;
   saveOk=replyOnOperating=radioOk=true;
-  dropAll=injectConflict=injectAnnouncement=savedPeerKnown=replyOnSavedPan=false;
+  dropAll=injectConflict=injectAnnouncement=savedPeerKnown=replyOnSavedPan=extendedReply=false;
   savedPan=savedSource=0;
   strlcpy(Inv_Prop[0].invID,"0869",5);
 }
@@ -191,6 +199,20 @@ int main() {
   check(std::any_of(logs.begin(),logs.end(),[](const std::string &line) {
           return line.find("24020FFFFFFFFFFFFFFFFF14FFFF140D02")!=std::string::npos;
         }), "raw transmitted pairing commands remain available");
+  reset();extendedReply=true;
+  check(pairing(0) && saves==1 && savedSource==0x5AF2,
+        "extended FF0E status only saves after fresh operating-PAN verification");
+  auto detail=pairDiagnosticsReport();
+  check(detail.find("payload=13")!=std::string::npos && detail.find("status=00B8200000")!=std::string::npos &&
+        detail.find("phase=5 requested_pan=A3D8")!=std::string::npos && detail.find("check=matched")!=std::string::npos,
+        "download includes phase, matched extended format and status metadata after unrelated trace overflow");
+  reset();extendedReply=true;replyOnOperating=false;
+  check(!pairing(0) && !saves && !strcmp(Inv_Prop[0].invID,"0869"),
+        "extended discovery contact cannot confirm pairing or overwrite saved ID");
+  reset();flightRecorderEnabled=false;
+  check(pairing(0) && pairDiagnosticsReport().find("No detail captured")!=std::string::npos,
+        "disabled recorder preserves pairing behavior without detail capture");
+  flightRecorderEnabled=true;
   reset();injectAnnouncement=true;
   check(pairing(0) && !strcmp(Inv_Prop[0].invID,"3412"),
         "legacy announcement compatibility ID remains supported");

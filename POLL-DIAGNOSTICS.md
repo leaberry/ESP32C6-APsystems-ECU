@@ -82,3 +82,6 @@ v1 records are not converted. Download old logs before upgrading from that
 experimental build. **Clear recorded logs** also removes its old file.
 Instrumentation and flash writes can affect timing. Logs cannot establish what
 happened to radio frames that the ECU never received.
+
+For encrypted DS3-H pairing investigations, see
+[the targeted pairing capture guide](ISSUE-25-DIAGNOSTICS.md).
