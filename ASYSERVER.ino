@@ -120,6 +120,28 @@ server.on("/diagnostics/pairing-log", HTTP_GET, [](AsyncWebServerRequest *reques
   request->send(response);
 });
 
+server.on("/diagnostics/clear-recorded-logs", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  if (!request->hasHeader("X-ECU-Diagnostics") || request->getHeader("X-ECU-Diagnostics")->value() != "1") {
+    request->send(400, "text/plain", "Use the Clear recorded logs button on Diagnostic snapshot."); return;
+  }
+  const bool ok = flightRecorderClear();
+  request->send(ok ? 200 : 500, "text/plain", ok ?
+    "Recorded health and poll logs cleared. Flash space released." :
+    "Some recorded logs could not be cleared. Please try again.");
+});
+
+server.on("/diagnostics/poll-log", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  AsyncWebServerResponse *response = request->beginResponse(
+      200, "text/plain; charset=utf-8", pollDiagnosticsReport(256));
+  response->addHeader("Content-Disposition", "attachment; filename=aps-ecu-poll-log.txt");
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
+});
+
 server.on("/diagnostics/flight-recorder", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }

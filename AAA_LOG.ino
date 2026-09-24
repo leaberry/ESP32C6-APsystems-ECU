@@ -64,26 +64,17 @@ tr {width:94vw;}
 // ************************************************************************************
 //                      U P D A T E    L O G
 // ************************************************************************************
- void Update_Log(int what, const char* message) {
-  char nu[14];
-  // when the log is full we start overwriting with the first row 
-        const time_t current = ecuNow();
-        sprintf(nu,"%d-%d:%d:%d ", ecuDay(current), ecuHour(current),
-                ecuMinute(current), ecuSecond(current));
-        
-        strcpy( Log_Events[logNr].date, nu );
-                              
-        Log_Events[logNr].kind = what;
-        
-        strcpy( Log_Events[logNr].message, message );
-
-        logNr++;
-
-        if (logNr >= Log_MaxEvents)
-        {
-            logNr = 0;//start again
-            Log_MaxReached = true;
-        }
+void Update_Log(int what, const char* message) {
+  const time_t current = ecuNow();
+  logEvent &event = Log_Events[logNr];
+  snprintf(event.date, sizeof(event.date), "%d-%d:%d:%d ", ecuDay(current),
+           ecuHour(current), ecuMinute(current), ecuSecond(current));
+  event.kind = what;
+  snprintf(event.message, sizeof(event.message), "%s", message ? message : "");
+  if (++logNr >= Log_MaxEvents) {
+    logNr = 0;
+    Log_MaxReached = true;
+  }
 }
 
 
@@ -105,46 +96,24 @@ tr {width:94vw;}
 
 
 
-String putList(const String& var)
-{
-
-  if(var == "rows") 
-  {
-    Serial.println("found rows, logNr = " + String(logNr));
- 
-   char content[1536] = {0};
-   char temp1[80]={0}; // 14 + 
-   char temp2[8]={0};
-   //char temp2[13];
-   byte Log_Count = 0;
-   Log_MaxReached ? Log_Count = Log_MaxEvents : Log_Count = logNr;  // determine if the max number of event is reached
-   int j = logNr;
-   // the rows 0-logNr are the recent updates, are printed from logNr to 0
-   // so first we print the recent from logNr -> null (j=logNr) 
-   // and next the old ones from maxnr -> logNr 
-   for ( int i = 1; i <= Log_Count; i++ ) {
-      j--; //  this is the index of the newest record in the array
-      if (j ==-1) j = Log_MaxEvents - 1; // if we are below the first index of the array ,we start at the last
-   
-   switch ( Log_Events[j].kind ) {
-      case 1:
-         strncpy( temp2, "system\0",  7 ) ;
-         break;
-      case 2:
-         strncpy( temp2, "zigbee\0",  7 ) ;
-         break;
-      case 3:
-         strncpy( temp2, "mqtt\0",    5 ) ;
-         break;
-      case 4:
-         strncpy( temp2, "pairing\0", 8 ) ;
-        }  
-      // One table line
-      sprintf(temp1,"<tr><td>%s</td><td>%s</td><td>%s</td>", Log_Events[j].date, temp2, Log_Events[j].message );
-      strcat(content, temp1);
-      }
-
-   return content;
+String putList(const String& var) {
+  if (var != "rows") return String();
+  String content;
+  content.reserve(4096);
+  const uint8_t count = Log_MaxReached ? Log_MaxEvents : logNr;
+  int j = logNr;
+  for (uint8_t i = 0; i < count; ++i) {
+    if (--j < 0) j = Log_MaxEvents - 1;
+    const char *kind = "unknown";
+    switch (Log_Events[j].kind) {
+      case 1: kind = "system"; break;
+      case 2: kind = "zigbee"; break;
+      case 3: kind = "mqtt"; break;
+      case 4: kind = "pairing"; break;
+    }
+    content += "<tr><td>" + webEscape(Log_Events[j].date) + "</td><td>";
+    content += kind;
+    content += "</td><td>" + webEscape(Log_Events[j].message) + "</td></tr>";
   }
-return String();
+  return content;
 }

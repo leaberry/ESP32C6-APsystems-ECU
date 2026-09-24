@@ -1,7 +1,14 @@
 // ******************************************************************
 //                    decode polling answer
 // ******************************************************************
-int decodePollAnswer(int which)
+int decodePollAnswer(int which) {
+    char message[CC2530_MAX_SERIAL_BUFFER_SIZE] = {};
+    readZB(message);
+    if (readCounter == 0) return 50;
+    return decodePollMessage(which, message);
+}
+
+int decodePollMessage(int which, const char *message)
 {
     char messageToDecode[CC2530_MAX_SERIAL_BUFFER_SIZE] = {0};
   
@@ -17,12 +24,7 @@ int decodePollAnswer(int which)
     bool establishBaseline = false;
     float total_pwr = 0;
   
-    //retrieve the poll answer
-    strcpy(messageToDecode, readZB(s_d));
-    if (readCounter == 0) {
-        consoleOut(F("no answer on poll request"));  
-        return 50; //no answer
-      }
+    snprintf(messageToDecode, sizeof(messageToDecode), "%s", message);
 
     consoleOut("decodePollAnswer inverter " + String(which) );
  
@@ -65,6 +67,7 @@ int decodePollAnswer(int which)
     //shorten the message by removing everything before 4481
 
     tail = split(messageToDecode, "44810000"); // remove the 0000 as well
+    if (!tail || strlen(tail) < 30) return 15;
     //tail = after removing the 1st part
     // in tail at offset 14, 2 bytes with signalQuality reside   
 
@@ -108,7 +111,7 @@ int decodePollAnswer(int which)
 
         memset(&s_d[0], 0, sizeof(s_d)); //zero out 
         delayMicroseconds(250);   
-        strncpy(s_d, tail + 30, strlen(tail));
+        snprintf(s_d, sizeof(s_d), "%s", tail + 30);
         delayMicroseconds(250); //give memset a little bit of time
 
       if( Inv_Prop[which].invType == 2 ) 

@@ -22,6 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test Wi-Fi hostname and save failures
         run: python3 tools/test_wifi_hostname.py
+      - name: Test polling collection, reassembly and event log bounds
+        run: |
+          python3 tools/test_poll_collection.py
+          python3 tools/test_poll_reassembly.py
+          python3 tools/test_event_log.py
       - name: Test NTP and antenna settings
         run: |
           python3 tools/test_device_settings.py
@@ -40,6 +45,13 @@ jobs:
           arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@3.3.8
+      - name: Test poll diagnostics
+        run: |
+          python3 tools/test_poll_diagnostics.py
+          python3 tools/test_flight_recorder_clear.py
+          python3 tools/test_recorded_logs_route.py
+          node tools/test_recorded_logs_ui.js
+          python3 tools/test_poll_radio_diagnostics.py
       - name: Test timezone transitions
         run: python3 tools/test_timezones.py
       - name: Install libraries

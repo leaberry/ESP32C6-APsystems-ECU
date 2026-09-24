@@ -1,5 +1,132 @@
 # Build and hardware verification
 
+## Issue #24: YC600/QS1 checksum regression (2026-09-22)
+
+The reporter's `poll-fix2` logs show four rounds accepting both DS3s and no
+YC600s, with 73 checksum rejections. All three YC600s successfully paired.
+The crash dump is byte-identical to the previous submission, not new crash
+evidence. The new universal additive-checksum requirement was incorrect:
+existing YC600 and QS1 samples in `test.ino` have zero trailer bytes despite
+nonzero sums. The previous synthetic tests reproduced that same assumption.
+
+`ESP32C6-ECU_v1_4_16-poll-fix3` applies the verified additive checksum only
+to DS3 replies. YC600/QS1 retain identity, PAN, endpoint, opcode, envelope,
+freshness and required-value validation. No undocumented checksum rule is
+imposed on their trailer. Recorder diagnostics and the clear-logs action remain.
+
+Host tests replay the unchanged historical YC600/QS1 payloads through the
+production collector and decoder, check decoded frequency, and use their
+payloads for mixed-model round tests. These tests failed before the fix and
+pass afterward. Malformed legacy messages and corrupt/zero DS3 checksums
+remain rejected. Polling reassembly, radio diagnostics, recorder storage and
+clearing, event-log bounds and power-control radio regression tests also pass.
+
+Both 8 MB OTA and 4 MB USB layouts passed local builds with ESP32 core
+3.3.8 (1,618,438 bytes of compiled program and 105,872 bytes of global RAM).
+
+The reporter subsequently confirmed [several hours without problems](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/24#issuecomment-5799050245)
+and [successful YC600 testing the following day](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/24#issuecomment-5816870007).
+This supplies field confirmation for `poll-fix3` on the affected installation.
+The production DS3 observations below apply to the earlier integrated build;
+QS1 coverage remains captured-message host testing, not native-radio hardware.
+
+Final review against main retained the opt-in, bounded recorder and its
+administrator-only clear action. All Python/C++ and JavaScript checks listed
+in CI were rerun successfully. Both firmware layouts passed GitHub builds for
+commit `127a9d2`; subsequent review changes only update verification documents.
+
+## Integrated recorder and clear-logs action (2026-09-21)
+
+The issue #24 diagnostic branch is merged with the polling and journal fixes.
+The v2 poll log distinguishes seen identities from accepted telemetry, records
+PAN-group and round masks, and counts stale, duplicate and invalid replies by
+reason. It uses the existing persisted flight-recorder switch, off by default.
+Disabled recording creates no new detailed poll records, counter updates or
+periodic recorder writes; old logs remain downloadable after restart.
+
+**Diagnostic snapshot > Clear recorded logs** removes the health log, both
+poll-log versions and pending poll records. It preserves the enabled setting,
+configuration, pairing history, production history and crash partition. Files
+stay absent while disabled and are recreated lazily when enabled recording
+continues. Health writes, setting changes, downloads and clearing use a
+recursive storage mutex; the poll companion retains its own storage lock.
+The action requires administrator authentication, allowed remote access and a
+POST with the diagnostics action header. Failures are reported to the user.
+
+Host tests cover the integrated collector, radio counters, storage bounds,
+disabled operation, reboot downloads, deletion failures, active-attempt
+cancellation, clearing both formats, preserved unrelated files, automatic
+recording resumption, storage retry pacing and the button's error handling.
+Both ESP32 core 3.3.8 layouts passed local builds. With user authorization,
+combined commit `3afd51e` was deployed through matching-layout 8 MB OTA. The
+1,352 Wh checkpoint (444 / 454 / 454 Wh) restored exactly. All three production
+DS3s passed eight complete rounds in a 305-second observation, covering both
+the shared-PAN pair and the separate-PAN inverter. The interval remained 45
+seconds; maximum observed response gaps were 46 / 48 / 46 seconds.
+There were no missed cycles or unexpected resets. Final output was
+474.9 / 486.7 / 482.5 W, with daily totals 484 / 495 / 495 Wh. Free heap ended
+at 152,380 bytes.
+
+Every exported setting, ECU identity, inverter order and learned peer was
+preserved. Finalized history (1,968 bytes) and the existing crash dump matched
+the backups byte-for-byte. Web UI, settings validation, NTP/hostname and
+SunSpec Modbus checks passed. The v2 log endpoint and clear button are available;
+recording stayed disabled and the poll log remained empty. Production logs
+were not cleared. Enabled recording and deletion are host-tested, not exercised
+on production hardware. No pairing or power-limit command was sent. Previous
+firmware and backups are retained for rollback. YC600 verification still needs
+the reporter's hardware.
+
+## Issue #24: polling replies and journal corruption (2026-09-21)
+
+Built from main at `def929e`. The reporter's diagnostics showed YC600 replies
+arriving during other inverters' poll transactions. Fleet polling now collects
+validated telemetry from every configured responder on the current PAN, accepts
+one sample per inverter per round, and skips already successful targets. A late
+recovery counts toward the final round result; missing inverters remain failed.
+Single-inverter manual polls and control-response matching stay isolated.
+
+Telemetry acceptance checks the serial, PAN, cluster/endpoints, model reply
+opcode, envelope length, DS3 checksum and required fields (see the correction
+above for YC600/QS1). Receive timestamps
+survive raw queues and fragment reassembly, preventing pre-round queued data
+or partial responses from counting as fresh telemetry. Reassembly has room for
+all nine supported inverters. Existing energy accounting and MQTT payloads are
+preserved.
+
+The crash dump's overwritten pointer matched the bytes from a long throttle
+message written into the final journal slot. Journal messages now have bounded
+copies and room for 63 characters. Rendering uses an escaped, dynamically sized
+string instead of fixed row/page buffers.
+
+Host regression tests exercise the production collector, energy decoder,
+round handling, fragment parser, journal writer and renderer. Coverage includes
+out-of-order and duplicate replies, malformed/control frames, stale fragments,
+different PANs, late recovery, transmit failures, all nine simultaneous fragment
+sessions, and the exact last-slot message that corrupted memory. Existing
+power-control addressing and reply tests also pass. Both pinned ESP32 core
+3.3.8 firmware layouts are built locally.
+
+With user authorization, the 8 MB application from commit `e8b8c4e` was
+subsequently installed on the production ECU using same-layout OTA. The saved
+707 Wh daily checkpoint restored exactly. All three DS3s resumed polling at the
+unchanged 45-second interval, including two sharing a PAN and one on another
+PAN. A 301-second observation recorded seven successful complete fleet rounds,
+with no missed inverter cycles or unexpected reset. Maximum observed response
+gaps were 49 / 51 / 45 seconds. Final power was 354.1 / 363.7 / 361.3 W, and
+current-day totals increased to 273 / 279 / 279 Wh. Free heap finished at
+160,324 bytes.
+
+ECU identity, inverter order, learned peers and every exported setting were
+preserved. The 1,968-byte finalized history and previous crash dump were
+byte-for-byte unchanged. Settings validation, Web UI and SunSpec Modbus reads
+passed. No pairing or power-limit command was sent. The previous firmware and
+pre-update backups were retained for rollback; hourly RAM statistics restart
+with reboot as documented.
+
+This verifies the DS3 polling regression on production hardware. YC600 radio
+reliability still needs confirmation on the reporter's installation.
+
 ## Power-limit confirmation follow-up (2026-09-19)
 
 The decoder now skips intermediate control acknowledgments and waits for the

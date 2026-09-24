@@ -198,7 +198,17 @@ void handleAbout(AsyncWebServerRequest *request) {
 void handleDiagnosticsPage(AsyncWebServerRequest *request) {
   String page = ecuPageStart(F("Diagnostic snapshot"),
       F("A bounded support report with firmware, network, radio, inverter and recent trace information. Passwords are never included."));
-  page += F("<div class=\"alert info\"><strong>Persistent flight recorder: "); page += flightRecorderIsEnabled() ? F("enabled") : F("disabled"); page += F("</strong><br>It is an opt-in, fixed-size 12-hour circular flash log for diagnosing lockups without a panic. Configure it under Polling and access. Existing records remain downloadable when recording is disabled.</div><div class=\"actions\"><a class=\"button\" href=\"/diagnostics/download\">Download report</a><a class=\"button secondary\" href=\"/diagnostics/flight-recorder\">Download flight recorder</a><a class=\"button secondary\" href=\"/diagnostics/pairing-log\">Download pairing log</a><a class=\"button secondary\" href=\"/diagnostics/coredump\">Download crash dump</a><button class=\"secondary\" onclick=\"location.reload()\">Refresh</button><a class=\"button secondary\" href=\"/console\">Open live console</a></div><section class=\"card section\"><pre style=\"white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow:auto\">");
+  page += F("<div class=\"alert info\"><strong>Persistent flight recorder: "); page += flightRecorderIsEnabled() ? F("enabled") : F("disabled"); page += F("</strong><br>It is an opt-in, fixed-size 12-hour circular flash log for diagnosing lockups without a panic. Configure it under Polling and access. The companion poll log saves completed attempts in batches with this recorder. Existing records remain downloadable when recording is disabled.</div><div class=\"actions\"><a class=\"button\" href=\"/diagnostics/download\">Download report</a><a class=\"button secondary\" href=\"/diagnostics/flight-recorder\">Download flight recorder</a><a class=\"button secondary\" href=\"/diagnostics/poll-log\">Download poll log</a><a class=\"button secondary\" href=\"/diagnostics/pairing-log\">Download pairing log</a><a class=\"button secondary\" href=\"/diagnostics/coredump\">Download crash dump</a><button class=\"secondary\" onclick=\"location.reload()\">Refresh</button><a class=\"button secondary\" href=\"/console\">Open live console</a></div>");
+  page += F(R"rawliteral(<section class="card section"><h2>Clear recorded logs</h2><p>Delete saved health and poll logs to free flash space. Download anything you need first. Settings, energy history, pairing records and crash dumps are kept. If recording is enabled, new logs will be created as recording continues.</p><button id="clearRecordedLogs" type="button">Clear recorded logs</button><p id="clearRecordedStatus" role="status"></p></section><script>
+document.getElementById('clearRecordedLogs').addEventListener('click',async function(){
+  const status=document.getElementById('clearRecordedStatus');this.disabled=true;status.textContent='Clearing recorded logs...';
+  try{const response=await fetch('/diagnostics/clear-recorded-logs',{method:'POST',headers:{'X-ECU-Diagnostics':'1'}});
+    const message=await response.text();if(!response.ok)throw new Error(response.status===401?'Please sign in again.':message);
+    status.textContent=message;
+  }catch(error){status.textContent='Could not clear recorded logs: '+error.message;}
+  finally{this.disabled=false;}
+});
+</script><section class="card section"><pre style="white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow:auto">)rawliteral");
   page += webEscape(diagnosticsReportText());
   page += F("</pre></section>");
   page += ecuPageEnd();

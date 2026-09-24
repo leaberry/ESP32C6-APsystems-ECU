@@ -10,6 +10,15 @@
  * is disabled.
  */
 namespace {
+SemaphoreHandle_t flightStorageMutex = nullptr;
+struct FlightStorageLock {
+  bool locked;
+  FlightStorageLock() : locked(flightStorageMutex &&
+    xSemaphoreTakeRecursive(flightStorageMutex, portMAX_DELAY) == pdTRUE) {}
+  ~FlightStorageLock() { if (locked) xSemaphoreGiveRecursive(flightStorageMutex); }
+  explicit operator bool() const { return locked; }
+};
+
 constexpr uint32_t FLIGHT_MAGIC = 0x46524331UL;  // "FRC1"
 constexpr uint16_t FLIGHT_RECORD_VERSION = 1;
 constexpr uint16_t FLIGHT_RECORD_COUNT = 720;   // twelve hours at one/minute
@@ -92,7 +101,11 @@ const char *flightEventName(uint8_t event) {
   }
 }
 
+bool flightEnsureFile();
+
 void flightWrite(uint8_t event) {
+  FlightStorageLock lock;
+  if (!lock) return;
   if (!flightRecorderEnabled) return;
   FlightRecord record = {};
   record.magic = FLIGHT_MAGIC;
@@ -117,7 +130,11 @@ void flightWrite(uint8_t event) {
   strlcpy(record.activity, flightActivity, sizeof(record.activity));
   record.checksum = flightChecksum(record);
 
-  if (!flightStorageReady) return;
+  if (!flightStorageReady) {
+    flightLastWriteMs = millis(); // Retry allocation at the next heartbeat, not every loop.
+    flightStorageReady = flightEnsureFile();
+    if (!flightStorageReady) return;
+  }
   File file = SPIFFS.open(FLIGHT_FILE, "r+");
   if (!file) return;
   const size_t offset = (record.sequence % FLIGHT_RECORD_COUNT) * sizeof(record);
@@ -134,6 +151,8 @@ void flightWrite(uint8_t event) {
 }
 
 bool flightEnsureFile() {
+  FlightStorageLock lock;
+  if (!lock) return false;
   const size_t expected = (size_t)FLIGHT_RECORD_COUNT * sizeof(FlightRecord);
   File existing = SPIFFS.open(FLIGHT_FILE, FILE_READ);
   if (existing) {
@@ -159,6 +178,8 @@ bool flightEnsureFile() {
 }
 
 void flightScanLatest() {
+  FlightStorageLock lock;
+  if (!lock) return;
   File file = SPIFFS.open(FLIGHT_FILE, FILE_READ);
   if (!file) return;
   FlightRecord record;
@@ -182,6 +203,9 @@ void flightRecorderManageStation(bool enabled) {
 }
 
 void flightRecorderBegin() {
+  flightStorageMutex = xSemaphoreCreateRecursiveMutex();
+  if (!flightStorageMutex) return;
+  flightScanLatest(); // Saved downloads must work after boot with recording disabled.
   if (!flightRecorderEnabled) {
     Serial.println(F("Flight recorder disabled (Wi-Fi recovery remains active)"));
     return;
@@ -199,8 +223,11 @@ void flightRecorderBegin() {
 }
 
 void flightRecorderSetEnabled(bool enabled) {
+  FlightStorageLock lock;
+  if (!lock) return;
   if (enabled == flightRecorderEnabled && (!enabled || flightStorageReady)) return;
   if (!enabled) {
+    pollDiagnosticsSetEnabled(false);
     // Capture the setting transition before closing the write gate.
     flightWrite(FLIGHT_DISABLED);
     flightRecorderEnabled = false;
@@ -216,6 +243,7 @@ void flightRecorderSetEnabled(bool enabled) {
     return;
   }
   flightScanLatest();
+  pollDiagnosticsSetEnabled(true);
   flightWrite(FLIGHT_ENABLED);
   Serial.printf("Flight recorder enabled: prior sequence=%lu\n",
                 (unsigned long)(flightSequence ? flightSequence - 1 : 0));
@@ -223,6 +251,7 @@ void flightRecorderSetEnabled(bool enabled) {
 
 void flightRecorderLoop() {
   const uint32_t now = millis();
+  static uint32_t lastPollFlushMs = 0;
   const bool connected = WiFi.status() == WL_CONNECTED;
 
   if (flightWifiEventHandled != flightWifiEventCount) {
@@ -257,14 +286,22 @@ void flightRecorderLoop() {
                                                      : FLIGHT_HEARTBEAT;
     flightWrite(event);
   }
+  // Keep companion writes on the main loop. Enabling/disabling the health
+  // recorder can call flightWrite() from an asynchronous HTTP handler.
+  if (flightRecorderEnabled && (uint32_t)(now - lastPollFlushMs) >= FLIGHT_INTERVAL_MS) {
+    lastPollFlushMs = now; // Back off for a full minute even when storage fails.
+    pollDiagnosticsFlush();
+  }
 }
 
 String flightRecorderReport(size_t limit) {
+  FlightStorageLock lock;
+  if (!lock) return F("Recorder storage unavailable\n");
   String output;
   output.reserve(limit * 150 + 256);
   output += F("sequence,uptime_ms,local_time,event,free_heap,min_free_heap,largest_block,loop_stack_words,radio_stack_words,modbus_stack_words,wifi_status,wifi_rssi_dbm,wifi_reason,die_temp_c,poll_active,poll_inverter,activity\n");
   File file = SPIFFS.open(FLIGHT_FILE, FILE_READ);
-  if (!file) return output + F("0,0,,no-records\n");
+  if (!file || file.isDirectory()) { if (file) file.close(); return output + F("0,0,,no-records\n"); }
   const uint32_t oldest = flightSequence > limit ? flightSequence - limit + 1 : 1;
   for (uint32_t sequence = oldest; sequence <= flightSequence; ++sequence) {
     FlightRecord record;
@@ -292,6 +329,23 @@ String flightRecorderReport(size_t limit) {
   }
   file.close();
   return output;
+}
+
+// Called by the authenticated diagnostics action. Serialize with health writes,
+// setting changes and downloads; the companion owns its own storage mutex.
+bool flightRecorderClear() {
+  FlightStorageLock lock;
+  if (!lock) return false;
+  const bool healthOk = !SPIFFS.exists(FLIGHT_FILE) || SPIFFS.remove(FLIGHT_FILE);
+  if (healthOk) {
+    flightSequence = 0;
+    flightStorageReady = false;
+    flightLastWriteMs = millis();
+  }
+  const bool pollOk = pollDiagnosticsClear();
+  // Do not allocate replacement files here. Disabled recording leaves space free;
+  // enabled recording creates a new health file on its next scheduled write.
+  return healthOk && pollOk;
 }
 
 uint32_t flightRecorderSequence() { return flightSequence; }

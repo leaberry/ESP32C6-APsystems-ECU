@@ -2,6 +2,7 @@
 #include "DEVICE_SETTINGS.h"
 #include "PAIRING_PROTOCOL.h"
 #include "PAIRING_AUDIT.h"
+#include "POLL_DIAGNOSTICS.h"
 #include <ArduinoJson.h>
 
 #include <ESPAsyncWebServer.h>
@@ -41,7 +42,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_16"
+#define VERSION  "ESP32C6-ECU_v1_4_16-poll-fix3"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -304,7 +305,7 @@ bool apFlag=false;
  typedef struct {
   char date[14] ;
   int  kind ; // zigbee, system, mqtt, pairing
-  char  message[13] ;
+  char  message[64] ;
 } logEvent;
 logEvent Log_Events[Log_MaxEvents];
 bool Log_MaxReached = false;

@@ -1,7 +1,7 @@
 /*
  * Cooperative APsystems poll scheduler.
  *
- * One inverter transaction is performed per pass. The Arduino loop gets
+ * One pending inverter transaction is performed per pass. The Arduino loop gets
  * control back between inverters, allowing operator actions (pairing, power
  * control and grid-profile work) to pre-empt the next telemetry request.
  * Modbus/TCP runs in its own task and always reads the last complete snapshot.
@@ -13,7 +13,6 @@ static bool pollRoundRequested = false;
 static uint8_t pollNextInverter = 0;
 static uint32_t pollLastRoundStartedMs = 0;
 static uint32_t pollNextSendMs = 0;
-static bool pollRoundAllSucceeded = false;
 static time_t pollLastSuccessfulEpoch = 0;
 
 uint32_t pollingMinimumSeconds() {
@@ -21,7 +20,7 @@ uint32_t pollingMinimumSeconds() {
   for (uint8_t i = 0; i < YC600_MAX_NUMBER_OF_INVERTERS; ++i) {
     if (strcmp(Inv_Prop[i].invID, "0000") != 0) ++configured;
   }
-  // readZB() may wait 2.5 seconds. Three seconds per inverter prevents a
+  // Each receive window is bounded to 3.2 seconds. This floor prevents a
   // failed fleet round from immediately overlapping the next one.
   uint32_t fleetMinimum = (uint32_t)configured * 3U;
   return fleetMinimum > 5UL ? fleetMinimum : 5UL;
@@ -99,7 +98,7 @@ static void pollSchedulerStartRound(bool manual) {
   pollNextInverter = 0;
   pollNextSendMs = millis();
   pollLastRoundStartedMs = millis();
-  pollRoundAllSucceeded = inverterCount > 0;
+  pollingRoundBegin();
   consoleOut("starting inverter poll round (interval " + String(pollIntervalSeconds) + " s)");
 }
 
@@ -133,7 +132,7 @@ void pollSchedulerLoop() {
   if (pollNextInverter >= YC600_MAX_NUMBER_OF_INVERTERS) {
     pollRoundActive = false;
     pollRoundManual = false;
-    if (pollRoundAllSucceeded && timeRetrieved) pollLastSuccessfulEpoch = ecuNow();
+    if (pollingRoundSucceeded() && timeRetrieved) pollLastSuccessfulEpoch = ecuNow();
     eventSend(2);
     consoleOut(F("inverter poll round complete"));
     flightRecorderActivity("idle");
@@ -144,12 +143,9 @@ void pollSchedulerLoop() {
   char activity[20];
   snprintf(activity, sizeof(activity), "poll-inverter-%u", which);
   flightRecorderActivity(activity);
-  empty_serial2();
-  polling(which); // bounded by the 2.5-second APS receive timeout
-  if (!polled[which]) pollRoundAllSucceeded = false;
+  pollingForRound(which); // Collect all valid responders; skip ones already received.
   if (polled[which]) {
     inverterInfoMaybeQuery(which);
   }
-  empty_serial2();
   pollNextSendMs = millis() + 250UL;
 }

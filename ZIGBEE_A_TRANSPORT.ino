@@ -7,6 +7,7 @@
  * places reassembled ASDUs in the legacy decoder queue.
  */
 
+#include "POLL_TELEMETRY.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
@@ -21,9 +22,11 @@ constexpr uint8_t APS_CHANNEL = 16;
 constexpr uint8_t RAW_RX_QUEUE_DEPTH = 24;
 constexpr uint8_t RAW_MAX_BLOCKS = 8;
 constexpr uint8_t RAW_BLOCK_BYTES = 112;
-constexpr uint8_t RAW_REASSEMBLY_SLOTS = 4;
+constexpr uint8_t RAW_REASSEMBLY_SLOTS = YC600_MAX_NUMBER_OF_INVERTERS;
 
 struct ApsRxFrame {
+  uint32_t receivedAt;
+  uint16_t pan;
   uint16_t cluster;
   uint16_t source;
   uint8_t sourceEp;
@@ -35,6 +38,7 @@ struct ApsRxFrame {
 };
 
 struct RawRxFrame {
+  uint32_t receivedAt;
   uint8_t captured;
   uint8_t channel;
   int8_t rssi;
@@ -59,6 +63,7 @@ struct RawReassembly {
   uint8_t lengths[RAW_MAX_BLOCKS];
   uint8_t blocks[RAW_MAX_BLOCKS][RAW_BLOCK_BYTES];
   uint32_t updatedAt;
+  uint32_t receivedAt;
 };
 
 QueueHandle_t apsRxQueue = nullptr;
@@ -140,6 +145,7 @@ static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
   if (!rawRadioStarted || !frame || bytes < 4 || bytes > 125 ||
       !rawTxMutex || !rawTxDone) return false;
   if (xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+    pollDiagnosticsCount(PD_TX_FAIL);
     diagnosticsAppend(String("802.15.4 TX busy: ") + reason);
     return false;
   }
@@ -163,6 +169,8 @@ static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
                 xSemaphoreTake(rawTxDone, pdMS_TO_TICKS(160)) == pdTRUE;
     ok = completed && rawTxSucceeded;
     if (ok) break;
+    if (start == ESP_OK && completed && rawTxFailure == ESP_IEEE802154_TX_ERR_CCA_BUSY) pollDiagnosticsCount(PD_CCA);
+    if (start == ESP_OK && completed && rawTxFailure == ESP_IEEE802154_TX_ERR_COEXIST) pollDiagnosticsCount(PD_COEX);
     bool transient = start == ESP_OK && completed &&
         (rawTxFailure == ESP_IEEE802154_TX_ERR_CCA_BUSY ||
          rawTxFailure == ESP_IEEE802154_TX_ERR_COEXIST);
@@ -170,6 +178,7 @@ static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
     vTaskDelay(pdMS_TO_TICKS(3 + attempts * 2));
   }
   if (!ok) {
+    pollDiagnosticsCount(PD_TX_FAIL);
     char line[128];
     snprintf(line, sizeof(line), "802.15.4 TX %s failed start=%s done=%u reason=%d",
              reason ? reason : "frame", esp_err_to_name(start), completed,
@@ -217,6 +226,7 @@ static bool sendApsAck(uint16_t pan, uint16_t macDestination,
 
   rawRadioSetPan(pan);
   bool ok = radioTransmit(frame, p, true, "APS fragment ACK");
+  if (!ok) pollDiagnosticsCount(PD_ACK_FAIL);
   char line[144];
   snprintf(line, sizeof(line),
            "APS fragment ACK pan=0x%04X dst=0x%04X ctr=%u block=%u result=%s",
@@ -235,7 +245,8 @@ static RawReassembly *sessionFor(uint16_t pan, uint16_t source,
     if (!s.active) oldest = &s;
     else if (s.updatedAt < oldest->updatedAt) oldest = &s;
   }
-  if (!create) return nullptr;
+  if (!create) { pollDiagnosticsCount(PD_FRAGMENT_MISS); return nullptr; }
+  if (oldest->active) pollDiagnosticsCount(PD_FRAGMENT_EVICT);
   memset(oldest, 0, sizeof(*oldest));
   oldest->active = true;
   oldest->pan = pan;
@@ -249,6 +260,8 @@ static RawReassembly *sessionFor(uint16_t pan, uint16_t source,
 static void deliverAsdu(RawReassembly *session) {
   if (!session || !apsRxQueue) return;
   ApsRxFrame complete = {};
+  complete.receivedAt = session->receivedAt;
+  complete.pan = session->pan;
   complete.cluster = session->cluster;
   complete.source = session->nwkSource;
   complete.sourceEp = session->sourceEp;
@@ -273,57 +286,59 @@ static void deliverAsdu(RawReassembly *session) {
              complete.len);
     diagnosticsAppend(String(line));
   }
-  xQueueSend(apsRxQueue, &complete, 0);
+  if (xQueueSend(apsRxQueue, &complete, 0) != pdTRUE) pollDiagnosticsCount(PD_APP_DROP);
+  else pollDiagnosticsCount(PD_DELIVERED);
   session->active = false;
 }
 
 static void processApsFrame(const RawRxFrame &rx) {
   if (pairReceiveActive()) return; // Raw matcher owns pairing; no telemetry ACK/PAN changes.
   const uint8_t *b = rx.bytes;
-  if (rx.captured < 29 || b[0] > 127 || (size_t)b[0] + 1 != rx.captured) return;
+  if (rx.captured < 29 || b[0] > 127 || (size_t)b[0] + 1 != rx.captured) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
   uint8_t phyLength = b[0];
   size_t end = phyLength > 2 ? min((size_t)rx.captured, (size_t)phyLength - 1U) : 0;
-  if (end < 28) return;
+  if (end < 28) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
 
   // Current APsystems frames use compressed short/short MAC addressing.
   uint16_t macFcf = readLe16(b + 1);
-  if ((macFcf & ~uint16_t(0x1030)) != 0x8841) return;
+  if ((macFcf & ~uint16_t(0x1030)) != 0x8841) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
   uint16_t pan = readLe16(b + 4);
   uint16_t macDestination = readLe16(b + 6);
   uint16_t macSource = readLe16(b + 8);
-  if (macDestination != 0x0000 && macDestination != 0xFFFF) return;
+  if (macDestination != 0x0000 && macDestination != 0xFFFF) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
 
   size_t p = 10;
   uint16_t nwkFcf = readLe16(b + p);
   if ((nwkFcf & 0x0003) != 0 || ((nwkFcf >> 2) & 0x0F) != 2 ||
-      (nwkFcf & 0x0200)) return; // No Zigbee NWK-security decoder.
+      (nwkFcf & 0x0200)) { pollDiagnosticsCount(PD_PARSE_REJECT); return; } // No Zigbee NWK-security decoder.
   uint16_t nwkDestination = readLe16(b + p + 2);
   uint16_t nwkSource = readLe16(b + p + 4);
+  pollDiagnosticsRaw(pan, nwkSource);
   p += 8;
   if (nwkFcf & 0x0800) p += 8;
   if (nwkFcf & 0x1000) p += 8;
   if (nwkFcf & 0x0100) p += 1;
   if (nwkFcf & 0x0400) {
-    if (p + 2 > end) return;
+    if (p + 2 > end) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
     p += 2 + (size_t)b[p] * 2;
   }
-  if (nwkDestination != 0x0000 || p + 8 > end) return;
+  if (nwkDestination != 0x0000 || p + 8 > end) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
 
   uint8_t apsFcf = b[p++];
-  if ((apsFcf & 0x23) != 0) return;  // APS data only.
+  if ((apsFcf & 0x23) != 0) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }  // APS data only.
   uint8_t delivery = (apsFcf >> 2) & 0x03;
-  if (delivery != 0) return;         // Inverter replies are unicast.
+  if (delivery != 0) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }         // Inverter replies are unicast.
   uint8_t destEp = b[p++];
   uint16_t cluster = readLe16(b + p); p += 2;
   uint16_t profile = readLe16(b + p); p += 2;
   uint8_t sourceEp = b[p++];
   uint8_t counter = b[p++];
-  if (profile != 0x0F05 || destEp != 0x14) return;
+  if (profile != 0x0F05 || destEp != 0x14) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
 
   uint8_t fragmentation = 0;
   uint8_t blockField = 0;
   if (apsFcf & 0x80) {
-    if (p + 2 > end) return;
+    if (p + 2 > end) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
     fragmentation = b[p++] & 0x03;
     if (fragmentation) blockField = b[p++];
   }
@@ -332,11 +347,13 @@ static void processApsFrame(const RawRxFrame &rx) {
   // Short pairing replies have already reached the dedicated raw matcher.
   // They are plaintext control traffic, never encrypted telemetry.
   if (!fragmentation && cluster == 0x0101 && sourceEp == 0x14 &&
-      payloadLength == 8) return;
+      payloadLength == 8) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
 
   if (!fragmentation) {
-    if (!payloadLength || payloadLength > 300 || !apsRxQueue) return;
+    if (!payloadLength || payloadLength > 300 || !apsRxQueue) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
     ApsRxFrame frame = {};
+    frame.receivedAt = rx.receivedAt;
+    frame.pan = pan;
     frame.cluster = cluster;
     frame.source = nwkSource;
     frame.sourceEp = sourceEp;
@@ -345,19 +362,22 @@ static void processApsFrame(const RawRxFrame &rx) {
     frame.lqi = rx.lqi;
     frame.len = payloadLength;
     memcpy(frame.data, b + p, payloadLength);
-    xQueueSend(apsRxQueue, &frame, 0);
+    if (apsFcf & 0x40) pollDiagnosticsCount(PD_UNFRAGMENTED_ACK_REQUEST);
+    if (xQueueSend(apsRxQueue, &frame, 0) != pdTRUE) pollDiagnosticsCount(PD_APP_DROP);
+    else pollDiagnosticsCount(PD_DELIVERED);
     return;
   }
 
   uint8_t blockNumber = fragmentation == 1 ? 0 : blockField;
   uint8_t totalBlocks = fragmentation == 1 ? blockField : 0;
-  if (blockNumber >= RAW_MAX_BLOCKS || payloadLength > RAW_BLOCK_BYTES) return;
+  if (blockNumber >= RAW_MAX_BLOCKS || payloadLength > RAW_BLOCK_BYTES) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
   RawReassembly *session = sessionFor(pan, nwkSource, counter, cluster,
                                       fragmentation == 1);
-  if (!session) return;
+  if (!session) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
   if (fragmentation == 1) {
     if (!totalBlocks || totalBlocks > RAW_MAX_BLOCKS) {
       session->active = false;
+      pollDiagnosticsCount(PD_PARSE_REJECT);
       return;
     }
     session->totalBlocks = totalBlocks;
@@ -366,11 +386,12 @@ static void processApsFrame(const RawRxFrame &rx) {
     session->destEp = destEp;
     session->sourceEp = sourceEp;
   }
-  if (!session->totalBlocks || blockNumber >= session->totalBlocks) return;
+  if (!session->totalBlocks || blockNumber >= session->totalBlocks) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
   if (!(session->receivedMask & (1U << blockNumber))) {
     // Preserve the weakest fragment's radio metadata. A reassembled APS
     // response is only as reliable as its weakest received fragment.
     if (!session->receivedMask) {
+      session->receivedAt = rx.receivedAt;
       session->rssi = rx.rssi;
       session->lqi = rx.lqi;
     } else {
@@ -393,6 +414,7 @@ static void rawWorker(void *) {
   RawRxFrame frame;
   for (;;) {
     if (xQueueReceive(rawRxQueue, &frame, portMAX_DELAY) == pdTRUE) {
+      pollDiagnosticsCount(PD_RX);
       radioTraceObserve(frame.bytes, frame.captured, frame.channel,
                         frame.rssi, frame.lqi);
       processApsFrame(frame);
@@ -524,12 +546,16 @@ extern "C" void IRAM_ATTR esp_ieee802154_receive_done(
     RawRxFrame copy = {};
     uint8_t count = min((uint16_t)sizeof(copy.bytes),
                         (uint16_t)(frame[0] + 1U));
+    copy.receivedAt = millis();
     copy.captured = count;
     copy.channel = info->channel;
     copy.rssi = info->rssi;
     copy.lqi = info->lqi;
     for (uint8_t i = 0; i < count; ++i) copy.bytes[i] = frame[i];
-    if (xQueueSendFromISR(rawRxQueue, &copy, &wake) != pdTRUE) ++rawRxDropped;
+    if (xQueueSendFromISR(rawRxQueue, &copy, &wake) != pdTRUE) {
+      ++rawRxDropped;
+      pollDiagnosticsRawDrop();
+    }
   }
   esp_ieee802154_receive_handle_done(frame);
   if (wake) portYIELD_FROM_ISR();
@@ -673,6 +699,21 @@ bool sendZB(char command[]) {
   return false;
 }
 
+// Explicit declaration keeps Arduino from generating this before ApsRxFrame.
+static void formatApsReply(const ApsRxFrame &f, char *out);
+static void formatApsReply(const ApsRxFrame &f, char *out) {
+    strcpy(out, "FE0164010064FE034480001400D3");
+    char header[80];
+    uint8_t length = (uint8_t)min((uint16_t)255, f.len);
+    snprintf(header, sizeof(header),
+             "FE%02X44810000%02X%02X%02X%02X%02X%02X00%02X000000000000%02X",
+             (unsigned)(17 + length), f.cluster & 0xff, f.cluster >> 8,
+             f.source & 0xff, f.source >> 8, f.sourceEp, f.destEp, f.lqi,
+             length);
+    strncat(out, header, CC2530_MAX_SERIAL_BUFFER_SIZE - strlen(out) - 1);
+    appendHex(out, CC2530_MAX_SERIAL_BUFFER_SIZE, f.data, length);
+}
+
 char *readZB(char out[]) {
   out[0] = 0;
   if (!apsRxQueue) return out;
@@ -690,10 +731,13 @@ char *readZB(char out[]) {
       memcpy(f.data, decoded, decodedLen);
       f.len = decodedLen;
     } else if (f.len >= 8 && !(f.data[6] == 0xFB && f.data[7] == 0xFB)) {
+      pollDiagnosticsCount(PD_DECRYPT_FAIL);
       consoleOut(F("encrypted APS frame could not be decrypted"));
       continue;
     }
+    pollDiagnosticsReply(which);
     if (apsExpectedWhich >= 0 && which != apsExpectedWhich) {
+      pollDiagnosticsCount(PD_IGNORED);
       char line[96];
       snprintf(line, sizeof(line), "ignoring response for inverter %d while waiting for %d",
                which, (int)apsExpectedWhich);
@@ -707,16 +751,7 @@ char *readZB(char out[]) {
       Inv_Data[which].radioMetricsValid = true;
     }
 
-    strcpy(out, "FE0164010064FE034480001400D3");
-    char header[80];
-    uint8_t length = (uint8_t)min((uint16_t)255, f.len);
-    snprintf(header, sizeof(header),
-             "FE%02X44810000%02X%02X%02X%02X%02X%02X00%02X000000000000%02X",
-             (unsigned)(17 + length), f.cluster & 0xff, f.cluster >> 8,
-             f.source & 0xff, f.source >> 8, f.sourceEp, f.destEp, f.lqi,
-             length);
-    strncat(out, header, CC2530_MAX_SERIAL_BUFFER_SIZE - strlen(out) - 1);
-    appendHex(out, CC2530_MAX_SERIAL_BUFFER_SIZE, f.data, length);
+    formatApsReply(f, out);
     readCounter = strlen(out) / 2;
     return out;
   }
@@ -724,12 +759,64 @@ char *readZB(char out[]) {
   return out;
 }
 
+// Poll broadcasts can produce replies from every inverter on the PAN. Keep
+// all validated telemetry, independently of the strict control-command reader.
+uint16_t readPollReplies(uint16_t wanted, uint16_t accepted, uint32_t since) {
+  if (!apsRxQueue) return accepted;
+  const uint32_t started = millis();
+  while ((accepted & wanted) != wanted) {
+    const uint32_t elapsed = millis() - started;
+    if (elapsed >= 3200) break;
+    ApsRxFrame f = {};
+    if (xQueueReceive(apsRxQueue, &f, pdMS_TO_TICKS(3200 - elapsed)) != pdTRUE) break;
+    if ((int32_t)(f.receivedAt - since) < 0) { pollDiagnosticsCount(PD_STALE); continue; }
+    if (f.pan != rawCurrentPan || f.cluster != 0x0106 ||
+        f.sourceEp != 0x14 || f.destEp != 0x14) { pollDiagnosticsCount(PD_UNEXPECTED); continue; }
+    uint8_t decoded[300];
+    size_t length = 0;
+    if (!apsDecryptIncoming(f.source, f.data, f.len, decoded, sizeof(decoded),
+                            &length, nullptr)) { pollDiagnosticsCount(PD_DECRYPT_FAIL); continue; }
+    // Match the clear serial, not a short address that can recur on another PAN.
+    int which = -1;
+    for (int i = 0; i < inverterCount; ++i) {
+      uint8_t serial[6];
+      if (apsSerialToBcd(Inv_Prop[i].invSerial, serial) &&
+          length >= 6 && !memcmp(serial, decoded, 6)) { which = i; break; }
+    }
+    pollDiagnosticsReply(which);
+    if (which < 0 || !(wanted & (1U << which))) { pollDiagnosticsCount(PD_UNEXPECTED); continue; }
+    if (accepted & (1U << which)) { pollDiagnosticsCount(PD_DUPLICATE); continue; }
+    const PollTelemetryCheck check = pollTelemetryCheck(decoded, length, Inv_Prop[which].invType);
+    if (check != POLL_VALID) {
+      const PollDiagCounter reason = check == POLL_BAD_LENGTH ? PD_BAD_LENGTH :
+        check == POLL_BAD_KIND ? PD_BAD_KIND : check == POLL_BAD_CHECKSUM ? PD_BAD_CHECKSUM : PD_BAD_VALUE;
+      pollDiagnosticsCount(reason);
+      continue;
+    }
+    memcpy(f.data, decoded, length);
+    f.len = length;
+    char message[CC2530_MAX_SERIAL_BUFFER_SIZE] = {};
+    formatApsReply(f, message);
+    if (decodePollMessage(which, message) != 0) { pollDiagnosticsCount(PD_BAD_LENGTH); continue; }
+    Inv_Data[which].radioRssi = f.rssi;
+    Inv_Data[which].radioLqi = f.lqi;
+    Inv_Data[which].radioMetricsValid = true;
+    pollDiagnosticsAccepted(which);
+    accepted |= 1U << which;
+    pollPublishTelemetry(which);
+  }
+  return accepted;
+}
+
 bool waitSerial2Available() {
   return apsRxQueue && uxQueueMessagesWaiting(apsRxQueue);
 }
 
 void empty_serial2() {
-  if (apsRxQueue) xQueueReset(apsRxQueue);
+  if (apsRxQueue) {
+    pollDiagnosticsCount(PD_QUEUE_CLEAR, uxQueueMessagesWaiting(apsRxQueue));
+    xQueueReset(apsRxQueue);
+  }
 }
 
 String checkSumString(char command[]) { (void)command; return String(); }
