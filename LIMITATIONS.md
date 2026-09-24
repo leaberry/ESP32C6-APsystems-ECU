@@ -37,6 +37,15 @@ appear, but the reporter explicitly did not test throttling. Migration of their
 old Energy dashboard history is still planned. See the
 [issue #17 verification record](BUILD-VERIFIED.md#issue-17-reporter-verification-2026-09-16-v1414).
 
+## Reporter-verified issue #24 polling fix
+
+The affected YC600 installation reported several problem-free hours with
+`poll-fix3`, followed by another successful day. See
+[the verification record](BUILD-VERIFIED.md#issue-24-yc600qs1-checksum-regression-2026-09-22)
+for the replies and scope. QS1 remains covered by captured-message host tests;
+this does not establish native-radio QS1 behavior or every installation's RF
+reliability.
+
 ## Still requiring validation or intentionally unsupported
 
 1. **Encrypted transport:** key derivation and the known-answer test pass, but

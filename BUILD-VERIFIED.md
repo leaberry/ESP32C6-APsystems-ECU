@@ -24,8 +24,16 @@ clearing, event-log bounds and power-control radio regression tests also pass.
 Both 8 MB OTA and 4 MB USB layouts passed local builds with ESP32 core
 3.3.8 (1,618,438 bytes of compiled program and 105,872 bytes of global RAM).
 
-Hardware validation of this revision remains pending; earlier DS3 hardware
-results below apply to earlier builds, not `poll-fix3`.
+The reporter subsequently confirmed [several hours without problems](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/24#issuecomment-5799050245)
+and [successful YC600 testing the following day](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/24#issuecomment-5816870007).
+This supplies field confirmation for `poll-fix3` on the affected installation.
+The production DS3 observations below apply to the earlier integrated build;
+QS1 coverage remains captured-message host testing, not native-radio hardware.
+
+Final review against main retained the opt-in, bounded recorder and its
+administrator-only clear action. All Python/C++ and JavaScript checks listed
+in CI were rerun successfully. Both firmware layouts passed GitHub builds for
+commit `127a9d2`; subsequent review changes only update verification documents.
 
 ## Integrated recorder and clear-logs action (2026-09-21)
 

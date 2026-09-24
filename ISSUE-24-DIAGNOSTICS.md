@@ -9,4 +9,6 @@ The integrated candidate identifies itself as
 [matching-layout upgrade instructions](README.md#upgrade-without-losing-settings-or-data)
 using the application image. Preserve the matching ELF for any new crash dump.
 
-YC600 reliability still needs confirmation on the reporter's hardware.
+The reporter confirmed several problem-free hours and another successful day
+with this build. See [the verification record](BUILD-VERIFIED.md#issue-24-yc600qs1-checksum-regression-2026-09-22)
+for the field evidence and remaining hardware-test limits.
