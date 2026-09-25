@@ -214,16 +214,18 @@ static bool sendApsAck(uint16_t pan, uint16_t macDestination,
   frame[p++] = 0x0F;
   frame[p++] = ++rawNwkSequence;
 
-  frame[p++] = 0x82;  // APS data ACK, extended header present.
+  frame[p++] = fragmentation ? 0x82 : 0x02;  // Extended header only for fragmented ACKs.
   frame[p++] = originalSourceEp;
   putLe16(frame, p, cluster);
   putLe16(frame, p, profile);
   frame[p++] = originalDestEp;
   frame[p++] = apsCounter;
+  if (fragmentation) {
   frame[p++] = fragmentation;
   frame[p++] = blockNumber;
   frame[p++] = 0xFF;  // Window size one: received block plus unused bits.
 
+  }
   rawRadioSetPan(pan);
   bool ok = radioTransmit(frame, p, true, "APS fragment ACK");
   if (!ok) pollDiagnosticsCount(PD_ACK_FAIL);
@@ -274,6 +276,11 @@ static void deliverAsdu(RawReassembly *session) {
     memcpy(complete.data + complete.len, session->blocks[block], take);
     complete.len += take;
   }
+  if (encryptedProbeAsdu(complete.pan,complete.source,complete.cluster,complete.data,complete.len,complete.receivedAt)) {
+    session->active=false; return;
+  }
+  // A stale fragment session must not escape the diagnostic owner.
+  if (pairReceiveActive()) { session->active=false; return; }
   if (complete.len >= 6) {
     char serial[13];
     serialBytesToText(complete.data, serial);
@@ -292,7 +299,7 @@ static void deliverAsdu(RawReassembly *session) {
 }
 
 static void processApsFrame(const RawRxFrame &rx) {
-  if (pairReceiveActive()) return; // Raw matcher owns pairing; no telemetry ACK/PAN changes.
+  if (pairReceiveActive() && !encryptedProbeAcceptFrame(rx.bytes,rx.captured,rx.receivedAt)) return;
   const uint8_t *b = rx.bytes;
   if (rx.captured < 29 || b[0] > 127 || (size_t)b[0] + 1 != rx.captured) { pollDiagnosticsCount(PD_PARSE_REJECT); return; }
   uint8_t phyLength = b[0];
@@ -362,6 +369,11 @@ static void processApsFrame(const RawRxFrame &rx) {
     frame.lqi = rx.lqi;
     frame.len = payloadLength;
     memcpy(frame.data, b + p, payloadLength);
+    if (encryptedProbeAsdu(frame.pan,frame.source,frame.cluster,frame.data,frame.len,frame.receivedAt)) {
+      if (apsFcf & 0x40) sendApsAck(pan,macSource,nwkSource,destEp,sourceEp,cluster,profile,counter,0,0);
+      return;
+    }
+    if (pairReceiveActive()) return;
     if (apsFcf & 0x40) pollDiagnosticsCount(PD_UNFRAGMENTED_ACK_REQUEST);
     if (xQueueSend(apsRxQueue, &frame, 0) != pdTRUE) pollDiagnosticsCount(PD_APP_DROP);
     else pollDiagnosticsCount(PD_DELIVERED);
@@ -415,6 +427,7 @@ static void rawWorker(void *) {
   for (;;) {
     if (xQueueReceive(rawRxQueue, &frame, portMAX_DELAY) == pdTRUE) {
       pollDiagnosticsCount(PD_RX);
+      encryptedProbeObserve(frame.bytes,frame.captured,frame.receivedAt,frame.rssi,frame.lqi);
       radioTraceObserve(frame.bytes, frame.captured, frame.channel,
                         frame.rssi, frame.lqi);
       processApsFrame(frame);
@@ -534,6 +547,27 @@ static bool submitRawAps(uint16_t requestedDestination, uint8_t dstEp,
   return ok;
 }
 }  // namespace
+
+// Diagnostic bypass: explicit fresh address/PAN; no peer lookup or settings write.
+bool apsSendDiagnosticInfo(uint16_t pan, uint16_t source, const uint8_t *asdu,
+                           size_t length, bool broadcast, int *error) {
+  if(error) *error=-1;
+  if(!pairReceiveActive() || !pairValidAddress(source) || !asdu || !length || length>64 ||
+     !rawRadioSetPan(pan)) return false;
+  uint8_t frame[125]={}; size_t p=0;
+  uint16_t destination=broadcast?0xFFFF:source;
+  frame[p++]=broadcast?0x41:0x61; frame[p++]=0x88; frame[p++]=++rawMacSequence;
+  putLe16(frame,p,pan); putLe16(frame,p,destination); putLe16(frame,p,0);
+  putLe16(frame,p,0x1008); putLe16(frame,p,destination); putLe16(frame,p,0);
+  frame[p++]=15; frame[p++]=++rawNwkSequence;
+  memcpy(frame+p,rawExtendedAddress,8); p+=8;
+  frame[p++]=broadcast?0x08:0; frame[p++]=0x14; putLe16(frame,p,0x0006);
+  putLe16(frame,p,0x0F05); frame[p++]=0x14; frame[p++]=++rawApsCounter;
+  memcpy(frame+p,asdu,length); p+=length;
+  bool ok=radioTransmit(frame,p,true,"read-only DC diagnostic");
+  if(error) *error=ok?0:(rawTxFailure?rawTxFailure:-1);
+  return ok;
+}
 
 uint16_t rawRadioStackHighWaterWords() {
   return rawWorkerHandle ? (uint16_t)uxTaskGetStackHighWaterMark(rawWorkerHandle) : 0;

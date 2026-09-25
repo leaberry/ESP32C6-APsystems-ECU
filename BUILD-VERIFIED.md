@@ -1,5 +1,32 @@
 # Build and hardware verification
 
+## Issue #25: read-only encryption and delivery probes (2026-09-25)
+
+`ESP32C6-ECU_v1_4_16-probe2` provides **Run encrypted tests** separately from
+pairing. Fresh discovery is required before testing six DC query envelopes on
+two PANs, with native/A1 broadcast comparisons and a known plaintext control.
+Each phase repeats twice. Diagnostic replies are captured by address, including
+real relayed replies and fragmented ASDUs, without peer or telemetry writes.
+The suite restores the operating network and never marks the inverter paired.
+
+A dedicated authenticated download streams the bounded capture one line at a
+time. Capture stays in RAM until the next test or reboot. The older pairing
+export now includes three recent audits to reduce temporary allocation. The
+on-flash audit format is unchanged. See [instructions and interpretation](ISSUE-25-PROBE2.md).
+
+All Python/C++ CI checks pass, including actual probe orchestration, key and
+envelope construction, fresh/conflicting discovery, missing ACKs, both delivery
+modes, strict source/PAN filtering, relayed replies, diagnostic APS reassembly,
+no route/telemetry writes, normal/fragmented ACK format, restoration, and
+small-chunk immutable exports. Pairing-status and recorded-log UI checks pass.
+The host crypto primitive is a test double; hardware AES interoperability is
+not established by these tests. Production AES and its self-test are unchanged.
+
+Both named layouts compile with ESP32 core 3.3.8: 1,634,606 program bytes and
+158,720 global RAM bytes. Packet buffers account for increased RAM use; the
+new download does not construct a full report String. No hardware deployment,
+successful encrypted reply or DS3-H pairing is claimed.
+
 ## Issue #25: bounded pairing experiments (2026-09-25)
 
 `ESP32C6-ECU_v1_4_16-pair-exp1` adds three sequential, recorder-gated

@@ -29,6 +29,7 @@ const char INVCONFIG_START[] PROGMEM = R"=====(
 </form>
 <div class="actions" style="display:%PAIR_ACTION_STYLE%">
 <a class="button" href="/inverter/pair?inv=%INVERTER_INDEX%" onclick="return confirm('Pair this inverter now?')">Pair inverter</a>
+<a class="button secondary" href="/inverter/pair?inv=%INVERTER_INDEX%&amp;probe=1" onclick="return confirm('Run read-only encrypted inverter tests? Allow five minutes.')">Run encrypted tests</a>
 <a class="button danger" href="/inverter/delete?inv=%INVERTER_INDEX%" onclick="return confirm('Delete this inverter?')">Delete inverter</a>
 </div>
 </main>

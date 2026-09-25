@@ -31,6 +31,8 @@ constexpr uint8_t YC600_MAX_NUMBER_OF_INVERTERS=9;
 uint32_t counters[PD_COUNT]={};
 void pollDiagnosticsCount(PollDiagCounter c,uint32_t n){counters[c]+=n;}
 void pollDiagnosticsRaw(uint16_t pan,uint16_t src){if(pan==0xA3D8&&src==0xA315)++counters[PD_TARGET_RX];}
+bool encryptedProbeAcceptFrame(const uint8_t*,size_t,uint32_t){return false;}
+bool encryptedProbeAsdu(uint16_t,uint16_t,uint16_t,const uint8_t*,size_t,uint32_t){return false;}
 bool pairReceiveActive(){return false;}
 bool radioPreference(const char*,uint32_t*,bool){return true;}
 void diagnosticsAppend(String){}

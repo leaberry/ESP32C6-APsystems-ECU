@@ -123,6 +123,7 @@ String diagnosticsReportText() {
   report += F("\nPERSISTENT PAIRING LOG (newest 3 attempts)\n");
   report += pairingAuditReport(3);
   report += pairDiagnosticsReport();
+  report += encryptedProbeSummary();
   return report;
 }
 

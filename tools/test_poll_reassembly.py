@@ -31,12 +31,15 @@ void pollDiagnosticsCount(PollDiagCounter,uint32_t){}
 void pollDiagnosticsRaw(uint16_t,uint16_t){}
 constexpr int pdTRUE=1;
 constexpr uint8_t YC600_MAX_NUMBER_OF_INVERTERS=9;
-bool pairReceiveActive(){return false;}
-bool radioPreference(const char*,uint32_t*,bool){return true;}
+bool probeMode=false,acceptProbeAsdu=true;int probeAsdus=0,peerWrites=0,acks=0;
+bool encryptedProbeAcceptFrame(const uint8_t* b,size_t n,uint32_t){return probeMode&&n>18&&b[14]==1;}
+bool encryptedProbeAsdu(uint16_t,uint16_t,uint16_t,const uint8_t*,size_t,uint32_t){if(probeMode&&acceptProbeAsdu){++probeAsdus;return true;}return false;}
+bool pairReceiveActive(){return probeMode;}
+bool radioPreference(const char*,uint32_t*,bool write){peerWrites+=write;return true;}
 void diagnosticsAppend(String){}
 uint32_t millis(){return 10000;}
 bool apsRxQueue=true;
-bool sendApsAck(uint16_t,uint16_t,uint16_t,uint8_t,uint8_t,uint16_t,uint16_t,uint8_t,uint8_t,uint8_t){return true;}
+bool sendApsAck(uint16_t,uint16_t,uint16_t,uint8_t,uint8_t,uint16_t,uint16_t,uint8_t,uint8_t,uint8_t){++acks;return true;}
 '''
 code += source[source.index('constexpr uint8_t APS_CHANNEL'):source.index('QueueHandle_t apsRxQueue')]
 code += r'''
@@ -68,6 +71,12 @@ int main(){
  for(const auto& f:received){assert(f.pan==0xA3D8&&f.receivedAt==99U+f.source&&f.len==24);}
  processApsFrame(frame(0,0,0,2000));
  assert(received.back().receivedAt==2000&&received.back().pan==0xA3D8&&received.back().len==12);
+ probeMode=true;const auto normalCount=received.size();const int writesBefore=peerWrites,acksBefore=acks;
+ processApsFrame(frame(0,1,2,3000));processApsFrame(frame(0,2,1,3001));
+ processApsFrame(frame(0,0,0,3002));processApsFrame(frame(1,0,0,3003));
+ assert(probeAsdus==2 && received.size()==normalCount && peerWrites==writesBefore && acks==acksBefore+3);
+ acceptProbeAsdu=false;processApsFrame(frame(0,1,2,4000));processApsFrame(frame(0,2,1,4001));
+ assert(received.size()==normalCount&&peerWrites==writesBefore);
  std::cout<<"PASS APS reassembly: nine simultaneous inverters, original fragment timestamp, duplicate first fragment and direct replies\n";
 }
 '''

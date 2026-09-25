@@ -6,6 +6,14 @@ void handlePair(AsyncWebServerRequest *request) {
     request->send(400, "text/plain", "Save a valid 12-digit inverter serial first");
     return;
   }
+  const bool probe=request->hasParam("probe");
+  if(probe && (!flightRecorderEnabled || !apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial))) {
+    request->send(400,"text/plain","Save an encrypted inverter serial and enable the flight recorder first."); return;
+  }
+  if(probe && encryptedProbeBusy()) {
+    request->send(409,"text/plain","Wait for the previous test or log download to finish."); return;
+  }
+  pendingEncryptedProbe=lastEncryptedProbe=probe;
   pendingPairInverter = iKeuze;
   lastPairInverter = iKeuze;
   lastPairSucceeded = false;
@@ -13,12 +21,22 @@ void handlePair(AsyncWebServerRequest *request) {
   actionFlag = 60;
   String page = FPSTR(WAIT_PAIR);
   page.replace("{#}", String(iKeuze));
+  if(probe) {
+    page.replace("Pairing inverter", "Testing inverter");
+    page.replace("Listening for the inverter...", "Running read-only communication tests...");
+  }
   request->send(200, "text/html", page);
 }
 
 void pairOnActionflag() {
   const int which = pendingPairInverter;
   bool success = false;
+  if(pendingEncryptedProbe) {
+    success=which>=0 && which<inverterCount && coordinator(false) && encryptedProbeRun(which);
+    lastPairSucceeded=success;
+    consoleOut(success ? "diagnostic suite completed; pairing unchanged" : "diagnostic suite incomplete; download test log");
+    pendingEncryptedProbe=false; pendingPairInverter=-1; return;
+  }
   if (which >= 0 && which < inverterCount) {
     pairAuditBegin(which, Inv_Prop[which].invSerial);
     bool radioReady = coordinator(false);

@@ -13,6 +13,8 @@ const script = page.split('<script>')[1].split('</script>')[0]
     ['failed', '0869', 'Failed'],
     ['failed', '0000', 'Failed'],
     ['success', 'F25A', 'Paired'],
+    ['tested', '0000', 'Tests finished'],
+    ['test-failed', '0000', 'Tests incomplete'],
   ]) {
     const elements = {badge: {textContent: 'Pairing'}, title: {}, message: {}};
     const context = vm.createContext({

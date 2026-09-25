@@ -1,5 +1,7 @@
 # Issue #25 diagnostic experiments
 
+The newer read-only test build is documented in [ISSUE-25-PROBE2.md](ISSUE-25-PROBE2.md). The steps below apply to the older pair-exp1 build.
+
 Build: `ESP32C6-ECU_v1_4_16-pair-exp1`.
 
 ## Run the test
