@@ -1,5 +1,22 @@
 # Build and hardware verification
 
+## Issue #25: bounded pairing experiments (2026-09-25)
+
+`ESP32C6-ECU_v1_4_16-pair-exp1` adds three sequential, recorder-gated
+trials for serials whose second digit is 2. It retains strict fresh-reply
+verification and stops on verified results or radio failures. Per-trial
+bounded RAM samples include raw target-related frames. No new flash log is
+created. See [test instructions](ISSUE-25-DIAGNOSTICS.md).
+
+All Python/C++ checks listed in CI pass, including the expanded actual pairing
+orchestration replay. Pairing-status and recorded-log UI checks pass. Replay
+checks exact payloads, timing/PAN selection, disabled/nonencrypted gating,
+early success, all-trial failure, TX failure, storage failure and sample bounds.
+Both pinned ESP32 core 3.3.8 layouts compile: 1,623,154 program bytes and
+126,048 global RAM bytes. The application fits both named partition layouts.
+No hardware deployment or DS3-H success is claimed. Experiments 1/2 remain
+unverified hypotheses about the original modem's radio behavior.
+
 ## Issue #25: DS3-H pairing format and targeted diagnostics (2026-09-24)
 
 The `pair-diag1` candidate recognizes the observed 13-byte FF0E direct pairing

@@ -48,73 +48,105 @@ bool pairing(int which) {
   empty_serial2();
   bool sequenceOk = radioTraceBegin();
   pairAuditStep(PA_RADIO, sequenceOk, 1, 0xFFFF);
-  for (int y = 0; y < 4 && sequenceOk; ++y) {
-    switch (y) {
-        case 0:// command 0
-            // build command 0 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0D0200000F1100" + String(invSerial) + "FFFF10FFFF" + ecu_id_reverse
-            snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140D0200000F1100%sFFFF10FFFF%s", Inv_Prop[which].invSerial , ecu_id_reverse);
-            break;
-        case 1:
-            // build command 1 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0C0201000F0600"  + inv serial,
-            snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140C0201000F0600%s", Inv_Prop[which].invSerial );
-            break;
-        case 2:
-            // build command 2 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0F0102000F1100"  + invSerial + short ecu_id_reverse, + 10FFF + ecu_id_reverse
-
-            snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140F0102000F1100%s%s10FFFF%s", Inv_Prop[which].invSerial, ecu_short, ecu_id_reverse);
-            break;
-        case 3:
-            // now build command 3 this is "24020FFFFFFFFFFFFFFFFF14FFFF14"  + "010103000F0600" + ecu_id_reverse,
-            snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF14010103000F0600%s", ecu_id_reverse);
-       }
-    // Reassert PAN for every step; never let another receive operation choose it.
-    pairDiagnosticsStage(y, 0xFFFF);
-    sequenceOk = apsUsePairingPan(true);
-    if (!sequenceOk) { pairAuditStep(PA_COMMAND, false, y, 0xFFFF); break; }
-    consoleOut("pair command " + String(y) + " = " + String(pairCmd));
-    sequenceOk = sendZB(pairCmd);
-    pairAuditStep(PA_COMMAND, sequenceOk, y, 0xFFFF);
-    if (!sequenceOk) break;
-    // The worker collects direct replies throughout this window, without readZB().
-    delay(4700);
-  }
-
-  // A discovery/status reply on FFFF proves contact, not successful migration.
-  // Query again on the operational PAN after the four-command handshake settles.
-  pairDiagnosticsStage(4, zbOperationalPan);
-  bool restored = apsUsePairingPan(false);
-  if (sequenceOk && restored) {
-    consoleOut("pairing: settling before operating-PAN verification");
-    delay(10000);
-    pairReceiveVerify();
-    for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
-      snprintf(pairCmd, sizeof(pairCmd),
-               "24020FFFFFFFFFFFFFFFFF14FFFF140C0201000F0600%s",
-               Inv_Prop[which].invSerial);
-      pairDiagnosticsStage(5 + attempt, zbOperationalPan);
-      sequenceOk = apsUsePairingPan(false) && sendZB(pairCmd);
-      pairAuditStep(PA_VERIFY_QUERY, sequenceOk, attempt, zbOperationalPan);
-      if (sequenceOk) delay(4700);
-    }
-  }
+  // Diagnostic trials are explicitly gated by the recorder and encrypted serial.
+  const uint8_t trials = flightRecorderEnabled && Inv_Prop[which].invSerial[1] == '2' ? 3 : 1;
   char verifiedId[5] = {};
   uint16_t pan = 0, source = 0;
-  bool verified = pairReceiveFinish(verifiedId, &pan, &source);
-  // Previously validated units can retain a different PAN. Require a fresh
-  // serial-matched response there, rather than accepting the saved route blindly.
-  uint16_t previousPan = 0, previousSource = 0;
-  if (sequenceOk && restored && !verified &&
-      apsRadioLoadPeer(Inv_Prop[which].invSerial, &previousPan, &previousSource) &&
-      previousPan && previousPan != 0xFFFF && previousPan != zbOperationalPan) {
-    pairReceiveBegin(Inv_Prop[which].invSerial, previousPan);
-    pairReceiveVerify();
-    for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
-      pairDiagnosticsStage(8 + attempt, previousPan);
-      sequenceOk = apsUseSpecificPan(previousPan, "saved pairing verification") && sendZB(pairCmd);
-      pairAuditStep(PA_SAVED_NETWORK, sequenceOk, attempt, previousPan);
-      if (sequenceOk) delay(4700);
+  bool verified = false, restored = false;
+  for (uint8_t trial = 0; trial < trials && sequenceOk; ++trial) {
+    pairDiagnosticsExperiment(trial);
+    if (!pairReceiveBegin(Inv_Prop[which].invSerial, zbOperationalPan)) {
+      sequenceOk = false;
+      break;
+    }
+    for (int y = 0; y < 4 && sequenceOk; ++y) {
+      switch (y) {
+          case 0:// command 0
+              // build command 0 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0D0200000F1100" + String(invSerial) + "FFFF10FFFF" + ecu_id_reverse
+              snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140D0200000F1100%sFFFF10FFFF%s", Inv_Prop[which].invSerial , ecu_id_reverse);
+              break;
+          case 1:
+              // build command 1 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0C0201000F0600"  + inv serial,
+              snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140C0201000F0600%s", Inv_Prop[which].invSerial );
+              break;
+          case 2:
+              // build command 2 this is "24020FFFFFFFFFFFFFFFFF14FFFF14" + "0F0102000F1100"  + invSerial + short ecu_id_reverse, + 10FFF + ecu_id_reverse
+
+              snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140F0102000F1100%s%s10FFFF%s", Inv_Prop[which].invSerial, ecu_short, ecu_id_reverse);
+              break;
+          case 3:
+              // now build command 3 this is "24020FFFFFFFFFFFFFFFFF14FFFF14"  + "010103000F0600" + ecu_id_reverse,
+              snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF14010103000F0600%s", ecu_id_reverse);
+         }
+      // Trial 2 tests a count suffix suggested by the host prepare command.
+      // Its raw APS mapping is unknown: this is a labeled experiment only.
+      if (trial == 2 && y == 2)
+        snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF140F0102000F1300%s%s10FFFF%s0001",
+                 Inv_Prop[which].invSerial, ecu_short, ecu_id_reverse);
+      // Reassert PAN for every step; never let another receive operation choose it.
+      pairDiagnosticsStage(y, 0xFFFF);
+      sequenceOk = apsUsePairingPan(true);
+      if (!sequenceOk) { pairAuditStep(PA_COMMAND, false, y, 0xFFFF); break; }
+      consoleOut("pair command " + String(y) + " = " + String(pairCmd));
+      sequenceOk = sendZB(pairCmd);
+      pairAuditStep(PA_COMMAND, sequenceOk, y, 0xFFFF);
+      if (!sequenceOk) break;
+      // The worker collects direct replies throughout this window, without readZB().
+      if (trial > 0 && y == 3) {
+        // Repeated final APS command is a hypothesis, not a proven opcode-22 map.
+        delay(1000);
+        for (uint8_t repeat = 0; repeat < 2 && sequenceOk; ++repeat) {
+          pairDiagnosticsStage(12 + repeat, 0xFFFF);
+          sequenceOk = apsUsePairingPan(true) && sendZB(pairCmd);
+          pairAuditStep(PA_COMMAND, sequenceOk, 12 + repeat, 0xFFFF);
+          if (sequenceOk) delay(1000);
+        }
+      } else delay(4700);
+    }
+    if (trial > 0 && sequenceOk) {
+      pairDiagnosticsStage(14, 0xFFFF);
+      delay(10000);
+    }
+
+    // A discovery/status reply on FFFF proves contact, not successful migration.
+    // Query again on the operational PAN after the four-command handshake settles.
+    pairDiagnosticsStage(4, zbOperationalPan);
+    restored = apsUsePairingPan(false);
+    if (sequenceOk && restored) {
+      consoleOut("pairing: settling before operating-PAN verification");
+      delay(10000);
+      pairReceiveVerify();
+      for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
+        snprintf(pairCmd, sizeof(pairCmd),
+                 "24020FFFFFFFFFFFFFFFFF14FFFF140C0201000F0600%s",
+                 Inv_Prop[which].invSerial);
+        pairDiagnosticsStage(5 + attempt, zbOperationalPan);
+        sequenceOk = apsUsePairingPan(false) && sendZB(pairCmd);
+        pairAuditStep(PA_VERIFY_QUERY, sequenceOk, attempt, zbOperationalPan);
+        if (sequenceOk) delay(4700);
+      }
     }
     verified = pairReceiveFinish(verifiedId, &pan, &source);
+    // Previously validated units can retain a different PAN. Require a fresh
+    // serial-matched response there, rather than accepting the saved route blindly.
+    uint16_t previousPan = 0, previousSource = 0;
+    if (sequenceOk && restored && !verified &&
+        apsRadioLoadPeer(Inv_Prop[which].invSerial, &previousPan, &previousSource) &&
+        previousPan && previousPan != 0xFFFF && previousPan != zbOperationalPan) {
+      pairReceiveBegin(Inv_Prop[which].invSerial, previousPan);
+      pairReceiveVerify();
+      for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
+        pairDiagnosticsStage(8 + attempt, previousPan);
+        sequenceOk = apsUseSpecificPan(previousPan, "saved pairing verification") && sendZB(pairCmd);
+        pairAuditStep(PA_SAVED_NETWORK, sequenceOk, attempt, previousPan);
+        if (sequenceOk) delay(4700);
+      }
+      verified = pairReceiveFinish(verifiedId, &pan, &source);
+    }
+    pairDiagnosticsResult(trial, sequenceOk && restored, verified);
+    // Never retry radio errors or a verified response (including storage errors).
+    // Trials are sequential; later success does not establish independent causality.
+    if (verified || !restored) break;
   }
   radioTraceEnd();
   restored = apsUsePairingPan(false) && restored;

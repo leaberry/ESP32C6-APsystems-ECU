@@ -70,7 +70,9 @@ Inverter Inv_Prop[1];
 int inverterCount=1, apsExpectedWhich=-1, saves=0, normalOps=0, queryCount=0;
 bool saveOk=true, replyOnOperating=true, dropAll=false, injectConflict=false;
 bool injectAnnouncement=false, extendedReply=false;
-int failTx=-1, txCount=0;
+int failTx=-1, txCount=0, successTrial=-1;
+int experimentIndex();
+int repeatedDelays=0, discoverySettles=0;
 uint16_t lastCluster=0;
 uint16_t savedPan=0, savedSource=0;
 bool saveVerifiedPairing(int which, const char *id, uint16_t pan, uint16_t source) {
@@ -99,6 +101,7 @@ void check(bool ok, const char *name) {
 }
 bool submitRawAps(uint16_t dst, uint8_t dep, uint8_t sep, uint16_t cluster,
                   const uint8_t *payload, uint16_t len, uint8_t radius, uint8_t opts) {
+  check(cluster==0x020C || currentPan==0xFFFF,"handshake stays on discovery PAN");
   lastCluster=cluster;
   ++txCount;
   check(dst==0xFFFF && dep==20 && sep==20 && radius==15 && opts==0,
@@ -106,6 +109,8 @@ bool submitRawAps(uint16_t dst, uint8_t dep, uint8_t sep, uint16_t cluster,
   auto expected = unhex(cluster==0x020D ? "704000007719FFFF10FFFF80971B01A3D8" :
                        cluster==0x010F ? "704000007719A3D810FFFF80971B01A3D8" :
                        cluster==0x0101 ? "80971B01A3D8" : "704000007719");
+  if(cluster!=0x0101) expected[0]=unhex(Inv_Prop[0].invSerial)[0];
+  if(cluster==0x010F && experimentIndex()==2) {expected.push_back(0);expected.push_back(1);}
   check(std::vector<uint8_t>(payload,payload+len)==expected,"exact command ASDU");
   check(!promiscuous,"MAC acknowledgement remains enabled");
   if(currentPan==0xA3D8) ++queryCount;
@@ -120,10 +125,13 @@ harness += "\n" + function("ZIGBEE_PAIR.ino", "bool pairing(")
 harness += '\nconst char *captured[] = {\n' + ',\n'.join(
     json.dumps(frame) for frame in fixture['frames']) + '\n};\n'
 harness += r'''
+int experimentIndex() {return pairDiagnosticCapture.experiment;}
 void observe(std::vector<uint8_t> b) {
   radioTraceObserve(b.data(),b.size(),16,-47,10);
 }
 void delay(unsigned duration) {
+  if(duration==1000) {++repeatedDelays;check(currentPan==0xFFFF,"repeated final command wait remains on FFFF");}
+  if(duration==10000 && currentPan==0xFFFF) ++discoverySettles;
   nowMs+=duration;
   if(duration!=4700 || dropAll) return;
   // More relay traffic than fits in the diagnostic buffer BEFORE the reply.
@@ -131,7 +139,7 @@ void delay(unsigned duration) {
   if(lastCluster!=0x020C && lastCluster!=0x010F) return;
   auto b=unhex(lastCluster==0x020C ? captured[16] : captured[37]);
   if(currentPan!=0xFFFF) {
-    if(currentPan==0xA3D8 ? !replyOnOperating : !replyOnSavedPan) return;
+    if(currentPan==0xA3D8 ? !(replyOnOperating || successTrial==experimentIndex()) : !replyOnSavedPan) return;
     b[4]=currentPan & 0xFF; b[5]=currentPan >> 8;
     if(injectAnnouncement) {
       b=unhex(captured[44]);
@@ -140,6 +148,7 @@ void delay(unsigned duration) {
       b[26]=0x34;b[27]=0x12;
     }
   }
+  if(!injectAnnouncement) b[28]=unhex(Inv_Prop[0].invSerial)[0];
   if(extendedReply && !injectAnnouncement) {
     b[26]=0xff;b[27]=0x0e;
     b.insert(b.end()-2,{0,0xb8,0x20,0,0});b[0]+=5;
@@ -151,7 +160,9 @@ void delay(unsigned duration) {
 }
 void reset() {
   pairReceiveStop();
-  saves=normalOps=queryCount=txCount=0;failTx=-1;
+  repeatedDelays=discoverySettles=0;
+  saves=normalOps=queryCount=txCount=0;failTx=successTrial=-1;
+  strlcpy(Inv_Prop[0].invSerial,"704000007719",13);
   saveOk=replyOnOperating=radioOk=true;
   dropAll=injectConflict=injectAnnouncement=savedPeerKnown=replyOnSavedPan=extendedReply=false;
   savedPan=savedSource=0;
@@ -236,6 +247,31 @@ int main() {
     check(!pairing(0) && !saves && !normalOps && currentPan==0xA3D8 &&
           !pairReceiveActive(),"each handshake/verification TX failure aborts safely");
   }
+  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;extendedReply=true;
+  check(!pairing(0) && txCount==25 && repeatedDelays==6 && discoverySettles==2 && saves==0 && currentPan==0xA3D8 && !pairReceiveActive(),
+        "three bounded experiments fail without overwriting pairing");
+  detail=pairDiagnosticsReport();
+  check(detail.find("experiment=0 result=not-verified")!=std::string::npos &&
+        detail.find("experiment=1 result=not-verified")!=std::string::npos &&
+        detail.find("experiment=2 phase=12 requested_pan=FFFF")!=std::string::npos &&
+        detail.find("experiment=2 phase=14 requested_pan=FFFF")!=std::string::npos &&
+        detail.find("raw=")!=std::string::npos && detail.find("status=00B8200000")!=std::string::npos,
+        "all experiments preserve labeled raw target evidence and extended status");
+  for(int trial=0;trial<3;++trial) {
+    reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;successTrial=trial;
+    check(pairing(0) && saves==1 && txCount==7+9*trial && experimentIndex()==trial,
+          "stop at first verified experiment");
+  }
+  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;flightRecorderEnabled=false;
+  check(!pairing(0) && txCount==7,"encrypted serial with recorder off runs baseline only");
+  flightRecorderEnabled=true;
+  for(int failure:{8,11,12,13,16,17,21,25}) {
+    reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;failTx=failure;
+    check(!pairing(0) && txCount==failure && !saves && currentPan==0xA3D8 && !pairReceiveActive(),
+          "experimental TX failure aborts without later trials or saving");
+  }
+  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);saveOk=false;
+  check(!pairing(0) && saves==1 && txCount==7,"storage failure after verification cannot trigger experiments");
   reset();radioOk=false;
   check(!pairing(0) && !saves && !pairReceiveActive(),"radio setup failure cleans up session");
   reset();check(!pairing(-1) && !pairing(1),"invalid index rejected");

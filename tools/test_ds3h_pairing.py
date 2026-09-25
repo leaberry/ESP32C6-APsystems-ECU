@@ -44,6 +44,14 @@ int main(){
  capture.stage(5,0xa3d8);capture.observe(announcement.data(),announcement.size(),target,300,-77,9);
  assert(capture.phases[5].samples[0].identity==2&&capture.phases[5].rejected[PR_ANNOUNCEMENT]==1);
  assert(capture.phases[1].relevant==100);
+ assert(p.samples[0].rawLength==b.size()&&!memcmp(p.samples[0].raw,b.data(),b.size()));
+ capture.experiment=2;capture.stage(14,0xffff);
+ auto large=b;large.resize(128,0xaa);
+ capture.observe(large.data(),large.size(),target,400,-75,10);
+ assert(capture.phases[46].samples[0].rawLength==64&&capture.phases[1].relevant==100);
+ capture.stage(16,0);assert(capture.phase==46);
+ capture.experiment=3;capture.stage(0,0);assert(capture.phase==46);
+ capture.stage(5,0xa3d8); // invalid experiment does not alter active phase
  capture.active=false;capture.observe(b.data(),b.size(),target,500,-75,10);assert(capture.phases[5].frames==1);
  capture.begin(true,900);assert(capture.phases[1].frames==0);
  puts("PASS DS3-H capture: extended status, strict envelopes/identity, discovery vs verification, conflict, bounded per-phase diagnostics and disabled/reset behavior");

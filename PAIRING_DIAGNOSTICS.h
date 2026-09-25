@@ -2,7 +2,7 @@
 #include "PAIRING_PROTOCOL.h"
 #include <stdio.h>
 
-// Opt-in metadata only; no packet buffers, keys, nonces or full serials.
+// Opt-in diagnostic capture. Raw target-related frames can contain identifiers.
 // Four relevant samples per phase: first two and most recent two.
 struct PairDiagnosticSample {
   uint32_t elapsed;
@@ -11,6 +11,7 @@ struct PairDiagnosticSample {
   int8_t rssi;
   uint8_t lqi;
   uint8_t status[5];
+  uint8_t rawLength, raw[64];
 };
 struct PairDiagnosticPhase {
   uint32_t frames, relevant, matched, rejected[9];
@@ -21,14 +22,16 @@ struct PairDiagnosticPhase {
 struct PairDiagnosticCapture {
   bool enabled = false, active = false;
   uint32_t started = 0;
-  uint8_t phase = 0;
-  PairDiagnosticPhase phases[12] = {};
+  uint8_t phase = 0, experiment = 0;
+  uint8_t results[3] = {}; // 0 not run, 1 no verification, 2 verified, 3 radio failure
+  PairDiagnosticPhase phases[48] = {};
   void begin(bool on, uint32_t now) {
-    *this = PairDiagnosticCapture{}; enabled = active = on; started = now;
+    memset(phases, 0, sizeof(phases)); memset(results, 0, sizeof(results));
+    phase = experiment = 0; enabled = active = on; started = now;
   }
   void stage(uint8_t index, uint16_t pan) {
-    if (!active || index >= 12) return;
-    phase = index; phases[index].entered = true; phases[index].requestedPan = pan;
+    if (!active || index >= 16 || experiment >= 3) return;
+    phase = experiment * 16 + index; phases[phase].entered = true; phases[phase].requestedPan = pan;
   }
   void observe(const uint8_t *b, size_t n, const uint8_t target[6],
                uint32_t now, int8_t rssi, uint8_t lqi) {
@@ -50,7 +53,8 @@ struct PairDiagnosticCapture {
     if (!identity) return;
     uint32_t index=p.relevant++;
     PairDiagnosticSample &s=p.samples[index<2 ? index : 2+(index%2)];
-    s={}; s.elapsed=now-started; s.identity=identity; s.reason=reason;
+    s={}; s.rawLength = n < sizeof(s.raw) ? n : sizeof(s.raw);
+    memcpy(s.raw,b,s.rawLength); s.elapsed=now-started; s.identity=identity; s.reason=reason;
     s.bytes=n; s.rssi=rssi; s.lqi=lqi;
     if (n>=18) {
       s.pan=pairLe16(b+4); s.macSource=pairLe16(b+8);

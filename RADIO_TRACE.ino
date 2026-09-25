@@ -167,10 +167,28 @@ void pairDiagnosticsStage(uint8_t phase, uint16_t pan) {
   portEXIT_CRITICAL(&pairReceiveMux);
 }
 
+void pairDiagnosticsExperiment(uint8_t trial) {
+  if (trial >= 3) return;
+  portENTER_CRITICAL(&pairReceiveMux);
+  pairDiagnosticCapture.experiment = trial;
+  pairDiagnosticCapture.stage(0, 0xFFFF);
+  portEXIT_CRITICAL(&pairReceiveMux);
+  consoleOut("pair experiment " + String(trial));
+}
+
+void pairDiagnosticsResult(uint8_t trial, bool radioOk, bool verified) {
+  if (trial >= 3) return;
+  portENTER_CRITICAL(&pairReceiveMux);
+  pairDiagnosticCapture.results[trial] = !radioOk ? 3 : verified ? 2 : 1;
+  portEXIT_CRITICAL(&pairReceiveMux);
+}
+
 String pairDiagnosticsReport() {
   String out = F("\nPAIRING DETAIL (RAM; last attempt, lost on restart)\n"
-    "Opt-in at pairing start using the flight recorder switch. No raw payloads or keys.\n"
+    "Opt-in at pairing start using the flight recorder switch. Includes raw target-related frames; treat downloads as private.\n"
     "Phases: 0-3 handshake, 4 settle, 5-7 operating verification, 8-10 saved-network verification.\n"
+    "Experiments: 0=baseline, 1=repeat final command and settle on FFFF, 2=same plus 0001 prepare suffix.\n"
+    "Phases 12/13=extra final commands, 14=FFFF settle; experiments run sequentially.\n"
     "identity: 1=serial seen, 2=reversed serial seen, 3=both; a relay echo is not a reply.\n"
     "Samples retain first two and latest two relevant frames per phase. Zero status bytes on nonextended frames are not decoded status.\n");
   bool enabled, active;
@@ -180,14 +198,23 @@ String pairDiagnosticsReport() {
   if (!enabled) return out + F("No detail captured: enable the flight recorder before pairing.\n");
   if (active) return out + F("Pairing in progress; download again after it finishes.\n");
   char line[260];
-  for (uint8_t i=0;i<12;++i) {
+  for (uint8_t trial=0;trial<3;++trial) {
+    uint8_t result;
+    portENTER_CRITICAL(&pairReceiveMux);
+    result=pairDiagnosticCapture.results[trial];
+    portEXIT_CRITICAL(&pairReceiveMux);
+    snprintf(line,sizeof(line),"experiment=%u result=%s\n",trial,
+      result==1 ? "not-verified" : result==2 ? "verified-before-storage" : result==3 ? "radio-failure" : "not-run");
+    out+=line;
+  }
+  for (uint8_t i=0;i<48;++i) {
     PairDiagnosticPhase p;
     portENTER_CRITICAL(&pairReceiveMux);
     p=pairDiagnosticCapture.phases[i];
     portEXIT_CRITICAL(&pairReceiveMux);
     if (!p.entered) continue;
-    snprintf(line,sizeof(line),"phase=%u requested_pan=%04X frames=%lu relevant=%lu matched=%lu omitted=%lu\n",
-      i,p.requestedPan,(unsigned long)p.frames,(unsigned long)p.relevant,
+    snprintf(line,sizeof(line),"experiment=%u phase=%u requested_pan=%04X frames=%lu relevant=%lu matched=%lu omitted=%lu\n",
+      i/16,i%16,p.requestedPan,(unsigned long)p.frames,(unsigned long)p.relevant,
       (unsigned long)p.matched,(unsigned long)(p.relevant>4?p.relevant-4:0)); out+=line;
     for(uint8_t reason=1;reason<9;++reason) {
       if (!p.rejected[reason]) continue;
@@ -200,6 +227,11 @@ String pairDiagnosticsReport() {
         (unsigned long)s.elapsed,s.pan,s.source,s.macSource,s.nwk,s.cluster,s.bytes,s.payloadBytes,s.prefix,
         s.status[0],s.status[1],s.status[2],s.status[3],s.status[4],s.identity,pairReplyCheckName((PairReplyCheck)s.reason),s.rssi,s.lqi);
       out+=line;
+      out += "    raw=";
+      for(uint8_t k=0;k<s.rawLength;++k) {
+        snprintf(line,sizeof(line),"%02X",s.raw[k]); out+=line;
+      }
+      out += s.rawLength < s.bytes ? " (truncated)\n" : "\n";
     }
   }
   return out;
