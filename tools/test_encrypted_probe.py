@@ -44,7 +44,8 @@ uint32_t now=100,panChanges=0;
 uint16_t zbOperationalPan=0xA3D8,currentPan=0xA3D8;
 bool flightRecorderEnabled=true,pairedActive=false,discoveryReplies=true,conflicting=false,txAck=true,panOk=true;
 int txs=0,queries=0,discoveryAfter=0,controls=0,migrateAt=-1,failControl=-1;
-bool lostAfterPrepare=false,baselineOperating=false;
+bool lostAfterPrepare=false,baselineOperating=false,needsBootstrap=false,operatingOnly=false,bootstrapOk=true;
+int bootstraps=0;
 uint8_t rawMacSequence=0,rawNwkSequence=0,rawApsCounter=0,rawExtendedAddress[8]={};int rawTxFailure=3;
 uint32_t millis(){return now;}
 String ECU_REVERSE(){return "80971B01A3D8";}
@@ -81,6 +82,10 @@ code+=(root/'ENCRYPTED_PROBE.ino').read_text()
 code+=r'''
 std::vector<uint8_t> unhex(const char* s){std::vector<uint8_t> b;for(size_t i=0;i<strlen(s);i+=2)b.push_back(std::stoul(std::string(s+i,2),nullptr,16));return b;}
 bool sendZB(char command[]){
+ if(!strcmp(command,"24020FFFFFFFFFFFFFFFFF14FFFF140D0200000F1100725000000001FFFF10FFFF80971B01A3D8")) {
+   ++bootstraps;assert(currentPan==0xFFFF && queries>=4 && encryptedCapture.phases[3].entered);
+   return bootstrapOk;
+ }
  if(!strstr(command,"0C0201000F0600")) {
    ++controls;
    assert(currentPan==0xFFFF);
@@ -92,11 +97,13 @@ bool sendZB(char command[]){
  ++queries;assert(strstr(command,"0C0201000F0600725000000001"));
  bool moved=migrateAt>=0 && controls>=migrateAt;
  bool reachable=currentPan==(moved?0xA3D8:0xFFFF) || (baselineOperating && currentPan==0xA3D8);
+ if(needsBootstrap && !bootstraps && currentPan==0xFFFF) reachable=false;
+ if(operatingOnly) reachable=currentPan==0xA3D8;
  if(lostAfterPrepare && controls>0) reachable=false;
  if(discoveryReplies && queries>discoveryAfter && reachable){
   auto b=unhex("28618872FFFF0000B5D848000000B5D80F2100140101050F1400FF0E72500000000100B8200000B50B");
   b[4]=currentPan; b[5]=currentPan>>8;
-  if(moved || (baselineOperating && currentPan==0xA3D8)) {b[8]=b[14]=0x67;b[9]=b[15]=0x45;}
+  if(moved || operatingOnly || (baselineOperating && currentPan==0xA3D8)) {b[8]=b[14]=0x67;b[9]=b[15]=0x45;}
   encryptedProbeObserve(b.data(),b.size(),now,-65,10);
   if(conflicting){b[8]=b[14]=0xB6;encryptedProbeObserve(b.data(),b.size(),now,-65,10);}
  }
@@ -108,12 +115,16 @@ bool radioTransmit(const uint8_t* f,size_t n,bool cca,const char* reason){
  assert(pairLe16(f+3)==currentPan && pairLe16(f+5)==pairLe16(f+11));
  assert(pairLe16(f+7)==0 && pairLe16(f+13)==0 && (f[25]==0 || f[25]==8) && f[26]==0x14);
  assert(pairLe16(f+27)==6 && pairLe16(f+29)==0x0F05 && f[31]==0x14);
+ if(pairLe16(f+5)==0x1234) {
+   auto info=unhex("703000000001FBFB09DC0200050000CB00000000FEFE");
+   assert(encryptedProbeAsdu(currentPan,0x1234,0x0106,info.data(),info.size(),now));
+ }
  return txAck;
 }
 void delay(unsigned ms){assert(ms==3500 || ms==6000 || ms==1000 || ms==5000 || ms==10000);now+=ms;}
 void reset(){
  assert(!encryptedProbeReaders);txs=queries=panChanges=0;now=100;flightRecorderEnabled=discoveryReplies=txAck=panOk=true;
- discoveryAfter=controls=0;migrateAt=failControl=-1;lostAfterPrepare=baselineOperating=false;conflicting=false;currentPan=0xA3D8;pairedActive=false;
+ bootstraps=0;bootstrapOk=true;needsBootstrap=operatingOnly=false;discoveryAfter=controls=0;migrateAt=failControl=-1;lostAfterPrepare=baselineOperating=false;conflicting=false;currentPan=0xA3D8;pairedActive=false;
 }
 int main(){
  assert(sendApsAck(0xFFFF,0xD8B5,0xD8B5,0x14,0x14,6,0x0F05,1,0,0));
@@ -170,12 +181,28 @@ int main(){
   assert(text.find("phase=33 entered=1")!=std::string::npos && text.find("phase=0 entered=1")!=std::string::npos);
  }
  assert(!encryptedProbeBusy());
- reset();discoveryReplies=false;assert(!encryptedProbeRun(0)&&txs==0&&queries==6&&!pairedActive&&currentPan==0xA3D8);
- reset();discoveryAfter=4;assert(encryptedProbeRun(0)&&queries==24&&txs==28);
+ reset();discoveryReplies=false;assert(!encryptedProbeRun(0)&&txs==4&&queries==8&&bootstraps==1&&!pairedActive&&currentPan==0xA3D8);
+ reset();discoveryAfter=4;assert(encryptedProbeRun(0)&&queries==22&&txs==28&&bootstraps==1);
  assert(encryptedCapture.phases[2].entered);
- reset();conflicting=true;assert(!encryptedProbeRun(0)&&txs==0);
+ reset();conflicting=true;assert(!encryptedProbeRun(0)&&txs==4&&bootstraps==0);
  reset();txAck=false;assert(encryptedProbeRun(0)&&txs==28); // no ACK is an outcome, not suite failure
  assert(!encryptedCapture.phases[5].txOk[0]);
+ // Regression: a target silent until normal pairing's serial bootstrap must
+ // enter the full combined investigation in this same run.
+ reset();needsBootstrap=true;assert(encryptedProbeRun(0)&&bootstraps==1&&controls==8);
+ assert(encryptedCapture.phases[0].foundSource==0 && encryptedCapture.phases[2].foundSource==0xD8B5);
+ assert(encryptedCapture.phases[1].txLength[0]==17 && encryptedCapture.phases[1].tx[0][6]==0xFF && encryptedCapture.phases[1].tx[0][7]==0xFF);
+ assert(encryptedCapture.phases[3].asdus==2 && encryptedCapture.phases[33].asdus==2);
+ assert(encryptedCapture.phases[3].started<encryptedCapture.phases[0].started);
+ reset();operatingOnly=true;assert(encryptedProbeRun(0)&&bootstraps==0&&controls==0);
+ assert(encryptedCapture.operatingSource==0x4567 && encryptedCapture.phases[32].entered && !encryptedCapture.phases[4].entered);
+ reset();operatingOnly=true;discoveryAfter=4;assert(encryptedProbeRun(0)&&bootstraps==1&&controls==0);
+ assert(encryptedCapture.phases[9].foundSource==0 && encryptedCapture.phases[37].foundSource==0x4567);
+ assert(encryptedCapture.phases[32].entered && !encryptedCapture.phases[10].entered);
+ reset();needsBootstrap=true;bootstrapOk=false;assert(!encryptedProbeRun(0)&&bootstraps==1&&controls==0&&queries==4);
+ assert(encryptedCapture.phases[33].asdus==2 && !pairedActive && currentPan==0xA3D8);
+ reset();discoveryReplies=false;assert(!encryptedProbeRun(0)&&controls==0&&bootstraps==1);
+ assert(encryptedCapture.phases[3].asdus==2 && encryptedCapture.phases[33].asdus==2 && !encryptedCapture.phases[10].entered);
  reset();flightRecorderEnabled=false;assert(!encryptedProbeRun(0)&&!txs&&!queries);
  reset();assert(!encryptedProbeRun(1)&&!txs&&!queries);assert(!encryptedProbeRun(-1));
  reset();panOk=false;assert(!encryptedProbeRun(0)&&!encryptedCapture.restored&&!pairedActive);

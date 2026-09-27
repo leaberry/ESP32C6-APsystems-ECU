@@ -5,7 +5,7 @@
 #include <string.h>
 
 // A staged pairing investigation. This state never becomes a saved radio peer.
-constexpr uint8_t PROBE_PHASES = 37;
+constexpr uint8_t PROBE_PHASES = 38;
 struct ProbePacket {
   uint32_t ms;
   uint16_t pan, source;
@@ -23,7 +23,7 @@ struct ProbePhase {
   bool entered, broadcast;
   uint16_t foundSource;
   uint16_t pan, source;
-  uint8_t mode; // 0 plain; 1 UID/nonce; 2 UID/A1; 3 A1; 4 UID/A0; 5 A0; 6 discovery; 7 plaintext BB; 8 prepare; 9 directed PAN; 10 commit; 11 native AES BB; 12 A1 AES BB
+  uint8_t mode; // 0 plain; 1 UID/nonce; 2 UID/A1; 3 A1; 4 UID/A0; 5 A0; 6 discovery; 7 plaintext BB; 8 prepare; 9 directed PAN; 10 commit; 11 native AES BB; 12 A1 AES BB; 13 bootstrap FFFF
   uint32_t started, rx, related, asdus;
   uint8_t sent, txLength[2], tx[2][32];
   bool txOk[2];

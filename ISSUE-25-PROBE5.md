@@ -1,8 +1,21 @@
 # DS3-H assignment and encrypted communication investigation
 
-Superseded by [probe5 startup correction](ISSUE-25-PROBE5.md).
+Version: `ESP32C6-ECU_v1_4_16-probe5`. This supersedes probe4.
 
-Version: `ESP32C6-ECU_v1_4_16-probe4`. This supersedes probe3.
+## Startup correction
+
+Probe4 stopped before the main tests because it assumed the target already
+answered discovery on FFFF. Probe5 first records a working-inverter firmware
+control and queries the target on both FFFF and the operating network. If
+neither yields a matching target, it sends the existing normal-pairing initial
+020D command requesting FFFF, addressed by serial, then repeats discovery.
+Pre-command and post-command evidence have separate phase records. An already
+operating target skips assignments and goes directly to communication tests.
+A final working-inverter control runs even when the investigation fails.
+
+No cached short address is used to bootstrap. An unavailable target still stops
+the main tests, but its failed discovery no longer suppresses all radio controls.
+The initial command is a candidate missing prerequisite, not a proven pairing fix.
 
 ## What one run should answer
 
@@ -51,8 +64,7 @@ APS clusters. The C6's established sequence uses 020D, 020C, 010F, and 0101.
 This run therefore labels the following as hypotheses, not confirmed mappings:
 
 - Existing 010F prepare followed by three 0101 commits, now with observations
-  between prepare and commit and after settling. Fresh FFFF discovery avoids
-  an unnecessary initial reset-to-FFFF command.
+  between prepare and commit and after settling. The initial request to FFFF is sent only if both initial target discovery checks fail.
 - The existing directed 020D payload with its requested PAN set to the configured
   operating PAN, sent on FFFF. This tests the separate directed-set path suggested
   by the original host, first without commit, then with the same commit candidate.
@@ -65,16 +77,17 @@ later state; a later success needs a focused reproduction before a production fi
 
 | Phases | Purpose |
 | --- | --- |
-| 0-2 | Up to three two-query windows for a fresh FFFF serial/address |
-| 3 | Working plaintext inverter firmware control, when available |
+| 3 | Initial working plaintext inverter firmware control, when available |
+| 0 / 9 | Initial target discovery on FFFF / operating network |
+| 1 / 2 | If missing on both: serial-addressed 020D request to FFFF, then FFFF discovery |
+| 37 | Operating-network recheck if still missing after the initial command |
 | 4-8 | Target DC firmware controls around direct/broadcast plaintext BB power queries |
-| 9 | Operating-network discovery before any assignment |
 | 10-13 | Prepare candidate, FFFF and operating discovery, FFFF DC control |
 | 14-19 | First commit plus two repeats, ten-second settle, both networks, DC/BB controls |
 | 20-24 | Directed operating-PAN candidate, both networks, DC/BB controls |
 | 25-30 | Commit candidate after directed PAN, settle, both networks, DC/BB controls |
 | 31/32/34/35/36 | If operating discovery succeeded: plaintext DC/BB, native encrypted DC/BB, A1 encrypted BB |
-| 33 | Final known working inverter firmware control, when the suite has no error |
+| 33 | Final known working inverter firmware control, including failed investigations |
 
 Two application/discovery requests per phase; network-changing candidates are
 sent once, except the explicitly logged commit repetitions. Fresh discovery on
@@ -86,8 +99,8 @@ setup/transmission error in a pairing command aborts, but NO_ACK on read-only
 queries keeps the receive window open, as the reporter already received replies
 after this error. The ECU radio is restored on every exit path.
 
-There are at most 37 phase slots. Unused phases remain explicitly not-run. A full
-no-migration run takes about 229 seconds plus radio processing; allow ten minutes.
+There are at most 38 phase slots. Unused phases remain explicitly not-run. A full
+no-migration run takes about 229 seconds (241 with the initial FFFF command and rediscovery) plus radio processing; allow ten minutes.
 Raw capture retains first two/latest two related frames per phase and first/latest
 assembled ASDU, with omission counts. Replies never enter production telemetry
 or peer storage. Logs stream from RAM and cannot be replaced while downloading.
@@ -106,3 +119,13 @@ or peer storage. Logs stream from RAM and cannot be replaced while downloading.
 
 The test does not automatically persist experimental pairing. Actual hardware
 behavior remains unverified until the reporter returns the capture.
+
+## Regression coverage
+
+Host tests execute the production sequence with a device that stays silent until
+the initial serial-addressed command, a target present only on the operating
+network, permanent target silence, initial-command TX failure, conflicting
+identities, missing MAC ACKs, and each later migration point. Both control
+captures remain available after target failure. Existing polling/reassembly
+isolation and streamed download tests are retained. Capture RAM is bounded at
+49,120 bytes on the host (under the 50,000-byte compile-time limit).

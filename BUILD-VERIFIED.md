@@ -1,5 +1,16 @@
 # Build and hardware verification
 
+## Issue #25: discovery startup correction (2026-09-27)
+
+`ESP32C6-ECU_v1_4_16-probe5` tests a working inverter before target discovery,
+checks both PANs independently, and captures normal pairing's initial 020D/FFFF
+command if the target is absent on both. A target already on the operating
+network bypasses assignments. The final working-inverter control is attempted
+even after failure. Tests cover silence until bootstrap, permanent silence,
+operating-only presence, bootstrap failure, conflict, and capture/restoration.
+The capture is 49,120 bytes on the host, under a compile-time 50,000-byte bound.
+Hardware validation is pending; see [current instructions](ISSUE-25-PROBE5.md).
+
 ## Issue #25: staged assignment/commit investigation (2026-09-27)
 
 `ESP32C6-ECU_v1_4_16-probe4` retains plaintext telemetry controls and adds

@@ -111,19 +111,20 @@ static bool encryptedProbeDiscovery(uint8_t phase, int which, uint16_t pan) {
 // translation of its modem opcode. No arbitrary opcodes/channels are accepted.
 static bool probeAssignment(uint8_t phase, int which, uint16_t source,
                             uint8_t mode, uint8_t repeats, bool settle) {
-  if(mode<8 || mode>10 || repeats<1 || repeats>2) return false;
+  if((mode<8 || (mode>10 && mode!=13)) || repeats<1 || repeats>2) return false;
   uint8_t ecu[6], uid[6], payload[17]; char serial[13], hex[35]={}, cmd[120];
   ECU_REVERSE().toCharArray(serial,sizeof(serial));
   if(!apsSerialToBcd(serial,ecu) || !pairSerialBytes(Inv_Prop[which].invSerial,uid)) return false;
   size_t n=mode==10?6:17;
   if(mode==10) memcpy(payload,ecu,6);
   else {
-    memcpy(payload,uid,6); payload[6]=zbOperationalPan>>8; payload[7]=zbOperationalPan;
+    uint16_t requested=mode==13?0xFFFF:zbOperationalPan;
+    memcpy(payload,uid,6); payload[6]=requested>>8; payload[7]=requested;
     payload[8]=0x10; payload[9]=payload[10]=0xFF; memcpy(payload+11,ecu,6);
   }
   for(size_t i=0;i<n;++i) snprintf(hex+2*i,sizeof(hex)-2*i,"%02X",payload[i]);
-  const char *cluster=mode==8?"0F01":mode==9?"0D02":"0101";
-  const unsigned sequence=mode==8?2:mode==9?0:3;
+  const char *cluster=mode==8?"0F01":(mode==9 || mode==13)?"0D02":"0101";
+  const unsigned sequence=mode==8?2:(mode==9 || mode==13)?0:3;
   snprintf(cmd,sizeof(cmd),"24020FFFFFFFFFFFFFFFFF14FFFF14%s%02X000F%02X00%s",cluster,sequence,(unsigned)n,hex);
   encryptedProbeStage(phase,0xFFFF,source,mode);
   portENTER_CRITICAL(&encryptedProbeMux);
@@ -171,14 +172,6 @@ bool encryptedProbeRun(int which) {
   portEXIT_CRITICAL(&encryptedProbeMux);
   bool ok=rawRadioSetPromiscuous(false);
   uint16_t target=0; bool conflict=false;
-  // Up to three separately logged discovery windows; never use a cached peer.
-  for(uint8_t attempt=0;attempt<3 && ok && !target && !conflict;++attempt) {
-    ok=encryptedProbeDiscovery(attempt,which,0xFFFF);
-    portENTER_CRITICAL(&encryptedProbeMux);
-    target=encryptedCapture.discovered; conflict=encryptedCapture.conflict;
-    portEXIT_CRITICAL(&encryptedProbeMux);
-  }
-  ok=ok && pairValidAddress(target) && !conflict;
   int control=-1; uint16_t controlPan=0,controlSource=0;
   for(int i=0;i<inverterCount;++i) {
     if(i!=which && !apsInverterUsesEncryption(i) && strcmp(Inv_Prop[i].invID,"0000") &&
@@ -186,15 +179,33 @@ bool encryptedProbeRun(int which) {
        controlPan && controlPan!=0xFFFF && pairValidAddress(controlSource)) {control=i;break;}
   }
   if(ok && control>=0) ok=encryptedProbeInfoPhase(3,control,controlPan,controlSource,0,false);
-  // Bracket each telemetry experiment with the plaintext DC query already
-  // observed working. A missing MAC ACK never suppresses the receive window.
-  if(ok) ok=encryptedProbeInfoPhase(4,which,0xFFFF,target,0,false);
-  if(ok) ok=encryptedProbeInfoPhase(5,which,0xFFFF,target,7,false);
-  if(ok) ok=encryptedProbeInfoPhase(6,which,0xFFFF,target,0,false);
-  if(ok) ok=encryptedProbeInfoPhase(7,which,0xFFFF,target,7,true);
-  if(ok) ok=encryptedProbeInfoPhase(8,which,0xFFFF,target,0,false);
-  // Check for an already-operating target before any network-changing command.
-  if(ok) ok=encryptedProbeDiscovery(9,which,zbOperationalPan);
+  // Establish radio evidence even when the target is absent. Never gate the
+  // working-inverter control or operating-network discovery on FFFF replies.
+  if(ok) ok=encryptedProbeDiscovery(0,which,0xFFFF);
+  if(ok && !probeOperatingSeen()) ok=encryptedProbeDiscovery(9,which,zbOperationalPan);
+  target=probeFound(0);
+  if(ok && !target && !probeOperatingSeen()) {
+    // Normal pairing's first serial-addressed command requests FFFF. It needs
+    // no guessed short address and is separately captured from discovery.
+    ok=probeAssignment(1,which,0,13,1,false);
+    if(ok) ok=encryptedProbeDiscovery(2,which,0xFFFF);
+    target=probeFound(2);
+    // A device may already be on the operating network despite a missed query.
+    if(ok && !target && !probeOperatingSeen()) ok=encryptedProbeDiscovery(37,which,zbOperationalPan);
+  }
+  portENTER_CRITICAL(&encryptedProbeMux);
+  conflict=encryptedCapture.conflict;
+  bool operatingInitially=encryptedCapture.operatingSource!=0;
+  portEXIT_CRITICAL(&encryptedProbeMux);
+  ok=ok && !conflict && (pairValidAddress(target) || operatingInitially);
+  // Do not send discovery-network requests to an already-operating inverter.
+  if(ok && !operatingInitially) {
+    ok=encryptedProbeInfoPhase(4,which,0xFFFF,target,0,false);
+    if(ok) ok=encryptedProbeInfoPhase(5,which,0xFFFF,target,7,false);
+    if(ok) ok=encryptedProbeInfoPhase(6,which,0xFFFF,target,0,false);
+    if(ok) ok=encryptedProbeInfoPhase(7,which,0xFFFF,target,7,true);
+    if(ok) ok=encryptedProbeInfoPhase(8,which,0xFFFF,target,0,false);
+  }
   if(ok && !probeOperatingSeen()) {
     ok=probeAssignment(10,which,target,8,1,false); // established prepare candidate
     if(ok) ok=encryptedProbeDiscovery(11,which,0xFFFF);
@@ -249,7 +260,11 @@ bool encryptedProbeRun(int which) {
     if(ok) ok=encryptedProbeInfoPhase(35,which,zbOperationalPan,operating,11,false);
     if(ok) ok=encryptedProbeInfoPhase(36,which,zbOperationalPan,operating,12,false);
   }
-  if(ok && control>=0) ok=encryptedProbeInfoPhase(33,control,controlPan,controlSource,0,false);
+  // Run the final control even after a missing target, conflicting replies or
+  // command error. Keep the earlier failure visible in the final status.
+  bool finalControl=true;
+  if(control>=0) finalControl=encryptedProbeInfoPhase(33,control,controlPan,controlSource,0,false);
+  ok=ok && finalControl;
   // Keep the capture/routing guard alive through restoration and queue clearing.
   bool restored=apsUsePairingPan(false) && rawRadioSetPromiscuous(false);
   empty_serial2();
@@ -297,8 +312,8 @@ static size_t encryptedProbeLogLine(size_t index, char *line, size_t cap) {
   if(index==1) return snprintf(line,cap,"started=%lu ended=%lu finished=%u restored=%u discovered=%04X operating_source=%04X conflict=%u\n",
     (unsigned long)encryptedCapture.started,(unsigned long)encryptedCapture.ended,
     encryptedCapture.finished,encryptedCapture.restored,encryptedCapture.discovered,encryptedCapture.operatingSource,encryptedCapture.conflict);
-  if(index==2) return snprintf(line,cap,"Modes: 0=DC plain, 1=DC native AES, 6=discovery, 7=BB plain, 8=prepare 010F, 9=directed PAN 020D, 10=commit 0101, 11=BB native AES, 12=BB UID/A1 AES. TX error 3=no MAC ACK, not proven non-delivery.\n");
-  if(index==3) return snprintf(line,cap,"Phases: 0-2=initial discovery; 3/33=control DC; 4/6/8=baseline DC; 5/7=baseline BB direct/broadcast; 9=baseline operating discovery; 10=prepare; 11/12=FFFF/operating discovery; 13=DC; 14/15=commit/repeats; 16/17=operating/FFFF discovery; 18/19=DC/BB; 20=directed PAN; 21/22=operating/FFFF discovery; 23/24=DC/BB; 25/26=commit/repeats; 27/28=operating/FFFF discovery; 29/30=DC/BB; 31/32/34/35/36=operating DC/BB/native DC/native BB/A1 BB. Assignment stops on operating discovery; phases may be skipped.\n");
+  if(index==2) return snprintf(line,cap,"Modes: 0=DC plain, 1=DC native AES, 6=discovery, 7=BB plain, 8=prepare 010F, 9=directed PAN 020D, 10=commit 0101, 11=BB native AES, 12=BB UID/A1 AES, 13=bootstrap 020D to FFFF. TX error 3=no MAC ACK, not proven non-delivery.\n");
+  if(index==3) return snprintf(line,cap,"Phases: 3/33=before/after control DC; 0=initial FFFF discovery; 9=initial operating discovery; 1=bootstrap FFFF; 2=post-bootstrap FFFF discovery; 37=post-bootstrap operating discovery; 4/6/8=baseline DC; 5/7=baseline BB direct/broadcast; 10=prepare; 11/12=FFFF/operating discovery; 13=DC; 14/15=commit/repeats; 16/17=operating/FFFF discovery; 18/19=DC/BB; 20=directed PAN; 21/22=operating/FFFF discovery; 23/24=DC/BB; 25/26=commit/repeats; 27/28=operating/FFFF discovery; 29/30=DC/BB; 31/32/34/35/36=operating DC/BB/native DC/native BB/A1 BB. Assignment stops on operating discovery; phases may be skipped.\n");
   if(index==4) return snprintf(line,cap,"Raw retains first two/latest two; ASDU first/latest. Times are milliseconds from start; use timestamps, samples are not sorted. TX is ASDU only; mode 6 cluster=020C, modes 0/1/7/11/12 cluster=0006; profile=0F05 endpoints=14. Commands are hypotheses, not proven modem translations. No telemetry is published.\n");
   index-=5; size_t phase=index/9, row=index%9;
   if(phase>=PROBE_PHASES) return 0;
