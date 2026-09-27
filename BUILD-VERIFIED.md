@@ -1,5 +1,15 @@
 # Build and hardware verification
 
+## Issue #25: staged assignment/commit investigation (2026-09-27)
+
+`ESP32C6-ECU_v1_4_16-probe4` retains plaintext telemetry controls and adds
+staged prepare, commit, and directed-PAN candidates. Fresh operating-network
+discovery stops writes and enables plaintext/native/A1 read tests. Host checks
+cover each migration point, changed addresses, no-ACK continuation, conflicting
+sources, lost contact, TX failures, paired-target rejection, restoration, and
+bounded streamed capture. Hardware outcomes are not established by these tests.
+See [reporter instructions and evidence](ISSUE-25-PROBE4.md).
+
 ## Issue #25: plaintext telemetry probes (2026-09-26)
 
 `ESP32C6-ECU_v1_4_16-probe3` replaces the encryption matrix with known DC

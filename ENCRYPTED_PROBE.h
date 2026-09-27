@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <string.h>
 
-// A read-only firmware/telemetry query suite. This state never becomes a saved radio peer.
-constexpr uint8_t PROBE_PHASES = 13;
+// A staged pairing investigation. This state never becomes a saved radio peer.
+constexpr uint8_t PROBE_PHASES = 37;
 struct ProbePacket {
   uint32_t ms;
   uint16_t pan, source;
@@ -21,26 +21,27 @@ struct ProbeAsdu {
 };
 struct ProbePhase {
   bool entered, broadcast;
+  uint16_t foundSource;
   uint16_t pan, source;
-  uint8_t mode; // 0 plain; 1 UID/nonce; 2 UID/A1; 3 A1; 4 UID/A0; 5 A0; 6 discovery; 7 plaintext BB telemetry
+  uint8_t mode; // 0 plain; 1 UID/nonce; 2 UID/A1; 3 A1; 4 UID/A0; 5 A0; 6 discovery; 7 plaintext BB; 8 prepare; 9 directed PAN; 10 commit; 11 native AES BB; 12 A1 AES BB
   uint32_t started, rx, related, asdus;
-  uint8_t sent, txLength[2], tx[2][64];
+  uint8_t sent, txLength[2], tx[2][32];
   bool txOk[2];
   int txError[2];
   uint32_t txMs[2];
-  ProbePacket packets[6]; // first three and latest three, not sorted
+  ProbePacket packets[4]; // first two and latest two, not sorted
   ProbeAsdu answers[2]; // first and latest
 };
 struct ProbeCapture {
   bool active = false, finished = false, restored = false;
   uint8_t phase = 0, target[6] = {};
-  uint16_t discovered = 0;
+  uint16_t discovered = 0, operatingSource = 0;
   bool conflict = false;
   uint32_t started = 0, ended = 0;
   ProbePhase phases[PROBE_PHASES] = {};
   void begin(const uint8_t uid[6], uint32_t now) {
     memset(phases, 0, sizeof(phases));
-    memcpy(target, uid, 6); phase = 0; discovered = 0; conflict = false;
+    memcpy(target, uid, 6); phase = 0; discovered = operatingSource = 0; conflict = false;
     active = true; finished = restored = false; started = now; ended = 0;
   }
   void stage(uint8_t index, uint16_t pan, uint16_t source, uint8_t mode, uint32_t now) {
@@ -62,9 +63,11 @@ struct ProbeCapture {
     auto &p = phases[phase]; ++p.rx;
     PairReply reply;
     if (p.mode == 6 && decodePairReply(b,n,target,reply) &&
-        !reply.announcement && reply.pan == 0xFFFF) {
-      if (discovered && discovered != reply.source) conflict = true;
-      discovered = reply.source;
+        !reply.announcement && reply.pan == p.pan) {
+      if (p.foundSource && p.foundSource != reply.source) conflict = true;
+      p.foundSource = reply.source;
+      if (p.pan == 0xFFFF) discovered = reply.source;
+      else operatingSource = reply.source;
     }
     bool related = n >= 18 && p.source &&
         (pairLe16(b+8) == p.source || pairLe16(b+14) == p.source);
@@ -72,7 +75,7 @@ struct ProbeCapture {
       related = memcmp(b+i,target,6) == 0;
     if (!related) return;
     uint32_t index = p.related++;
-    auto &s = p.packets[index < 3 ? index : 3+index%3];
+    auto &s = p.packets[index < 2 ? index : 2+index%2];
     memset(&s,0,sizeof(s)); s.ms=now-started; s.length=n<128?n:128;
     s.rssi=rssi; s.lqi=lqi;
     if (n>=18) { s.pan=pairLe16(b+4); s.source=pairLe16(b+14); }
@@ -95,3 +98,5 @@ inline bool probePlainInfo(const uint8_t ecu[6], uint8_t *out, size_t cap, size_
   if (!ecu || !out || !len || cap<6+sizeof(dc)) return false;
   memcpy(out,ecu,6); memcpy(out+6,dc,sizeof(dc)); *len=6+sizeof(dc); return true;
 }
+
+static_assert(sizeof(ProbeCapture) <= 50000, "Keep diagnostic RAM bounded");

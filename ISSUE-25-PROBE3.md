@@ -1,5 +1,7 @@
 # DS3-H plaintext telemetry test
 
+Superseded by the [combined pairing investigation](ISSUE-25-PROBE4.md).
+
 Version: `ESP32C6-ECU_v1_4_16-probe3`. Experimental; pairing is not fixed.
 
 The previous test received two valid plaintext firmware replies (5.354) from

@@ -7,8 +7,8 @@ void handlePair(AsyncWebServerRequest *request) {
     return;
   }
   const bool probe=request->hasParam("probe");
-  if(probe && (!flightRecorderEnabled || !apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial))) {
-    request->send(400,"text/plain","Save an encrypted inverter serial and enable the flight recorder first."); return;
+  if(probe && (strcmp(Inv_Prop[iKeuze].invID,"0000") || !flightRecorderEnabled || !apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial))) {
+    request->send(400,"text/plain","Select an unpaired encrypted inverter and enable the flight recorder first."); return;
   }
   if(probe && encryptedProbeBusy()) {
     request->send(409,"text/plain","Wait for the previous test or log download to finish."); return;
@@ -23,7 +23,7 @@ void handlePair(AsyncWebServerRequest *request) {
   page.replace("{#}", String(iKeuze));
   if(probe) {
     page.replace("Pairing inverter", "Testing inverter");
-    page.replace("Listening for the inverter...", "Running read-only communication tests...");
+    page.replace("Listening for the inverter...", "Testing assignment, commit, and telemetry. Allow ten minutes...");
   }
   request->send(200, "text/html", page);
 }
@@ -34,7 +34,7 @@ void pairOnActionflag() {
   if(pendingEncryptedProbe) {
     success=which>=0 && which<inverterCount && coordinator(false) && encryptedProbeRun(which);
     lastPairSucceeded=success;
-    consoleOut(success ? "diagnostic suite completed; pairing unchanged" : "diagnostic suite incomplete; download test log");
+    consoleOut(success ? "diagnostic suite completed; no local pairing saved" : "diagnostic suite incomplete; download test log");
     pendingEncryptedProbe=false; pendingPairInverter=-1; return;
   }
   if (which >= 0 && which < inverterCount) {

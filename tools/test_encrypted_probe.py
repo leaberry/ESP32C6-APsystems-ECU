@@ -43,7 +43,8 @@ int inverterCount=2,pendingPairInverter=-1;
 uint32_t now=100,panChanges=0;
 uint16_t zbOperationalPan=0xA3D8,currentPan=0xA3D8;
 bool flightRecorderEnabled=true,pairedActive=false,discoveryReplies=true,conflicting=false,txAck=true,panOk=true;
-int txs=0,queries=0,discoveryAfter=0;
+int txs=0,queries=0,discoveryAfter=0,controls=0,migrateAt=-1,failControl=-1;
+bool lostAfterPrepare=false,baselineOperating=false;
 uint8_t rawMacSequence=0,rawNwkSequence=0,rawApsCounter=0,rawExtendedAddress[8]={};int rawTxFailure=3;
 uint32_t millis(){return now;}
 String ECU_REVERSE(){return "80971B01A3D8";}
@@ -80,9 +81,22 @@ code+=(root/'ENCRYPTED_PROBE.ino').read_text()
 code+=r'''
 std::vector<uint8_t> unhex(const char* s){std::vector<uint8_t> b;for(size_t i=0;i<strlen(s);i+=2)b.push_back(std::stoul(std::string(s+i,2),nullptr,16));return b;}
 bool sendZB(char command[]){
+ if(!strstr(command,"0C0201000F0600")) {
+   ++controls;
+   assert(currentPan==0xFFFF);
+   assert(!strcmp(command,"24020FFFFFFFFFFFFFFFFF14FFFF140F0102000F1100725000000001A3D810FFFF80971B01A3D8") ||
+          !strcmp(command,"24020FFFFFFFFFFFFFFFFF14FFFF140D0200000F1100725000000001A3D810FFFF80971B01A3D8") ||
+          !strcmp(command,"24020FFFFFFFFFFFFFFFFF14FFFF14010103000F060080971B01A3D8"));
+   return controls!=failControl;
+ }
  ++queries;assert(strstr(command,"0C0201000F0600725000000001"));
- if(discoveryReplies && queries>discoveryAfter){
+ bool moved=migrateAt>=0 && controls>=migrateAt;
+ bool reachable=currentPan==(moved?0xA3D8:0xFFFF) || (baselineOperating && currentPan==0xA3D8);
+ if(lostAfterPrepare && controls>0) reachable=false;
+ if(discoveryReplies && queries>discoveryAfter && reachable){
   auto b=unhex("28618872FFFF0000B5D848000000B5D80F2100140101050F1400FF0E72500000000100B8200000B50B");
+  b[4]=currentPan; b[5]=currentPan>>8;
+  if(moved || (baselineOperating && currentPan==0xA3D8)) {b[8]=b[14]=0x67;b[9]=b[15]=0x45;}
   encryptedProbeObserve(b.data(),b.size(),now,-65,10);
   if(conflicting){b[8]=b[14]=0xB6;encryptedProbeObserve(b.data(),b.size(),now,-65,10);}
  }
@@ -96,10 +110,10 @@ bool radioTransmit(const uint8_t* f,size_t n,bool cca,const char* reason){
  assert(pairLe16(f+27)==6 && pairLe16(f+29)==0x0F05 && f[31]==0x14);
  return txAck;
 }
-void delay(unsigned ms){assert(ms==3500 || ms==6000);now+=ms;}
+void delay(unsigned ms){assert(ms==3500 || ms==6000 || ms==1000 || ms==5000 || ms==10000);now+=ms;}
 void reset(){
  assert(!encryptedProbeReaders);txs=queries=panChanges=0;now=100;flightRecorderEnabled=discoveryReplies=txAck=panOk=true;
- discoveryAfter=0;conflicting=false;currentPan=0xA3D8;pairedActive=false;
+ discoveryAfter=controls=0;migrateAt=failControl=-1;lostAfterPrepare=baselineOperating=false;conflicting=false;currentPan=0xA3D8;pairedActive=false;
 }
 int main(){
  assert(sendApsAck(0xFFFF,0xD8B5,0xD8B5,0x14,0x14,6,0x0F05,1,0,0));
@@ -131,43 +145,73 @@ int main(){
  assert(!encryptedProbePayload(0,7,out,18,&n));
  assert(!encryptedProbePayload(0,6,out,sizeof(out),&n));
  assert(!encryptedProbePayload(0,2,out,4,&n));
- reset();assert(encryptedProbeRun(0));assert(txs==18&&queries==4&&now==92100);
+ reset();assert(encryptedProbeRun(0));
+ assert(controls==8 && queries==20 && txs==28 && now<300100);
  assert(currentPan==0xA3D8&&!pairedActive&&!strcmp(Inv_Prop[0].invID,"0000"));
- assert(encryptedCapture.discovered==0xD8B5&&!encryptedCapture.conflict);
- assert(encryptedCapture.phases[0].broadcast&&encryptedCapture.phases[11].broadcast);
- assert(!encryptedCapture.phases[5].broadcast&&encryptedCapture.phases[7].broadcast);
- for(int phase=3;phase<13;++phase) {
-  if(phase==11)continue;
-  const auto &p=encryptedCapture.phases[phase];
-  bool telemetry=phase==5||phase==7||phase==9;
-  assert(p.mode==(telemetry?7:0));
-  assert(p.broadcast==(phase==7));
-  assert(p.pan==((phase==3||phase==9||phase==12)?0xA3D8:0xFFFF));
-  assert(p.source==((phase==3||phase==12)?0x1234:0xD8B5));
+ assert(encryptedCapture.discovered==0xD8B5&&!encryptedCapture.conflict && !encryptedCapture.operatingSource);
+ assert(!encryptedCapture.phases[1].entered&&!encryptedCapture.phases[2].entered);
+ assert(!encryptedCapture.phases[31].entered && encryptedCapture.phases[33].entered);
+ for(int phase:{3,4,5,6,7,8,13,18,19,23,24,29,30,33}) {
+  const auto &p=encryptedCapture.phases[phase]; bool telemetry=phase==5||phase==7||phase==19||phase==24||phase==30;
+  assert(p.entered && p.mode==(telemetry?7:0)); assert(p.broadcast==(phase==7));
+  assert(p.pan==((phase==3||phase==33)?0xA3D8:0xFFFF));
   for(int request=0;request<2;++request) {
-    assert(p.txLength[request]==19);
-    assert(p.tx[request][9]==(telemetry?0xBB:0xDC));
-    assert(p.tx[request][16]==(telemetry?0xC1:0xE2));
+   assert(p.txLength[request]==19 && p.tx[request][9]==(telemetry?0xBB:0xDC));
+   assert(p.tx[request][16]==(telemetry?0xC1:0xE2));
   }
   assert(p.txMs[1]-p.txMs[0]==(telemetry?6000:3500));
  }
- for(int i=3;i<13;++i)assert(encryptedCapture.phases[i].entered&&encryptedCapture.phases[i].sent==2);
- assert(!encryptedCapture.phases[1].entered&&!encryptedCapture.phases[2].entered);
+ for(int phase:{10,14,15,20,25,26}) assert(encryptedCapture.phases[phase].entered);
+ assert(encryptedCapture.phases[10].txLength[0]==17 && encryptedCapture.phases[20].txLength[0]==17);
+ assert(encryptedCapture.phases[14].sent==1 && encryptedCapture.phases[15].sent==2);
  {AsyncWebServerRequest request; encryptedProbeDownload(&request);assert(request.status==200&&encryptedProbeBusy());
   assert(!encryptedProbeRun(0));std::string text;uint8_t b[7];size_t read;
   while((read=request.response->callback(b,sizeof(b),text.size())))text.append((char*)b,read);
-  assert(text.find("phase=12 entered=1")!=std::string::npos && text.find("phase=0 entered=1")!=std::string::npos);
+  assert(text.find("phase=33 entered=1")!=std::string::npos && text.find("phase=0 entered=1")!=std::string::npos);
  }
  assert(!encryptedProbeBusy());
  reset();discoveryReplies=false;assert(!encryptedProbeRun(0)&&txs==0&&queries==6&&!pairedActive&&currentPan==0xA3D8);
- reset();discoveryAfter=4;assert(encryptedProbeRun(0)&&queries==8&&txs==18);
+ reset();discoveryAfter=4;assert(encryptedProbeRun(0)&&queries==24&&txs==28);
  assert(encryptedCapture.phases[2].entered);
  reset();conflicting=true;assert(!encryptedProbeRun(0)&&txs==0);
- reset();txAck=false;assert(encryptedProbeRun(0)&&txs==18); // no ACK is an outcome, not suite failure
+ reset();txAck=false;assert(encryptedProbeRun(0)&&txs==28); // no ACK is an outcome, not suite failure
  assert(!encryptedCapture.phases[5].txOk[0]);
  reset();flightRecorderEnabled=false;assert(!encryptedProbeRun(0)&&!txs&&!queries);
  reset();assert(!encryptedProbeRun(1)&&!txs&&!queries);assert(!encryptedProbeRun(-1));
  reset();panOk=false;assert(!encryptedProbeRun(0)&&!encryptedCapture.restored&&!pairedActive);
+ // Migration after prepare, after its commit, after directed assignment, or
+ // after its commit must stop all subsequent writes, use the new address, and
+ // run plaintext/native/A1 telemetry tests without persisting pairing.
+ for(int step:{1,4,5,8}) {
+   reset();migrateAt=step;assert(encryptedProbeRun(0));assert(controls==step);
+   assert(encryptedCapture.operatingSource==0x4567);
+   for(int phase:{31,32,34,35,36}) {
+     assert(encryptedCapture.phases[phase].entered && encryptedCapture.phases[phase].source==0x4567);
+     assert(encryptedCapture.phases[phase].pan==0xA3D8);
+   }
+   assert(!strcmp(Inv_Prop[0].invID,"0000") && Inv_Prop[0].encrypted);
+ }
+ reset();baselineOperating=true;assert(encryptedProbeRun(0)&&controls==0&&encryptedCapture.operatingSource==0x4567);
+ reset();failControl=2;assert(!encryptedProbeRun(0)&&controls==2&&currentPan==0xA3D8&&!pairedActive);
+ reset();lostAfterPrepare=true;assert(!encryptedProbeRun(0)&&controls==4); // do not start directed trial without fresh FFFF identity
+ reset();strcpy(Inv_Prop[0].invID,"3412");assert(!encryptedProbeRun(0)&&controls==0&&queries==0);strcpy(Inv_Prop[0].invID,"0000");
+ // Prove BB encryption bodies by undoing the reversible crypto test double.
+ for(int mode:{11,12}) {
+   assert(encryptedProbePayload(0,mode,out,sizeof(out),&n));
+   size_t offset=mode==11?12:13;
+   assert(n==offset+16);
+   uint8_t clear[16];for(size_t i=0;i<16;++i)clear[i]=out[offset+i]^lastKey[i];
+   assert(clear[0]==13 && !memcmp(clear+1,unhex("FBFB06BB000000000000C1FEFE").data(),13));
+ }
+ // Cross-network discovery is rejected, and two sources in an operating
+ // discovery window stop the experiment rather than authorize writes.
+ encryptedCapture.begin(uid,100);encryptedCapture.stage(9,0xA3D8,0,6,100);
+ auto discovery=unhex("28618872FFFF0000B5D848000000B5D80F2100140101050F1400FF0E72500000000100B8200000B50B");
+ encryptedProbeObserve(discovery.data(),discovery.size(),101,-60,10);assert(!encryptedCapture.operatingSource);
+ discovery[4]=0xD8;discovery[5]=0xA3;
+ encryptedProbeObserve(discovery.data(),discovery.size(),102,-60,10);assert(encryptedCapture.operatingSource==0xD8B5);
+ discovery[8]=discovery[14]=0xB6;
+ encryptedProbeObserve(discovery.data(),discovery.size(),103,-60,10);assert(probeOperatingSeen()&&!probeFound(9)&&encryptedCapture.conflict);
  // Capture address-matched ciphertext without any visible UID, including fragments.
  encryptedCapture.begin(uid,100);encryptedCapture.stage(2,0xFFFF,0xD8B5,1,100);
  auto raw=unhex("28618872FFFF0000B5D848000000B5D80F2100140101050F1400FF0E72500000000100B8200000B50B");
@@ -185,9 +229,10 @@ int main(){
  {AsyncWebServerRequest request;encryptedProbeDownload(&request);assert(request.status==409);}
  encryptedCapture.active=false;
  // Export maximum-length ASDUs completely, without building a giant String.
- char line[900];size_t len=encryptedProbeLogLine(5+2*11+9,line,sizeof(line));assert(len<sizeof(line));
+ char line[900];size_t len=encryptedProbeLogLine(5+2*9+7,line,sizeof(line));assert(len<sizeof(line));
  assert(strstr(line,"bytes=300 data="));
- puts("PASS plaintext telemetry and read-only probes: exact DC/key/layouts, explicit unicast, fresh/conflicting discovery, bounded capture, no-ACK outcomes, restoration, immutable streamed export");
+ printf("Capture RAM: %zu bytes\n",sizeof(ProbeCapture));
+ puts("PASS staged assignment/commit investigation: exact DC/key/layouts, explicit unicast, fresh/conflicting discovery, bounded capture, no-ACK outcomes, restoration, immutable streamed export");
 }
 '''
 with tempfile.TemporaryDirectory() as d:
