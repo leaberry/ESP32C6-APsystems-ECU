@@ -1,5 +1,7 @@
 # Encrypted inverter read-only test build
 
+Historical probe2 instructions. For the current build, use [probe3](ISSUE-25-PROBE3.md).
+
 Version: `ESP32C6-ECU_v1_4_16-probe2`.
 
 ## Reporter instructions

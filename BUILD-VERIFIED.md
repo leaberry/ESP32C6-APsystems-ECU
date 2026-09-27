@@ -1,5 +1,14 @@
 # Build and hardware verification
 
+## Issue #25: plaintext telemetry probes (2026-09-26)
+
+`ESP32C6-ECU_v1_4_16-probe3` replaces the encryption matrix with known DC
+controls around plaintext BB telemetry requests. Discovery has three bounded
+windows. Tests assert exact production poll bytes, address/PAN selection,
+receive timing, delayed discovery, no-ACK continuation, and streamed capture.
+Both named layouts are checked by the PR workflow with ESP32 core 3.3.8.
+Hardware behavior remains unverified; see [test instructions](ISSUE-25-PROBE3.md).
+
 ## Issue #25: read-only encryption and delivery probes (2026-09-25)
 
 `ESP32C6-ECU_v1_4_16-probe2` provides **Run encrypted tests** separately from

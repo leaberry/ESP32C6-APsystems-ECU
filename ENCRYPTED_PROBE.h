@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <string.h>
 
-// A read-only DC query suite. This state never becomes a saved radio peer.
-constexpr uint8_t PROBE_PHASES = 20;
+// A read-only firmware/telemetry query suite. This state never becomes a saved radio peer.
+constexpr uint8_t PROBE_PHASES = 13;
 struct ProbePacket {
   uint32_t ms;
   uint16_t pan, source;
@@ -22,7 +22,7 @@ struct ProbeAsdu {
 struct ProbePhase {
   bool entered, broadcast;
   uint16_t pan, source;
-  uint8_t mode; // 0 plain; 1 UID/nonce; 2 UID/A1; 3 A1; 4 UID/A0; 5 A0; 6 discovery
+  uint8_t mode; // 0 plain; 1 UID/nonce; 2 UID/A1; 3 A1; 4 UID/A0; 5 A0; 6 discovery; 7 plaintext BB telemetry
   uint32_t started, rx, related, asdus;
   uint8_t sent, txLength[2], tx[2][64];
   bool txOk[2];

@@ -43,7 +43,7 @@ int inverterCount=2,pendingPairInverter=-1;
 uint32_t now=100,panChanges=0;
 uint16_t zbOperationalPan=0xA3D8,currentPan=0xA3D8;
 bool flightRecorderEnabled=true,pairedActive=false,discoveryReplies=true,conflicting=false,txAck=true,panOk=true;
-int txs=0,queries=0;
+int txs=0,queries=0,discoveryAfter=0;
 uint8_t rawMacSequence=0,rawNwkSequence=0,rawApsCounter=0,rawExtendedAddress[8]={};int rawTxFailure=3;
 uint32_t millis(){return now;}
 String ECU_REVERSE(){return "80971B01A3D8";}
@@ -81,7 +81,7 @@ code+=r'''
 std::vector<uint8_t> unhex(const char* s){std::vector<uint8_t> b;for(size_t i=0;i<strlen(s);i+=2)b.push_back(std::stoul(std::string(s+i,2),nullptr,16));return b;}
 bool sendZB(char command[]){
  ++queries;assert(strstr(command,"0C0201000F0600725000000001"));
- if(discoveryReplies){
+ if(discoveryReplies && queries>discoveryAfter){
   auto b=unhex("28618872FFFF0000B5D848000000B5D80F2100140101050F1400FF0E72500000000100B8200000B50B");
   encryptedProbeObserve(b.data(),b.size(),now,-65,10);
   if(conflicting){b[8]=b[14]=0xB6;encryptedProbeObserve(b.data(),b.size(),now,-65,10);}
@@ -96,10 +96,10 @@ bool radioTransmit(const uint8_t* f,size_t n,bool cca,const char* reason){
  assert(pairLe16(f+27)==6 && pairLe16(f+29)==0x0F05 && f[31]==0x14);
  return txAck;
 }
-void delay(unsigned ms){assert(ms==3500);now+=ms;}
+void delay(unsigned ms){assert(ms==3500 || ms==6000);now+=ms;}
 void reset(){
  assert(!encryptedProbeReaders);txs=queries=panChanges=0;now=100;flightRecorderEnabled=discoveryReplies=txAck=panOk=true;
- conflicting=false;currentPan=0xA3D8;pairedActive=false;
+ discoveryAfter=0;conflicting=false;currentPan=0xA3D8;pairedActive=false;
 }
 int main(){
  assert(sendApsAck(0xFFFF,0xD8B5,0xD8B5,0x14,0x14,6,0x0F05,1,0,0));
@@ -126,24 +126,45 @@ int main(){
    wire.insert(wire.end(),nonce,nonce+6);wire.insert(wire.end(),cipher,cipher+32);
    assert(encryptedProbeDecode(uid,wire.data(),wire.size(),version,sizeof(version),&model));
  }
+ assert(encryptedProbePayload(0,7,out,sizeof(out),&n) && n==19);
+ assert(!memcmp(out+6,unhex("FBFB06BB000000000000C1FEFE").data(),13));
+ assert(!encryptedProbePayload(0,7,out,18,&n));
  assert(!encryptedProbePayload(0,6,out,sizeof(out),&n));
  assert(!encryptedProbePayload(0,2,out,4,&n));
- reset();assert(encryptedProbeRun(0));assert(txs==36&&queries==4&&now==140100);
+ reset();assert(encryptedProbeRun(0));assert(txs==18&&queries==4&&now==92100);
  assert(currentPan==0xA3D8&&!pairedActive&&!strcmp(Inv_Prop[0].invID,"0000"));
  assert(encryptedCapture.discovered==0xD8B5&&!encryptedCapture.conflict);
- assert(encryptedCapture.phases[0].broadcast&&encryptedCapture.phases[14].broadcast);
- assert(!encryptedCapture.phases[2].broadcast&&encryptedCapture.phases[16].broadcast);
- for(int i=0;i<20;++i)assert(encryptedCapture.phases[i].entered&&encryptedCapture.phases[i].sent==2);
+ assert(encryptedCapture.phases[0].broadcast&&encryptedCapture.phases[11].broadcast);
+ assert(!encryptedCapture.phases[5].broadcast&&encryptedCapture.phases[7].broadcast);
+ for(int phase=3;phase<13;++phase) {
+  if(phase==11)continue;
+  const auto &p=encryptedCapture.phases[phase];
+  bool telemetry=phase==5||phase==7||phase==9;
+  assert(p.mode==(telemetry?7:0));
+  assert(p.broadcast==(phase==7));
+  assert(p.pan==((phase==3||phase==9||phase==12)?0xA3D8:0xFFFF));
+  assert(p.source==((phase==3||phase==12)?0x1234:0xD8B5));
+  for(int request=0;request<2;++request) {
+    assert(p.txLength[request]==19);
+    assert(p.tx[request][9]==(telemetry?0xBB:0xDC));
+    assert(p.tx[request][16]==(telemetry?0xC1:0xE2));
+  }
+  assert(p.txMs[1]-p.txMs[0]==(telemetry?6000:3500));
+ }
+ for(int i=3;i<13;++i)assert(encryptedCapture.phases[i].entered&&encryptedCapture.phases[i].sent==2);
+ assert(!encryptedCapture.phases[1].entered&&!encryptedCapture.phases[2].entered);
  {AsyncWebServerRequest request; encryptedProbeDownload(&request);assert(request.status==200&&encryptedProbeBusy());
   assert(!encryptedProbeRun(0));std::string text;uint8_t b[7];size_t read;
   while((read=request.response->callback(b,sizeof(b),text.size())))text.append((char*)b,read);
-  assert(text.find("phase=15 entered=1")!=std::string::npos && text.find("phase=0 entered=1")!=std::string::npos);
+  assert(text.find("phase=12 entered=1")!=std::string::npos && text.find("phase=0 entered=1")!=std::string::npos);
  }
  assert(!encryptedProbeBusy());
- reset();discoveryReplies=false;assert(!encryptedProbeRun(0)&&txs==0&&queries==2&&!pairedActive&&currentPan==0xA3D8);
+ reset();discoveryReplies=false;assert(!encryptedProbeRun(0)&&txs==0&&queries==6&&!pairedActive&&currentPan==0xA3D8);
+ reset();discoveryAfter=4;assert(encryptedProbeRun(0)&&queries==8&&txs==18);
+ assert(encryptedCapture.phases[2].entered);
  reset();conflicting=true;assert(!encryptedProbeRun(0)&&txs==0);
- reset();txAck=false;assert(encryptedProbeRun(0)&&txs==36); // no ACK is an outcome, not suite failure
- assert(!encryptedCapture.phases[2].txOk[0]);
+ reset();txAck=false;assert(encryptedProbeRun(0)&&txs==18); // no ACK is an outcome, not suite failure
+ assert(!encryptedCapture.phases[5].txOk[0]);
  reset();flightRecorderEnabled=false;assert(!encryptedProbeRun(0)&&!txs&&!queries);
  reset();assert(!encryptedProbeRun(1)&&!txs&&!queries);assert(!encryptedProbeRun(-1));
  reset();panOk=false;assert(!encryptedProbeRun(0)&&!encryptedCapture.restored&&!pairedActive);
@@ -166,7 +187,7 @@ int main(){
  // Export maximum-length ASDUs completely, without building a giant String.
  char line[900];size_t len=encryptedProbeLogLine(5+2*11+9,line,sizeof(line));assert(len<sizeof(line));
  assert(strstr(line,"bytes=300 data="));
- puts("PASS read-only probes: exact DC/key/layouts, explicit unicast, fresh/conflicting discovery, bounded capture, no-ACK outcomes, restoration, immutable streamed export");
+ puts("PASS plaintext telemetry and read-only probes: exact DC/key/layouts, explicit unicast, fresh/conflicting discovery, bounded capture, no-ACK outcomes, restoration, immutable streamed export");
 }
 '''
 with tempfile.TemporaryDirectory() as d:
