@@ -18,9 +18,12 @@ Version: `ESP32C6-ECU_v1_4_16-pair6`. This is the next test after probe5.
    Let all inverters run for at least three normal polling rounds. Check for
    power readings and confirm the other inverters still update. The first
    reading may show zero power while the ECU learns its starting counters.
-6. Before restarting, download **encrypted test log**, **report**, **poll log**,
-   and **flight recorder** from **Diagnostic snapshot**. Do this even if pairing
-   fails. The encrypted test log now also records the normal pairing attempt.
+6. Before restarting, open `http://YOUR-ECU-IP/diagnostics/encrypted-test` in your
+   browser, replacing `YOUR-ECU-IP` with your ECU's IP address or hostname. Save
+   the **encrypted test log**. This file now also records the normal pairing
+   attempt; there is no button for it on **Diagnostic snapshot** yet. Then open
+   **Diagnostic snapshot** and use **Download report**, **Download poll log**,
+   and **Download flight recorder**. Do this even if pairing fails.
 7. If pairing and polling worked, restart only the ECU. Do not pair again.
    Check that the DS3-H still shows the same communication mode and resumes
    polling. After three more normal rounds, download another report, poll log,
