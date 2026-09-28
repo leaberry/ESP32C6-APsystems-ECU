@@ -38,6 +38,7 @@ jobs:
           python3 tools/test_pairing_path.py
           python3 tools/test_ds3h_pairing.py
           python3 tools/test_encrypted_probe.py
+          python3 tools/test_pairing_fallback.py
           python3 tools/test_pairing_audit.py
           node tools/test_pairing_status.js
       - uses: arduino/setup-arduino-cli@v2

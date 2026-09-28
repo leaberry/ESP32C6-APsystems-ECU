@@ -16,6 +16,17 @@ bool encryptedProbeBusy() {
   return busy;
 }
 
+static bool encryptedProbeBegin(const uint8_t uid[6], bool pairing) {
+  portENTER_CRITICAL(&encryptedProbeMux);
+  bool available = !encryptedCapture.active && !encryptedProbeReaders;
+  if (available) {
+    encryptedCapture.begin(uid, millis());
+    encryptedCapture.pairingAttempt = pairing;
+  }
+  portEXIT_CRITICAL(&encryptedProbeMux);
+  return available;
+}
+
 void encryptedProbeObserve(const uint8_t *b, size_t n, uint32_t at, int8_t rssi, uint8_t lqi) {
   portENTER_CRITICAL(&encryptedProbeMux);
   encryptedCapture.observe(b,n,at,rssi,lqi);
@@ -167,9 +178,7 @@ bool encryptedProbeRun(int which) {
   // Reuse the normal operation owner to pause polling and prevent route learning.
   if(!pairReceiveBegin(Inv_Prop[which].invSerial,zbOperationalPan)) return false;
   empty_serial2();
-  portENTER_CRITICAL(&encryptedProbeMux);
-  encryptedCapture.begin(uid,millis());
-  portEXIT_CRITICAL(&encryptedProbeMux);
+  if (!encryptedProbeBegin(uid, false)) { pairReceiveStop(); return false; }
   bool ok=rawRadioSetPromiscuous(false);
   uint16_t target=0; bool conflict=false;
   int control=-1; uint16_t controlPan=0,controlSource=0;
@@ -296,11 +305,12 @@ bool encryptedProbeDecode(const uint8_t uid[6], const uint8_t *data, size_t n,
 }
 
 String encryptedProbeSummary() {
-  char line[200];
+  char line[280];
   portENTER_CRITICAL(&encryptedProbeMux);
-  snprintf(line,sizeof(line),"\nPAIRING INVESTIGATION: started=%lu active=%u finished=%u restored=%u discovered=%04X operating_source=%04X conflict=%u\nDownload /diagnostics/encrypted-test for complete packets.\n",
+  snprintf(line,sizeof(line),"\nPAIRING INVESTIGATION: started=%lu active=%u finished=%u restored=%u discovered=%04X operating_source=%04X conflict=%u pairing=%u saved=%u mode=%u (0=auto,1=AES,2=plain)\nDownload /diagnostics/encrypted-test for complete packets.\n",
     (unsigned long)encryptedCapture.started,encryptedCapture.active,encryptedCapture.finished,
-    encryptedCapture.restored,encryptedCapture.discovered,encryptedCapture.operatingSource,encryptedCapture.conflict);
+    encryptedCapture.restored,encryptedCapture.discovered,encryptedCapture.operatingSource,encryptedCapture.conflict,
+    encryptedCapture.pairingAttempt,encryptedCapture.pairingSaved,encryptedCapture.verifiedMode);
   portEXIT_CRITICAL(&encryptedProbeMux);
   return String(line);
 }
@@ -308,7 +318,8 @@ String encryptedProbeSummary() {
 // The download reads immutable completed capture storage, one line at a time.
 // A reader lease prevents a new probe from clearing it during transmission.
 static size_t encryptedProbeLogLine(size_t index, char *line, size_t cap) {
-  if(index==0) return snprintf(line,cap,"Pairing investigation %s; RAM capture, lost on restart. Target network may change; no local pairing/settings saved.\n",VERSION);
+  if(index==0) return snprintf(line,cap,"Pairing investigation %s; RAM capture, lost on restart. pairing=%u saved=%u mode=%u (0=auto,1=AES,2=plain).\n",VERSION,
+    encryptedCapture.pairingAttempt,encryptedCapture.pairingSaved,encryptedCapture.verifiedMode);
   if(index==1) return snprintf(line,cap,"started=%lu ended=%lu finished=%u restored=%u discovered=%04X operating_source=%04X conflict=%u\n",
     (unsigned long)encryptedCapture.started,(unsigned long)encryptedCapture.ended,
     encryptedCapture.finished,encryptedCapture.restored,encryptedCapture.discovered,encryptedCapture.operatingSource,encryptedCapture.conflict);

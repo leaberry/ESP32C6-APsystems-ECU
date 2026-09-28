@@ -1,5 +1,26 @@
 # Build and hardware verification
 
+## Issue #25: verified transport fallback (2026-09-28)
+
+Probe5's reporter capture shows operating-network discovery and two complete
+plaintext DS3-H power replies following directed 020D assignment. Both pass
+the existing DS3 checksum validator and decoder. It did not save pairing;
+AES queries received no application replies.
+
+`ESP32C6-ECU_v1_4_16-pair6` integrates fresh discovery, prepare/commit and the
+directed-PAN fallback into normal pairing for encrypted-default devices. It
+tries production AES telemetry first, then plaintext, and requires two valid
+power replies before saving the route and per-device mode. No recorder setting
+is required to pair. The prior diagnostic suite and streamed capture remain.
+
+Host tests cover captured telemetry, encrypted-first selection, bad/stale/foreign
+replies, conflict, bootstrap, assignment stages, transmit/restoration/storage
+failures, binary-record layout, old-record migration, actual startup loading,
+and settings backup/restore. The existing plaintext pairing and polling checks
+pass. The host AES primitive is a double; it does not establish RF/AES
+interoperability. New firmware hardware verification remains pending. See the
+[pair6 test steps](ISSUE-25-PAIR6.md) for polling and ECU restart checks.
+
 ## Issue #25: discovery startup correction (2026-09-27)
 
 `ESP32C6-ECU_v1_4_16-probe5` tests a working inverter before target discovery,

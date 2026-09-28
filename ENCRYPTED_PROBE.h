@@ -34,6 +34,8 @@ struct ProbePhase {
 };
 struct ProbeCapture {
   bool active = false, finished = false, restored = false;
+  bool pairingAttempt = false, pairingSaved = false;
+  uint8_t verifiedMode = 0;
   uint8_t phase = 0, target[6] = {};
   uint16_t discovered = 0, operatingSource = 0;
   bool conflict = false;
@@ -43,6 +45,7 @@ struct ProbeCapture {
     memset(phases, 0, sizeof(phases));
     memcpy(target, uid, 6); phase = 0; discovered = operatingSource = 0; conflict = false;
     active = true; finished = restored = false; started = now; ended = 0;
+    pairingAttempt = pairingSaved = false; verifiedMode = 0;
   }
   void stage(uint8_t index, uint16_t pan, uint16_t source, uint8_t mode, uint32_t now) {
     if (!active || index >= PROBE_PHASES) return;

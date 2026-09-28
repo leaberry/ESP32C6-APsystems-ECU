@@ -525,6 +525,7 @@ if (!inverterRequestIndex(request, "inv", false, requestedIndex)) { request->sen
 // set the array into a json object
   String json="{";
   json += "\"invID\":\"" + String(Inv_Prop[requestedIndex].invID) + "\"";
+  json += ",\"encrypted\":" + String(apsInverterUsesEncryption(requestedIndex) ? "true" : "false");
   const char *state = pendingPairInverter == requestedIndex ? "pairing" :
       lastPairInverter == requestedIndex ? (lastEncryptedProbe ? (lastPairSucceeded ? "tested" : "test-failed") : (lastPairSucceeded ? "success" : "failed")) : "idle";
   json += ",\"state\":\"" + String(state) + "\"";

@@ -61,11 +61,15 @@ bool leesStruct(String whichfile) {
 
       Serial.print(F( "leesStruct ivn = ")); Serial.println(String(ivn) );  
       Serial.print(F("reading ")); Serial.println(whichfile);
-      configFile.read( (unsigned char *)&Inv_Prop[ivn], sizeof(Inv_Prop[ivn]) );
+      inverters loaded;
+      bool complete = configFile && configFile.size() == sizeof(loaded) &&
+          configFile.read((uint8_t *)&loaded, sizeof(loaded)) == sizeof(loaded);
       configFile.close();
-      // The new flag occupies what may have been struct padding in an old file;
-      // never trust that byte during migration. Runtime RX detection can set it.
-      Inv_Prop[ivn].encrypted = apsSerialDefaultsToEncrypted(Inv_Prop[ivn].invSerial);
+      if (!complete) return false;
+      // Untagged legacy padding is not a saved transport override.
+      loaded.transportMode = apsStoredTransportMode(loaded.transportMode, loaded.transportTag);
+      loaded.transportTag = APS_TRANSPORT_TAG;
+      Inv_Prop[ivn] = loaded;
       return true;
  }
 

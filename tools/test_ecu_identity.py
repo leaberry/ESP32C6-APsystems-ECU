@@ -35,6 +35,7 @@ char ECU_ID[13] = "D8A3011B9780";
 includes = (root / 'AAA_INCLUDES.h').read_text()
 end = includes.index('} inverters;') + len('} inverters;')
 start = includes.rfind('typedef struct', 0, end)
+harness += (root / 'APS_TRANSPORT_MODE.h').read_text().replace('#pragma once', '')
 harness += includes[start:end]
 harness += r'''
 std::map<std::string,std::string> files;

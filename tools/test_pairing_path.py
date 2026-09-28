@@ -32,6 +32,7 @@ harness = r'''
 #include <string>
 #include <vector>
 #include "PAIRING_PROTOCOL.h"
+#include "APS_TRANSPORT_MODE.h"
 #include "PAIRING_AUDIT.h"
 using std::min;
 struct String : std::string {
@@ -65,10 +66,14 @@ bool savedPeerKnown=false, replyOnSavedPan=false;
 bool apsRadioLoadPeer(const char *,uint16_t *pan,uint16_t *source) {
   *pan=0x01CE; *source=0x5AF2; return savedPeerKnown;
 }
-struct Inverter { char invSerial[13]="704000007719"; char invID[5]="0869"; };
+struct Inverter { char invSerial[13]="704000007719"; char invID[5]="0869"; uint8_t transportMode=0; uint16_t transportTag=0; };
 Inverter Inv_Prop[1];
 int inverterCount=1, apsExpectedWhich=-1, saves=0, normalOps=0, queryCount=0;
 bool saveOk=true, replyOnOperating=true, dropAll=false, injectConflict=false;
+bool apsSerialDefaultsToEncrypted(const char *serial){return serial[1]=='2';}
+bool apsInverterUsesEncryption(int){return false;}
+int fallbackCalls=0;
+bool pairWithTransportFallback(int){++fallbackCalls;return false;}
 bool injectAnnouncement=false, extendedReply=false;
 int failTx=-1, txCount=0, successTrial=-1;
 int experimentIndex();
@@ -247,31 +252,9 @@ int main() {
     check(!pairing(0) && !saves && !normalOps && currentPan==0xA3D8 &&
           !pairReceiveActive(),"each handshake/verification TX failure aborts safely");
   }
-  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;extendedReply=true;
-  check(!pairing(0) && txCount==25 && repeatedDelays==6 && discoverySettles==2 && saves==0 && currentPan==0xA3D8 && !pairReceiveActive(),
-        "three bounded experiments fail without overwriting pairing");
-  detail=pairDiagnosticsReport();
-  check(detail.find("experiment=0 result=not-verified")!=std::string::npos &&
-        detail.find("experiment=1 result=not-verified")!=std::string::npos &&
-        detail.find("experiment=2 phase=12 requested_pan=FFFF")!=std::string::npos &&
-        detail.find("experiment=2 phase=14 requested_pan=FFFF")!=std::string::npos &&
-        detail.find("raw=")!=std::string::npos && detail.find("status=00B8200000")!=std::string::npos,
-        "all experiments preserve labeled raw target evidence and extended status");
-  for(int trial=0;trial<3;++trial) {
-    reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;successTrial=trial;
-    check(pairing(0) && saves==1 && txCount==7+9*trial && experimentIndex()==trial,
-          "stop at first verified experiment");
-  }
-  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;flightRecorderEnabled=false;
-  check(!pairing(0) && txCount==7,"encrypted serial with recorder off runs baseline only");
-  flightRecorderEnabled=true;
-  for(int failure:{8,11,12,13,16,17,21,25}) {
-    reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);replyOnOperating=false;failTx=failure;
-    check(!pairing(0) && txCount==failure && !saves && currentPan==0xA3D8 && !pairReceiveActive(),
-          "experimental TX failure aborts without later trials or saving");
-  }
-  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);saveOk=false;
-  check(!pairing(0) && saves==1 && txCount==7,"storage failure after verification cannot trigger experiments");
+  reset();strlcpy(Inv_Prop[0].invSerial,"724000007719",13);
+  check(!pairing(0) && fallbackCalls==1 && !txCount && !saves,
+        "encrypted-default serial delegates to verified transport fallback");
   reset();radioOk=false;
   check(!pairing(0) && !saves && !pairReceiveActive(),"radio setup failure cleans up session");
   reset();check(!pairing(-1) && !pairing(1),"invalid index rejected");
@@ -291,12 +274,18 @@ with tempfile.TemporaryDirectory(prefix="pairing-path-") as directory:
 storage = harness[:harness.index("bool saveVerifiedPairing(")] + r'''
 #include <map>
 std::map<std::string,std::vector<uint8_t>> files;
-bool openOk=true, writeOk=true, nvsOk=true, hasPeer=true;
+bool openOk=true, writeOk=true, nvsOk=true, hasPeer=true, corruptRead=false;
 int renameCount=0, failRenameAt=-1;
 uint16_t peerPan=0x1234, peerSource=0x5678;
 struct File {
   std::string name;
   explicit operator bool() const { return !name.empty(); }
+  size_t size() const { return files[name].size(); }
+  size_t read(uint8_t *out,size_t n) {
+    size_t take=min(n,size());memcpy(out,files[name].data(),take);
+    if(corruptRead&&take)out[0]^=1;
+    return take;
+  }
   size_t write(const uint8_t *p,size_t n) {
     if(!writeOk) return 0;
     files[name]=std::vector<uint8_t>(p,p+n);return n;
@@ -324,20 +313,23 @@ bool apsRadioForgetPeer(const char *) { hasPeer=false;return true; }
 start = storage.index("bool apsRadioLoadPeer(")
 end = storage.index("struct Inverter", start)
 storage = storage[:start] + storage[end:]
+storage += function("ZIGBEE_PAIR.ino", "bool saveVerifiedPairingMode(")
 storage += function("ZIGBEE_PAIR.ino", "bool saveVerifiedPairing(")
 storage += r'''
 int main() {
   int failures=0;
-  for(int scenario=0;scenario<7;++scenario) {
+  for(int scenario=0;scenario<8;++scenario) {
     files.clear();files["/Inv_Prop0.str"]={1,2,3};
     strlcpy(Inv_Prop[0].invID,"0869",5);
     openOk=scenario!=1;writeOk=scenario!=2;nvsOk=scenario!=3;
     hasPeer=scenario!=6;peerPan=0x1234;peerSource=0x5678;
-    renameCount=0;failRenameAt=scenario==4 ? 1 : scenario>=5 ? 2 : -1;
-    bool ok=saveVerifiedPairing(0,"F25A",0xA3D8,0x5AF2);
+    renameCount=0;failRenameAt=scenario==4 ? 1 : scenario==5||scenario==6 ? 2 : -1;
+    corruptRead=scenario==7;
+    Inv_Prop[0].transportMode=APS_TRANSPORT_AES;Inv_Prop[0].transportTag=APS_TRANSPORT_TAG;
+    bool ok=saveVerifiedPairingMode(0,"F25A",0xA3D8,0x5AF2,APS_TRANSPORT_PLAIN);
     bool pass=scenario==0 ? ok && !strcmp(Inv_Prop[0].invID,"F25A") &&
-        peerPan==0xA3D8 && peerSource==0x5AF2 && files.size()==1 :
-        !ok && !strcmp(Inv_Prop[0].invID,"0869") &&
+        peerPan==0xA3D8 && peerSource==0x5AF2 && files.size()==1 && Inv_Prop[0].transportMode==APS_TRANSPORT_PLAIN :
+        !ok && Inv_Prop[0].transportMode==APS_TRANSPORT_AES && !strcmp(Inv_Prop[0].invID,"0869") &&
         files["/Inv_Prop0.str"]==std::vector<uint8_t>({1,2,3}) && files.size()==1 &&
         (scenario==6 ? !hasPeer : peerPan==0x1234 && peerSource==0x5678);
     std::cout << (pass ? "PASS " : "FAIL ") << "storage scenario " << scenario << '\n';

@@ -79,6 +79,7 @@ code+=function('ZIGBEE_A_TRANSPORT.ino','static void putLe16(')
 code+=function('ZIGBEE_A_TRANSPORT.ino','bool apsSendDiagnosticInfo(')
 code+=function('ZIGBEE_A_TRANSPORT.ino','static bool sendApsAck(')
 code+=(root/'ENCRYPTED_PROBE.ino').read_text()
+base_code = code  # Shared production harness for the pairing fallback replay.
 code+=r'''
 std::vector<uint8_t> unhex(const char* s){std::vector<uint8_t> b;for(size_t i=0;i<strlen(s);i+=2)b.push_back(std::stoul(std::string(s+i,2),nullptr,16));return b;}
 bool sendZB(char command[]){
@@ -262,7 +263,8 @@ int main(){
  puts("PASS staged assignment/commit investigation: exact DC/key/layouts, explicit unicast, fresh/conflicting discovery, bounded capture, no-ACK outcomes, restoration, immutable streamed export");
 }
 '''
-with tempfile.TemporaryDirectory() as d:
-    p=Path(d);(p/'test.cpp').write_text(code)
-    subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I',str(root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
-    subprocess.run([str(p/'test')],check=True)
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory() as d:
+        p=Path(d);(p/'test.cpp').write_text(code)
+        subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I',str(root),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+        subprocess.run([str(p/'test')],check=True)

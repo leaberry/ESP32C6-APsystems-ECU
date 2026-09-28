@@ -1,5 +1,8 @@
 # DS3-H assignment and encrypted communication investigation
 
+Historical investigation instructions. For the next build's normal pairing
+test, use [pair6 instructions](ISSUE-25-PAIR6.md).
+
 Version: `ESP32C6-ECU_v1_4_16-probe5`. This supersedes probe4.
 
 ## Startup correction

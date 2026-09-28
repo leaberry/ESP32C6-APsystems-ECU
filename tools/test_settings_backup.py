@@ -21,6 +21,7 @@ harness=r'''
 #include <algorithm>
 #include <cstring>
 #include "DEVICE_SETTINGS.h"
+#include "APS_TRANSPORT_MODE.h"
 #define F(x) x
 #define portMUX_INITIALIZER_UNLOCKED 0
 using portMUX_TYPE=int;
@@ -31,6 +32,8 @@ struct String:std::string {
  String(int n):std::string(std::to_string(n)){}
  String(int n,int):std::string(std::to_string(n)){}
  bool isEmpty() const{return empty();}
+ String substring(size_t a,size_t b)const{return substr(a,b-a);}
+ int toInt()const{return std::stoi(*this);}
  void trim(){auto a=find_first_not_of(" \r\n\t");*this=a==npos?"":substr(a,find_last_not_of(" \r\n\t")-a+1);}
  void toLowerCase(){for(char &c:*this)if(c>='A'&&c<='Z')c+=32;}
  bool endsWith(const char *s)const{return !empty()&&back()==s[0];}
@@ -176,6 +179,7 @@ struct AsyncWebServerRequest {
 };
 struct {template<class... T>void on(T...){}} server;
 '''
+harness+=function((root/"SPIFFS_RW.ino").read_text(),"bool leesStruct(")
 harness+=source
 # Exercise the production startup load block.
 boot=(root/'ESP32C6-APsystems-ECU.ino').read_text()
@@ -233,6 +237,32 @@ int main(){
  assert(exported["payload"]["peers"].size()==2&&exported["payload"]["inverters"][0]["powerLimit"]==600);
  std::string encoded;serializeJson(exported,encoded);JsonDocument roundtrip;assert(!deserializeJson(roundtrip,encoded));assert(settingsValidate(roundtrip));
 
+
+ // Legacy backup defaults to auto. New modes survive export and restore.
+ assert(exported["payload"]["inverters"][0]["transportMode"]==int(APS_TRANSPORT_AUTO));
+ for(int mode:{0,1,2}) {
+   roundtrip["payload"]["inverters"][0]["transportMode"]=mode;settingsSeal(roundtrip);
+   assert(settingsValidate(roundtrip)&&settingsApply(roundtrip));
+   inverters persisted;memcpy(&persisted,files["/Inv_Prop0.str"].data(),sizeof(persisted));
+   assert(apsStoredTransportMode(persisted.transportMode,persisted.transportTag)==mode);
+   Inv_Prop[0]=inverters{};assert(leesStruct("/Inv_Prop0.str"));
+   assert(Inv_Prop[0].transportMode==mode&&Inv_Prop[0].transportTag==APS_TRANSPORT_TAG);
+   JsonDocument again;assert(settingsBuildBackup(again));
+   assert(again["payload"]["inverters"][0]["transportMode"]==mode);
+ }
+ for(int mode:{-1,3,255}) {
+   roundtrip["payload"]["inverters"][0]["transportMode"]=mode;settingsSeal(roundtrip);
+   assert(!settingsValidate(roundtrip));
+ }
+ // A short file must not inherit an old slot's verified plaintext tag.
+ auto completeFile=files["/Inv_Prop0.str"];files["/Inv_Prop0.str"].resize(50);
+ Inv_Prop[0].transportMode=APS_TRANSPORT_AES;
+ assert(!leesStruct("/Inv_Prop0.str")&&Inv_Prop[0].transportMode==APS_TRANSPORT_AES);
+ files["/Inv_Prop0.str"]=completeFile;
+ // The old encryption flag and padding never replace automatic selection.
+ files["/Inv_Prop0.str"][49]=1;files["/Inv_Prop0.str"][50]=files["/Inv_Prop0.str"][51]=char(0xff);
+ assert(leesStruct("/Inv_Prop0.str")&&Inv_Prop[0].transportMode==APS_TRANSPORT_AUTO);
+ files["/Inv_Prop0.str"]=completeFile;
 
  // Run the same queued action used by the Web UI and legacy MQTT.
  desiredThrottle[0]=100;actionFlag=240;runLimitAction();

@@ -10,7 +10,7 @@ void handlePair(AsyncWebServerRequest *request) {
   if(probe && (strcmp(Inv_Prop[iKeuze].invID,"0000") || !flightRecorderEnabled || !apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial))) {
     request->send(400,"text/plain","Select an unpaired encrypted inverter and enable the flight recorder first."); return;
   }
-  if(probe && encryptedProbeBusy()) {
+  if(encryptedProbeBusy()) {
     request->send(409,"text/plain","Wait for the previous test or log download to finish."); return;
   }
   pendingEncryptedProbe=lastEncryptedProbe=probe;
@@ -56,6 +56,8 @@ void pairOnActionflag() {
 
 bool pairing(int which) {
   if (which < 0 || which >= inverterCount) return false;
+  if (apsSerialDefaultsToEncrypted(Inv_Prop[which].invSerial) || apsInverterUsesEncryption(which))
+    return pairWithTransportFallback(which);
   char pairCmd[254] = {};
   char ecu_id_reverse[13];
   ECU_REVERSE().toCharArray(ecu_id_reverse, sizeof(ecu_id_reverse));
@@ -187,7 +189,16 @@ bool pairing(int which) {
 // Stage the file before touching NVS. SPIFFS cannot rename over an existing
 // file, so retain a backup until both stores have been updated.
 bool saveVerifiedPairing(int which, const char *id, uint16_t pan, uint16_t source) {
+  if (which < 0 || which >= inverterCount) return false;
+  return saveVerifiedPairingMode(which, id, pan, source,
+      apsStoredTransportMode(Inv_Prop[which].transportMode, Inv_Prop[which].transportTag));
+}
+
+bool saveVerifiedPairingMode(int which, const char *id, uint16_t pan, uint16_t source, uint8_t mode) {
+  if (which < 0 || which >= inverterCount || mode > APS_TRANSPORT_PLAIN) return false;
   auto updated = Inv_Prop[which];
+  updated.transportMode = mode;
+  updated.transportTag = APS_TRANSPORT_TAG;
   strlcpy(updated.invID, id, sizeof(updated.invID));
   String path = "/Inv_Prop" + String(which) + ".str";
   String temporary = path + ".pair";
@@ -195,6 +206,13 @@ bool saveVerifiedPairing(int which, const char *id, uint16_t pan, uint16_t sourc
   if (!file) return false;
   bool written = file.write((const uint8_t *)&updated, sizeof(updated)) == sizeof(updated);
   file.flush();
+  file.close();
+  // Verify the mode and route bytes before modifying either durable store.
+  decltype(updated) readback;
+  file = SPIFFS.open(temporary, "r");
+  written = written && file && file.size() == sizeof(readback) &&
+      file.read((uint8_t *)&readback, sizeof(readback)) == sizeof(readback) &&
+      !memcmp(&readback, &updated, sizeof(updated));
   file.close();
   if (!written) { SPIFFS.remove(temporary); return false; }
   String backup = path + ".pair-old";
