@@ -13,7 +13,7 @@ Version: `ESP32C6-ECU_v1_4_16-pair6`. This is the next test after probe5.
 3. Enable **persistent flight recorder** under **Polling and access**, then save.
 4. Open the DS3-H and click **Pair inverter** once. Allow five minutes. This
    time, use the normal Pair button. Do not run **Run pairing investigation**.
-5. If it pairs, open its details page. Check that **Communication** says
+5. If it pairs, open its details page. Check that **Transport** says
    **Plain (not encrypted)** or **AES encrypted**, and note which one you see.
    Let all inverters run for at least three normal polling rounds. Check for
    power readings and confirm the other inverters still update. The first

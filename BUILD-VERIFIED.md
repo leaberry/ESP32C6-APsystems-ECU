@@ -21,6 +21,12 @@ pass. The host AES primitive is a double; it does not establish RF/AES
 interoperability. New firmware hardware verification remains pending. See the
 [pair6 test steps](ISSUE-25-PAIR6.md) for polling and ECU restart checks.
 
+Both the branch and PR workflows passed for firmware commit `c63206d`.
+The [downloadable build](https://github.com/leaberry/ESP32C6-APsystems-ECU/actions/runs/36481657044)
+compiled both 8 MB OTA and 4 MB USB layouts: 1,641,784 program bytes and
+175,168 global RAM bytes. Artifact version/commit metadata and checksums were
+verified. No hardware deployment was performed for this candidate.
+
 ## Issue #25: discovery startup correction (2026-09-27)
 
 `ESP32C6-ECU_v1_4_16-probe5` tests a working inverter before target discovery,
