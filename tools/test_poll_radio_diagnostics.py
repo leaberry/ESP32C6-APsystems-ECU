@@ -31,6 +31,8 @@ constexpr uint8_t YC600_MAX_NUMBER_OF_INVERTERS=9;
 uint32_t counters[PD_COUNT]={};
 void pollDiagnosticsCount(PollDiagCounter c,uint32_t n){counters[c]+=n;}
 void pollDiagnosticsRaw(uint16_t pan,uint16_t src){if(pan==0xA3D8&&src==0xA315)++counters[PD_TARGET_RX];}
+bool pairTransportAcceptFrame(const uint8_t*,size_t,uint32_t){return false;}
+bool pairTransportAsdu(uint16_t,uint16_t,uint16_t,const uint8_t*,size_t,uint32_t){return false;}
 bool pairReceiveActive(){return false;}
 bool radioPreference(const char*,uint32_t*,bool){return true;}
 void diagnosticsAppend(String){}
@@ -50,7 +52,9 @@ int pdMS_TO_TICKS(int n){return n;}
 int xSemaphoreTake(int semaphore,int ticks){return semaphore==rawTxMutex||ticks?pdTRUE:0;}
 void xSemaphoreGive(int){} void vTaskDelay(int){}
 const char *esp_err_to_name(int){return "mock";}
-int esp_ieee802154_transmit(const uint8_t*,bool){
+std::vector<uint8_t> lastSent;
+int esp_ieee802154_transmit(const uint8_t* data,bool){
+ lastSent.assign(data+1,data+data[0]-1);
  rawTxFailure=transmissions<errors.size()?errors[transmissions]:(txOk?0:99);
  ++transmissions;rawTxSucceeded=!rawTxFailure;return ESP_OK;
 }
@@ -73,6 +77,10 @@ RawRxFrame frame(uint8_t frag=0,uint8_t block=0,uint8_t ctr=1){
  b[0]=p+1;rx.captured=p+2;return rx;
 }
 int main(){
+ assert(sendApsAck(0xA3D8,0xA315,0xA315,0x14,0x14,0x0106,0x0F05,1,0,0));
+ assert(lastSent.size()==25&&lastSent[17]==0x02);
+ assert(sendApsAck(0xA3D8,0xA315,0xA315,0x14,0x14,0x0106,0x0F05,1,1,0));
+ assert(lastSent.size()==28&&lastSent[17]==0x82&&lastSent[25]==1&&lastSent[27]==0xFF);
  auto rx=frame();processApsFrame(rx);
  assert(counters[PD_DELIVERED]==1&&counters[PD_UNFRAGMENTED_ACK_REQUEST]==1&&counters[PD_TARGET_RX]==1);
  queueFull=true;processApsFrame(rx);assert(counters[PD_APP_DROP]==1&&counters[PD_DELIVERED]==1);queueFull=false;

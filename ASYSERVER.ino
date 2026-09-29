@@ -111,6 +111,12 @@ server.on("/diagnostics/download", HTTP_GET, [](AsyncWebServerRequest *request) 
   request->send(response);
 });
 
+server.on("/diagnostics/pairing-trace", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  pairingTraceDownload(request);
+});
+
 server.on("/diagnostics/pairing-log", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
@@ -126,10 +132,11 @@ server.on("/diagnostics/clear-recorded-logs", HTTP_POST, [](AsyncWebServerReques
   if (!request->hasHeader("X-ECU-Diagnostics") || request->getHeader("X-ECU-Diagnostics")->value() != "1") {
     request->send(400, "text/plain", "Use the Clear recorded logs button on Diagnostic snapshot."); return;
   }
-  const bool ok = flightRecorderClear();
+  const bool traceOk = pairingTraceClear();
+  const bool ok = flightRecorderClear() && traceOk;
   request->send(ok ? 200 : 500, "text/plain", ok ?
-    "Recorded health and poll logs cleared. Flash space released." :
-    "Some recorded logs could not be cleared. Please try again.");
+    "Recorded health and poll logs and the pairing trace cleared. Flash space released." :
+    "Some logs could not be cleared. Wait for pairing and downloads to finish, then try again.");
 });
 
 server.on("/diagnostics/poll-log", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -519,6 +526,7 @@ if (!inverterRequestIndex(request, "inv", false, requestedIndex)) { request->sen
 // set the array into a json object
   String json="{";
   json += "\"invID\":\"" + String(Inv_Prop[requestedIndex].invID) + "\"";
+  json += ",\"encrypted\":" + String(apsInverterUsesEncryption(requestedIndex) ? "true" : "false");
   const char *state = pendingPairInverter == requestedIndex ? "pairing" :
       lastPairInverter == requestedIndex ? (lastPairSucceeded ? "success" : "failed") : "idle";
   json += ",\"state\":\"" + String(state) + "\"";

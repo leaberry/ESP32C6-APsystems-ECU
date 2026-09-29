@@ -7,6 +7,8 @@ root = Path(__file__).resolve().parents[1]
 source = (root/'ASYSERVER.ino').read_text(encoding='utf-8')
 start = source.index('server.on("/diagnostics/clear-recorded-logs", HTTP_POST, ')
 handler = source[start:source.index('\n});', start)+4].split('HTTP_POST, ', 1)[1][:-2]
+trace_start = source.index('server.on("/diagnostics/pairing-trace", HTTP_GET, ')
+trace_handler = source[trace_start:source.index('\n});', trace_start)+4].split('HTTP_GET, ', 1)[1][:-2]
 code = r'''
 #include <cassert>
 #include <string>
@@ -16,6 +18,7 @@ const char* pswd="fake";
 bool denied=false,clearOk=true;
 int clears=0;
 bool checkRemote(String){return denied;}
+bool traceOk=true;bool pairingTraceClear(){return traceOk;}
 bool flightRecorderClear(){++clears;return clearOk;}
 struct Ip {String toString(){return "test";}};
 struct Client {Ip remoteIP(){return {};}};
@@ -30,13 +33,19 @@ struct AsyncWebServerRequest {
  Header* getHeader(const char*){return &h;}
  void send(int code,const char*,const char* text){status=code;message=text;}
 };
+int downloads=0; void pairingTraceDownload(AsyncWebServerRequest* r){++downloads;r->send(200,"text/plain","trace");}
+auto traceAction = ''' + trace_handler + r''';
 auto clearAction = ''' + handler + r''';
 int main(){
  AsyncWebServerRequest r;
+ denied=true;traceAction(&r);assert(r.status==302&&!downloads);denied=false;
+ r.auth=false;traceAction(&r);assert(r.status==401&&!downloads);r.auth=true;
+ traceAction(&r);assert(r.status==200&&downloads==1);
  denied=true;clearAction(&r);assert(r.status==302&&clears==0);denied=false;
  r.auth=false;clearAction(&r);assert(r.status==401&&clears==0);r.auth=true;
  r.header=false;clearAction(&r);assert(r.status==400&&clears==0);r.header=true;
  r.h.text="0";clearAction(&r);assert(r.status==400&&clears==0);r.h.text="1";
+ traceOk=false;clearAction(&r);assert(r.status==500&&clears==1);traceOk=true;clears=0;
  clearOk=false;clearAction(&r);assert(r.status==500&&clears==1);
  clearOk=true;clearAction(&r);assert(r.status==200&&clears==2);
  std::cout<<"PASS clear-recorded-logs route: remote restrictions, administrator authentication, action header, deletion failure and success\n";

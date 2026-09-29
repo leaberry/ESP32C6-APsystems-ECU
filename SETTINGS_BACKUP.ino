@@ -146,6 +146,7 @@ bool settingsBuildBackup(JsonDocument &doc) {
     if(!good) break;
     item["serial"]=inv.invSerial; item["id"]=inv.invID; item["name"]=inv.invLocation;
     item["type"]=inv.invType; item["mqttIdx"]=inv.invIdx; item["calibration"]=inv.calib;
+    item["transportMode"]=apsStoredTransportMode(inv.transportMode,inv.transportTag);
     String key="maxPwr"+String(i);
     item["powerLimit"]=haveLimits?limits.getInt(key.c_str(),-1):-1;
     JsonArray panels=item["panels"].to<JsonArray>();
@@ -236,7 +237,8 @@ bool settingsApply(JsonDocument &doc) {
       strlcpy(inv.invLocation,item["name"],sizeof(inv.invLocation));
       inv.invType=item["type"]; inv.invIdx=item["mqttIdx"]; inv.calib=item["calibration"];
       for(int j=0;j<4;++j) inv.conPanels[j]=item["panels"][j];
-      inv.encrypted=apsSerialDefaultsToEncrypted(inv.invSerial);
+      inv.transportMode=item["transportMode"] | uint8_t(APS_TRANSPORT_AUTO);
+      inv.transportTag=APS_TRANSPORT_TAG;
       int power=item["powerLimit"];
       good=settingsWriteBytes(path.c_str(),(const uint8_t *)&inv,sizeof(inv)) &&
           limits.putInt(key.c_str(),power)==4 && limits.getInt(key.c_str(),-2)==power;

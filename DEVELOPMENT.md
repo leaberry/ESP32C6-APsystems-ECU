@@ -152,3 +152,29 @@ under `~/Arduino/libraries/ArduinoJson`.
 
 The compatibility `get.Data` HTTP interface remains available. New UI/API code
 uses lowercase routes under `/api`.
+
+
+## Verified pairing and optional trace
+
+`PAIRING_FALLBACK.ino` handles encrypted-default DS3-family units using a bounded discovery,
+assignment, AES-first/plaintext verification flow. `PAIRING_SESSION.h/.ino`
+owns functional reception in 332 bytes on the host. Complete replies remain
+separate from optional packet retention; validation uses the production telemetry
+checks. Assignment and verification traffic stays under the pairing receive owner,
+with no premature peer learning or telemetry publication.
+
+`PAIRING_TRACE.h/.ino` replaces the old raw-frame array with one bounded capture
+(8,592 bytes on the host, compile-time limit below 10 KB). It records named stages,
+transmit payloads/results, first/latest related frames, first two/latest two ASDUs,
+verification reasons, omissions, and save/restoration results. It never writes
+packet traces to flash. A streamed administrator download holds a read lease;
+new pairing proceeds with recording skipped while that lease is held. Functional
+pairing never waits for a logger or consumes trace samples as verification state.
+
+The tagged auto/AES/plain mode occupies the previous bool/padding in the 52-byte
+inverter record. Untagged records use legacy serial-based selection. Same-serial
+settings edits and settings backups preserve the mode; changing serial resets it.
+No ECU identity, inverter slot order, or unrelated peer is changed. The ordinary
+pairing audit remains the existing bounded persistent metadata format.
+
+See [pairing and log collection](PAIRING.md) for the user workflow.

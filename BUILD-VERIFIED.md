@@ -1,5 +1,56 @@
 # Build and hardware verification
 
+## Issue #25: clean DS3 transport fallback (2026-09-29)
+
+`ESP32C6-ECU_v1_4_17-rc1` prepares the production fix from main. It preserves
+strict FF0E response parsing, network discovery/assignment, AES-first power
+verification and the verified plaintext fallback with durable per-inverter mode.
+The BB fallback applies only to DS3-family models; other models keep their
+existing pairing flow. Optional detailed traces are separate from functional
+receive state and use the existing recorder switch, download and clear workflow.
+
+All 24 Python/C++ suites and seven JavaScript suites passed, with affected checks
+repeated after final changes. Coverage includes captured packets, two independent
+reply windows, assignment transitions, conflicts, stale/foreign/invalid replies,
+radio/storage/restoration failures, existing plaintext pairing, startup migration,
+backup/restore, no telemetry or peer learning during pairing, correct ACK shapes,
+and authenticated trace access. Recording off, full trace storage, an active
+reader and failed download-response allocation do not prevent valid pairing.
+Host crypto uses a reversible AES primitive double; RF interoperability is not
+established by these tests.
+
+Both local layouts compile with pinned ESP32 core 3.3.8: **1,632,772 program
+bytes and 108,288 global RAM bytes** each. The 4 MB build was staged separately;
+the default 8 MB partition data is unchanged. The functional pairing session
+uses 332 bytes and the optional capture uses 8,592 bytes on the host. Global RAM
+is 66,880 bytes lower than experimental pair6. Firmware version strings and the
+application/partition layouts were checked. Binaries and device logs are kept
+outside the repository.
+
+[The pair6 field report](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/25#issuecomment-5886929541)
+confirmed normal plaintext pairing and nine successful DS3-H polling rounds,
+five before and four after an ECU restart. All six fleet members completed each
+round; one existing YC600 needed a retry after startup. The attached crash dump
+was identical to the historical dump. The reporter also reported working power
+limiting. This evidence is for the experimental predecessor, not hardware
+validation of the cleaned build.
+
+The successful pairing found the inverter already on the operating network.
+Fresh assignment on an untouched inverter, successful AES communication and
+inverter power-loss persistence remain unverified. The cleaned candidate needs
+one reporter pairing/polling/restart check before release. See [pairing and log
+collection](PAIRING.md).
+
+The cleaned 8 MB application was subsequently tested on a production ECU with
+three plaintext DS3s (firmware 5.456, 5.307 and 5.456). All three completed eight
+fleet rounds over 303 seconds, with a maximum response gap of 46 seconds at the
+configured 45-second interval. The 9,735 Wh daily checkpoint restored exactly;
+identity, pairing, settings and finalized history were preserved. Web navigation,
+settings export/validation, NTP and Modbus units 1–4 passed. No unexpected reset
+or new crash dump occurred. The recorder remained disabled; the pairing trace
+download worked with no recorded stages. No pairing or power-limit action was
+performed. This checks normal plaintext DS3 operation, not DS3-H fallback pairing.
+
 ## Issue #24: YC600/QS1 checksum regression (2026-09-22)
 
 The reporter's `poll-fix2` logs show four rounds accepting both DS3s and no

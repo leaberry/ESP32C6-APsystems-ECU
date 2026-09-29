@@ -49,7 +49,10 @@ reliability.
 ## Still requiring validation or intentionally unsupported
 
 1. **Encrypted transport:** key derivation and the known-answer test pass, but
-   no physical AES-enabled inverter has been tested.
+   successful AES communication remains unverified. An encrypted-default DS3-H
+   on firmware 5.354 works through the plaintext fallback in the experimental
+   predecessor. The cleaned implementation and full fresh-assignment sequence
+   still need hardware confirmation; see [pairing evidence](PAIRING.md).
 2. **Other models:** YC600 pairing and operation now have reporter confirmation;
    detailed model-specific telemetry and control validation remain open. QS1
    has not been tested through the native C6 radio.

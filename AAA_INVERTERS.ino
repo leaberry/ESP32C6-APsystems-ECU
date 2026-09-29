@@ -34,9 +34,14 @@ void handleInverterconfig(AsyncWebServerRequest *request)
    }
    strlcpy(Inv_Prop[iKeuze].invLocation, request->arg("il").c_str(),
            sizeof(Inv_Prop[iKeuze].invLocation));
+   // Editing the same inverter must retain its verified communication mode.
+   if (strcmp(Inv_Prop[iKeuze].invSerial, submittedSerial.c_str())) {
+     Inv_Prop[iKeuze].transportMode = APS_TRANSPORT_AUTO;
+     Inv_Prop[iKeuze].transportTag = 0;
+     strlcpy(Inv_Prop[iKeuze].invID, "0000", sizeof(Inv_Prop[iKeuze].invID));
+   }
    strlcpy(Inv_Prop[iKeuze].invSerial, submittedSerial.c_str(),
            sizeof(Inv_Prop[iKeuze].invSerial));
-   Inv_Prop[iKeuze].encrypted = apsSerialDefaultsToEncrypted(Inv_Prop[iKeuze].invSerial);
    Inv_Prop[iKeuze].invType = constrain(request->arg("invt").toInt(), 0, 2);
    Inv_Prop[iKeuze].invIdx = constrain(request->arg("mqidx").toInt(), 0, 65535);
    Inv_Prop[iKeuze].calib = constrain(request->arg("cal").toInt(), -15, 15);
