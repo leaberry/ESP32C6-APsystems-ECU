@@ -38,6 +38,10 @@ void pairOnActionflag() {
 
 bool pairing(int which) {
   if (which < 0 || which >= inverterCount) return false;
+  // The verified fallback uses DS3 BB telemetry. Other models keep their existing path.
+  if (Inv_Prop[which].invType == 2 &&
+      (apsSerialDefaultsToEncrypted(Inv_Prop[which].invSerial) || apsInverterUsesEncryption(which)))
+    return pairWithTransportFallback(which);
   char pairCmd[254] = {};
   char ecu_id_reverse[13];
   ECU_REVERSE().toCharArray(ecu_id_reverse, sizeof(ecu_id_reverse));
@@ -67,6 +71,7 @@ bool pairing(int which) {
             // now build command 3 this is "24020FFFFFFFFFFFFFFFFF14FFFF14"  + "010103000F0600" + ecu_id_reverse,
             snprintf(pairCmd, sizeof(pairCmd), "24020FFFFFFFFFFFFFFFFF14FFFF14010103000F0600%s", ecu_id_reverse);
        }
+    pairTraceStage("legacy-handshake", 0xFFFF, 0);
     // Reassert PAN for every step; never let another receive operation choose it.
     sequenceOk = apsUsePairingPan(true);
     if (!sequenceOk) { pairAuditStep(PA_COMMAND, false, y, 0xFFFF); break; }
@@ -84,6 +89,7 @@ bool pairing(int which) {
   if (sequenceOk && restored) {
     consoleOut("pairing: settling before operating-PAN verification");
     delay(10000);
+    pairTraceStage("legacy-operating", zbOperationalPan, 0);
     pairReceiveVerify();
     for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
       snprintf(pairCmd, sizeof(pairCmd),
@@ -103,6 +109,7 @@ bool pairing(int which) {
   if (sequenceOk && restored && !verified &&
       apsRadioLoadPeer(Inv_Prop[which].invSerial, &previousPan, &previousSource) &&
       previousPan && previousPan != 0xFFFF && previousPan != zbOperationalPan) {
+    pairTraceStage("legacy-saved-network", previousPan, 0);
     pairReceiveBegin(Inv_Prop[which].invSerial, previousPan);
     pairReceiveVerify();
     for (int attempt = 0; attempt < 3 && sequenceOk; ++attempt) {
@@ -119,6 +126,7 @@ bool pairing(int which) {
   bool saved = sequenceOk && restored && verified &&
       saveVerifiedPairing(which, verifiedId, pan, source);
   if (sequenceOk && restored && verified) pairAuditStep(PA_STORAGE, saved, 0, pan);
+  pairTraceResult(saved, apsStoredTransportMode(Inv_Prop[which].transportMode, Inv_Prop[which].transportTag), restored);
   pairReceiveStop();
   if (!saved) {
     consoleOut("pairing failed: transmit, restore, verification, or persistence; see journal");
@@ -133,7 +141,16 @@ bool pairing(int which) {
 // Stage the file before touching NVS. SPIFFS cannot rename over an existing
 // file, so retain a backup until both stores have been updated.
 bool saveVerifiedPairing(int which, const char *id, uint16_t pan, uint16_t source) {
+  if (which < 0 || which >= inverterCount) return false;
+  return saveVerifiedPairingMode(which, id, pan, source,
+      apsStoredTransportMode(Inv_Prop[which].transportMode, Inv_Prop[which].transportTag));
+}
+
+bool saveVerifiedPairingMode(int which, const char *id, uint16_t pan, uint16_t source, uint8_t mode) {
+  if (which < 0 || which >= inverterCount || mode > APS_TRANSPORT_PLAIN) return false;
   auto updated = Inv_Prop[which];
+  updated.transportMode = mode;
+  updated.transportTag = APS_TRANSPORT_TAG;
   strlcpy(updated.invID, id, sizeof(updated.invID));
   String path = "/Inv_Prop" + String(which) + ".str";
   String temporary = path + ".pair";
@@ -141,6 +158,13 @@ bool saveVerifiedPairing(int which, const char *id, uint16_t pan, uint16_t sourc
   if (!file) return false;
   bool written = file.write((const uint8_t *)&updated, sizeof(updated)) == sizeof(updated);
   file.flush();
+  file.close();
+  // Verify the mode and route bytes before modifying either durable store.
+  decltype(updated) readback;
+  file = SPIFFS.open(temporary, "r");
+  written = written && file && file.size() == sizeof(readback) &&
+      file.read((uint8_t *)&readback, sizeof(readback)) == sizeof(readback) &&
+      !memcmp(&readback, &updated, sizeof(updated));
   file.close();
   if (!written) { SPIFFS.remove(temporary); return false; }
   String backup = path + ".pair-old";

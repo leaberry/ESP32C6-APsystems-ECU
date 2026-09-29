@@ -17,11 +17,12 @@ const script = page.split('<script>')[1].split('</script>')[0]
     const elements = {badge: {textContent: 'Pairing'}, title: {}, message: {}};
     const context = vm.createContext({
       document: {getElementById: id => elements[id]},
-      fetch: async () => ({json: async () => ({state, invID: id})}),
+      fetch: async () => ({json: async () => ({state, invID: id, encrypted: false})}),
     });
     vm.runInContext(script, context);
     await context.check();
     assert.equal(elements.badge.textContent, badge);
+    if(state==='success')assert.match(elements.message.textContent,/Plain \(not encrypted\)/);
     console.log(`PASS pairing status ${state}, retained ID ${id}`);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

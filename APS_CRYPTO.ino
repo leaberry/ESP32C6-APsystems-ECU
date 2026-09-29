@@ -76,7 +76,8 @@ int apsFindInverter(uint16_t shortAddress, const uint8_t *peerUid) {
 
 bool apsInverterUsesEncryption(int which) {
   return which >= 0 && which < inverterCount &&
-         (Inv_Prop[which].encrypted || apsSerialDefaultsToEncrypted(Inv_Prop[which].invSerial));
+         apsTransportEncrypted(apsStoredTransportMode(Inv_Prop[which].transportMode,
+             Inv_Prop[which].transportTag), apsSerialDefaultsToEncrypted(Inv_Prop[which].invSerial));
 }
 
 static bool apsDecryptTail(const uint8_t uid[6], const uint8_t *tail, size_t tailLen,
@@ -122,7 +123,14 @@ bool apsDecryptIncoming(uint16_t source, const uint8_t *input, size_t inputLen,
     return false;
   }
   *outputLen = bodyLen + 6;
-  if (which >= 0) Inv_Prop[which].encrypted = true;
+  // An explicit verified mode cannot be changed by an unsolicited packet.
+  uint8_t serial[6];
+  if (which >= 0 && apsSerialToBcd(Inv_Prop[which].invSerial, serial) &&
+      !memcmp(serial, input, 6) && apsStoredTransportMode(Inv_Prop[which].transportMode,
+          Inv_Prop[which].transportTag) == APS_TRANSPORT_AUTO) {
+    Inv_Prop[which].transportMode = APS_TRANSPORT_AES;
+    Inv_Prop[which].transportTag = APS_TRANSPORT_TAG;
+  }
   return true;
 }
 

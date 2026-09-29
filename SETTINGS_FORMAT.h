@@ -106,6 +106,7 @@ inline bool settingsFormatValid(JsonDocument &doc, int button, int led) {
         !settingsInt(inv["mqttIdx"],0,65535) || !settingsInt(inv["calibration"],-15,15) ||
         !settingsInt(inv["powerLimit"],-1,10000) || !inv["panels"].is<JsonArrayConst>() ||
         inv["panels"].size()!=4) return false;
+    if (!inv["transportMode"].isNull() && !settingsInt(inv["transportMode"],0,2)) return false;
     for(JsonVariantConst panel:inv["panels"].as<JsonArrayConst>()) if(!panel.is<bool>()) return false;
     int matches=0;
     for(JsonVariantConst other:p["inverters"].as<JsonArrayConst>())

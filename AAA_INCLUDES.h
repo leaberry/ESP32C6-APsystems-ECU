@@ -1,6 +1,10 @@
 #include "POWER_LIMIT_STORAGE.h"
 #include "DEVICE_SETTINGS.h"
 #include "PAIRING_PROTOCOL.h"
+#include "APS_TRANSPORT_MODE.h"
+#include "PAIRING_SESSION.h"
+#include "PAIRING_TRACE.h"
+#include <stddef.h>
 #include "PAIRING_AUDIT.h"
 #include "POLL_DIAGNOSTICS.h"
 #include <ArduinoJson.h>
@@ -42,7 +46,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_16-poll-fix3"
+#define VERSION  "ESP32C6-ECU_v1_4_17-rc1"
 
 #include <TimeLib.h>
 #include <time.h>
@@ -200,10 +204,12 @@ typedef struct{
   bool conPanels[4]    = {true,true,true,true};
   //int  maxPower        = 500;
   bool throttled       = false;
-  // APsystems' proprietary L1 transport encryption (not Zigbee NWK security).
-  // In auto mode this is selected by serial[1] == '2' and confirmed on RX.
-  bool encrypted       = false;
+  // Tagged per-inverter transport override, saved only with configuration.
+  uint8_t transportMode = APS_TRANSPORT_AUTO;
+  uint16_t transportTag = 0;
 } inverters;
+static_assert(sizeof(inverters) == 52 && offsetof(inverters, transportMode) == 49 &&
+              offsetof(inverters, transportTag) == 50, "Preserve inverter file layout");
 inverters Inv_Prop[9]; 
 time_t inverterLastPollSuccess[YC600_MAX_NUMBER_OF_INVERTERS] = {};
 

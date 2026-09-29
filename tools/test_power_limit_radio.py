@@ -31,6 +31,10 @@ struct String:std::string {
 #include "POLL_DIAGNOSTICS.h"
 void pollDiagnosticsCount(PollDiagCounter,uint32_t){}
 struct {template<typename... A>void printf(A...){} void println(String){}} Serial;
+uint32_t millis(){return 0;}
+bool pairReceiveActive(){return false;}
+int rawTxFailure=0;
+void pairTraceTx(uint16_t,const uint8_t*,size_t,uint32_t,bool,int){assert(false);}
 void consoleOut(String){} void diagnosticsAppend(String){}
 String ECU_REVERSE(){return "80971B01A3D8";}
 int inverterCount=3,zigbeeUp=1,errorCode=0,desiredThrottle[3]={100,100,100};

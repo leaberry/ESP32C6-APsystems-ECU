@@ -462,3 +462,5 @@ at commit `7b0ff63`. It is not affiliated with APsystems or Espressif.
 See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md), [UPSTREAM.md](UPSTREAM.md) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and dependencies.
 The application uses the inherited MIT [LICENSE](LICENSE).
+
+For communication-mode fallback and optional pairing traces, see [Pairing and log collection](PAIRING.md).
