@@ -90,10 +90,18 @@ bool setMaxPower(int which)
         return false;
       }
     
-    if (!sendZB(sendCommand)) return false;
-    // it seems that the response is the same as from the query command so we decode query answer
-    errorCode = decodeQueryAnswer(which); //chec for callibration value    
-    
-    if(errorCode == 0) return true; else return false;
+    // A successful transmit does not guarantee the inverter is ready to answer.
+    // In production the write can apply while only the intermediate ACK arrives.
+    // Retry the read-only query, never the power write or activation command.
+    for (unsigned attempt = 0; attempt < 3; ++attempt) {
+      if (!sendZB(sendCommand)) return false;
+      errorCode = decodeQueryAnswer(which);
+      if (errorCode == 0) return true;
+      if (attempt < 2) {
+        consoleOut("Power-limit readback not confirmed; retrying query for inverter " + String(which));
+        delay(250);
+      }
+    }
+    return false;
 
 }

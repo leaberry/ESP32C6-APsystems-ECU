@@ -102,7 +102,9 @@ connected PV input**, not a whole-inverter total or a percentage. For example,
 calibration is applied; 500 W requests normal maximum output.
 
 A command requires recent inverter telemetry. The ECU checks the reply before
-reporting success. A failed command leaves the limit unknown; the diagnostic
+reporting success. If a confirmation reply is missed, it retries the read-only
+query up to two more times without repeating the power write. A failed command
+leaves the limit unknown; the diagnostic
 **Power limit status** explains rejection or failure. Commands from an older
 MQTT connection are rejected so an old retained command cannot replay at boot.
 
@@ -117,6 +119,11 @@ flash, which is also used by startup and settings backup/restore. Loading that
 value at startup does not send a new command to the inverter. A storage failure
 is reported as `limit save failed` in the journal even if the inverter accepted
 the live command.
+
+The web page also shows **Unknown** when the ECU has no confirmed target,
+rather than displaying 500 W. Enter a target and choose **Save limit** to request
+and confirm a limit. A missing confirmation does not prove that the inverter
+ignored the write; it may already be limiting output.
 
 Older firmware saved these commands in a different storage namespace. After
 installing the persistence fix, open **Inverter details > Output limit**, enter

@@ -1,5 +1,69 @@
 # Build and hardware verification
 
+## Issue #30: power-limit confirmation and display (2026-10-09)
+
+The production ECU reproduced the reported failure on a plaintext DS3 running
+firmware 5.456. A temporary 20 W/input command confirmed correctly. Restoring
+500 W/input returned only an intermediate control acknowledgment to the command
+reader, which declared failure and saved/displayed an unknown target. A later
+directed read-only query returned the original `0x2067` (500 W/input), confirming
+that restoration had applied. The web page hid this failure by substituting
+500 W for unknown, while Home Assistant correctly published an unknown value.
+
+The fix makes at most three read-only confirmation queries after the existing
+single write/activation sequence. Success still requires a model-specific
+readback matching the calibrated target; acknowledgments, silence, malformed
+replies and persistent mismatches do not imply success. The web form now leaves
+an unknown target blank with an **Unknown** placeholder instead of inventing a
+500 W reading. Existing HA RAM-only and Web/legacy flash-persistence behavior
+is preserved.
+
+The new host replay runs the actual write and decoder together. It fails on
+unmodified main and passes with the fix for YC600, QS1 and DS3, including
+calibration, missing/ACK-only/stale replies, exhaustion and transmission failures.
+Power-control addressing, decoder, form, UI, HA state and settings-persistence
+regressions also pass. HA tests check the published confirmed value and unknown
+on failure.
+
+Both supported layouts compile with pinned ESP32 core 3.3.8: 1,632,806 program
+bytes and 108,288 global RAM bytes each. The 8 MB application header and both
+3 MB OTA slots were verified; the 4 MB factory layout was staged separately.
+The repository's default partition map is unchanged.
+
+The user authorized production deployment and an isolated MQTT test. The 8 MB
+application-only candidate was installed successfully and reports
+`ESP32C6-ECU_v1_4_17`, build `Oct  9 2026 16:03:20`. Application size is
+1,632,912 bytes; SHA-256 is
+`577d0b4ab7a041edddd054645898517ea02502a128ef1928c87908dea51ce443`.
+Three plaintext DS3s (firmware 5.456, 5.307, 5.456) passed these settled checks:
+
+| Test | Targets, W/input (slots 0/1/2) | Measured total output, W (slots 0/1/2) |
+| --- | --- | --- |
+| One limited | 500 / 475 / 20 | 109.2 / 113.2 / 40.4 |
+| Two limited, same PAN | 30 / 475 / 20 | 59.6 / 102.5 / 40.7 |
+| All three limited | 30 / 40 / 20 | 59.5 / 79.2 / 40.8 |
+
+Actual directed radio readbacks, web/API targets, NVS-backed settings exports
+and live Home Assistant MQTT states agreed for every slot in every test. The
+actual browser form and the individual details pages were checked. Commands
+using the production HA discovery topic/session changed slot 2 from 20 to 30
+and back to 20 W/input; both reported `applied` and passed radio readback.
+MQTT used a temporary authenticated isolated broker, not a running HA frontend.
+All observed hardware commands confirmed on the first query; the intermittent
+retry recovery itself is established by the captured failure and host replays,
+not by forcing an RF failure on the fixed production firmware.
+
+The exact original physical readbacks (`2067` / `1EC9` / `2067`, corresponding
+to 500/475/500 W/input) were restored. Original MQTT and other settings were
+restored; confirmed targets remained known through the controlled restart.
+Identity, slot order, learned peers, finalized history and the existing crash
+dump were preserved. Current-day totals were saved before each restart;
+hourly RAM charts/statistics restarted, with pre-restart snapshots archived.
+After the final restart, four complete fleet rounds passed in 139 seconds,
+with maximum response gaps of 45/47/46 seconds and no unexpected reset.
+Modbus units 1-4, settings validation, clock and hostname checks also passed.
+These bounded DS3 checks do not establish other-model RF behavior or a long soak.
+
 ## Issue #25: clean DS3 transport fallback (2026-09-29)
 
 `ESP32C6-ECU_v1_4_17-rc1` prepares the production fix from main. It preserves

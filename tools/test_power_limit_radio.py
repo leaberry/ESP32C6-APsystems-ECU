@@ -36,6 +36,7 @@ bool pairReceiveActive(){return false;}
 int rawTxFailure=0;
 void pairTraceTx(uint16_t,const uint8_t*,size_t,uint32_t,bool,int){assert(false);}
 void consoleOut(String){} void diagnosticsAppend(String){}
+void delay(unsigned){}
 String ECU_REVERSE(){return "80971B01A3D8";}
 int inverterCount=3,zigbeeUp=1,errorCode=0,desiredThrottle[3]={100,100,100};
 struct Inv {char invID[5];char invSerial[13];int invType,calib;};
