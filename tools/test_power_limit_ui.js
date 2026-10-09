@@ -19,6 +19,10 @@ assert.match(source, /name="pMax"[^>]*min="20" max="500" step="1" required/);
   fail=false;await refresh();
   assert.equal(get('inv').value,1);assert.equal(get('limit').value,100);
   data.pwMax=500;await refresh();assert.equal(get('limit').value,500);
+  for(const unknown of [-1,0,null,undefined]){
+    data.pwMax=unknown;await refresh();assert.equal(get('limit').value,'','unknown must not appear as 500 W');
+  }
+  data.pwMax=20;await refresh();assert.equal(get('limit').value,20);
   get('limit').value='237';get('limit').input();await refresh();
   assert.equal(get('limit').value,'237','telemetry refresh must preserve an edit');
   get('limit').value='';await refresh();assert.equal(get('limit').value,'');

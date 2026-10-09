@@ -125,6 +125,7 @@ int main(){
  auto valid=std::string("{\"value\":100,\"session\":\"")+haSession+"\"}";
  command(valid);assert(haControl==0);haConnectedBroker=haBrokerKey();haLoop();assert(commands==1&&desiredThrottle[0]==100&&haControlStatus[0]=="applied");
  applySuccess=false;command(valid);haLoop();assert(commands==2&&desiredThrottle[0]==-1);
+ haStateDocument(state,0);assert(state["limit_w"]=="None");
  tick+=100000;command(valid);assert(haControl<0&&commands==2);
 
  // Validate HA command boundaries, JSON types, busy/unavailable rejection and routing.
@@ -134,7 +135,7 @@ int main(){
  actionFlag=24;command(body("100"));assert(haControl<0&&actionFlag==24);actionFlag=0;
  night=true;command(body("100"));assert(haControl<0);night=false;
  polled[0]=false;command(body("100"));assert(haControl<0);polled[0]=true;
- for(int watts:{20,237,500}){command(body(std::to_string(watts)));assert(haControl==0);haLoop();assert(desiredThrottle[0]==watts&&haControlStatus[0]=="applied");}
+ for(int watts:{20,237,500}){command(body(std::to_string(watts)));assert(haControl==0);haLoop();assert(desiredThrottle[0]==watts&&haControlStatus[0]=="applied");haStateDocument(state,0);assert(state["limit_w"].as<int>()==watts);}
 
  // Serial-addressed HA commands must reach the matching inverter only.
  inverterCount=2;haTelemetry(1);desiredThrottle[0]=500;
