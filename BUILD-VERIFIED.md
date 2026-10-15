@@ -1,5 +1,33 @@
 # Build and hardware verification
 
+## Issue #30 follow-up: DS3 readback metadata (2026-10-14)
+
+The reporter says the plain `DS3_pergola` still applies power limits without
+displaying them. Earlier logs identify firmware 3.009 for that unit; the other
+DS3s use 5.x firmware. No new packet capture was supplied, so this does not prove
+which reply the reporter's unit currently returns.
+
+A separate decoder defect was reproduced using the complete, checksummed DS3
+page-B capture from [OpenAPS](https://github.com/bolkedebruin/openaps/blob/e70a8c77a30f5a166fe79c2dd1aa09ce22810516/codec/protection_read_test.go).
+It starts `FBFB 5C DD DE 01 00` and carries a 500 W/input cap. The v1.4.18 decoder
+requires `FBFB 5C DD DE 01 04`, so it rejects the valid reply on every retry.
+The earlier fix addressed missing confirmations; its synthetic replies only used
+`01 04`, and production hardware validation used 5.x units. Repeating a query
+does not recover from rejecting the returned format.
+
+The decoder now selects the DS3 command/page, checks the full declared frame
+length, hex encoding, trailer and additive checksum, and then reads the cap
+without requiring fixed metadata bytes. Target/calibration comparison and the
+three read-only attempts are preserved. YC600/QS1 parsing is unchanged.
+
+The fixture is the exact OpenAPS capture, not a packet from this reporter.
+The new regression fails on v1.4.18 and passes with the fix through the actual
+write and decoder together. Tests cover both metadata variants, the original
+capture, calibration, ACK ordering, retry recovery, bad checksums/lengths,
+truncation, wrong pages, malformed hex, and embedded `FEFE` data. Existing
+power-control addressing, form, UI, HA-state and settings-restore checks pass.
+This follow-up has not been deployed or tested on the reporter's inverter.
+
 ## Issue #30: power-limit confirmation and display (2026-10-09)
 
 The production ECU reproduced the reported failure on a plaintext DS3 running
