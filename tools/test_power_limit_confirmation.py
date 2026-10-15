@@ -17,6 +17,7 @@ harness = r'''
 #include <deque>
 #include <vector>
 #include <iostream>
+#include "fixtures/ds3_limit_readback.h"
 #define F(x) x
 #define CC2530_MAX_SERIAL_BUFFER_SIZE 512
 struct String:std::string {
@@ -54,7 +55,7 @@ char* split(char* s,const char* marker){char* p=strstr(s,marker);if(!p)return nu
 ''' + decoder + (root / 'SETPOWER.ino').read_text(encoding='utf-8') + r'''
 std::string readback(int watts,int model,int calibration=0){
  char hex[5];snprintf(hex,sizeof(hex),"%04X",(int)((watts+calibration)*(model==2?16.59:28.89)));
- return model==2?std::string("4481FBFB5CDDDE0104")+hex+"0013FEFE":std::string("4481FBFB4DDE000000")+hex+"3B660000FEFE";
+ return model==2?ds3LimitReply(watts,calibration):std::string("4481FBFB4DDE000000")+hex+"3B660000FEFE";
 }
 void reset(int model,int watts,int calibration=0){
  sent.clear();windows.clear();replies.clear();clockMs=0;failTx=0;
@@ -70,6 +71,19 @@ void check(unsigned queries){
 }
 int main(){
  const std::string ack="4481FBFB06DE02000000000000FEFE";
+ // Exercise the actual captured 01 00 reply through write + confirmation.
+ reset(2,500);windows={{ack,ds3LimitCapture}};
+ assert(setMaxPower(2));check(1);assert(desiredThrottle[2]==500);
+ reset(2,500);windows={{ack},{ds3LimitCapture}};
+ assert(setMaxPower(2));check(2);
+ for(int variant:{0,4})for(int watts:{20,237,500})for(int calibration:{-5,0,10}){
+  reset(2,watts,calibration);windows={{ds3LimitReply(watts,calibration,variant)}};
+  assert(setMaxPower(2));check(1);
+ }
+ // Bad checksums must exhaust the existing bounded read-only retries.
+ auto corrupt=ds3LimitCapture;corrupt[corrupt.size()-5]='0';
+ reset(2,500);windows={{corrupt},{corrupt},{corrupt}};
+ assert(!setMaxPower(2));check(3);
  for(int model=0;model<3;++model)for(int watts:{20,237,500})for(int calibration:{-5,0,10}){
   reset(model,watts,calibration);windows={{ack,readback(watts,model,calibration)}};
   assert(setMaxPower(2));check(1);
@@ -97,5 +111,5 @@ int main(){
 with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp)
     (p / 'test.cpp').write_text(harness, encoding='utf-8')
-    subprocess.run(['g++', '-std=c++17', str(p / 'test.cpp'), '-o', str(p / 'test')], check=True)
+    subprocess.run(['g++', '-std=c++17', '-I', str(root / 'tools'), str(p / 'test.cpp'), '-o', str(p / 'test')], check=True)
     subprocess.run([str(p / 'test')], check=True)

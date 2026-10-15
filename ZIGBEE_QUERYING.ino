@@ -56,11 +56,40 @@ int decodeQueryAnswer(int welke)
       payload = split(messageToDecode, "FBFB");
       if (!payload) continue;
       const bool ds3 = Inv_Prop[welke].invType == 2;
-      if (strncmp(payload, ds3 ? "5CDDDE0104" : "4DDE", ds3 ? 10 : 4)) {
+      const size_t payloadChars = strlen(payload);
+      // DS3 page-B replies use command DD / page DE. The following metadata
+      // varies (captured 01 00 and 01 04); it is not a reply signature.
+      if (ds3 ? (payloadChars < 6 || strncmp(payload + 2, "DDDE", 4))
+              : strncmp(payload, "4DDE", 4)) {
         consoleOut("ignoring non-readback power-control response");
         continue;
       }
-      if (strlen(payload) < 14 || !strstr(payload, "FEFE")) return 15;
+      if (ds3) {
+        // payload excludes FBFB: len | cmd/body | sum16 | FEFE.
+        // Require the complete power field and the declared frame boundary,
+        // including a valid checksum, before trusting its fixed field offset.
+        if (payloadChars < 22 || (payloadChars & 1)) return 15;
+        for (size_t i = 0; i < payloadChars - 4; ++i)
+          if (!isxdigit((unsigned char)payload[i])) return 15;
+        char lengthHex[3] = {payload[0], payload[1], '\0'};
+        const size_t bodyLength = strtoul(lengthHex, nullptr, 16);
+        if (bodyLength < 6 || payloadChars != (bodyLength + 5) * 2 ||
+            strcmp(payload + payloadChars - 4, "FEFE")) {
+          consoleOut("invalid DS3 power-limit readback length or trailer");
+          return 15;
+        }
+        uint16_t sum = 0;
+        for (size_t i = 0; i <= bodyLength; ++i) {
+          char byteHex[3] = {payload[i * 2], payload[i * 2 + 1], '\0'};
+          sum += strtoul(byteHex, nullptr, 16);
+        }
+        char checksumHex[5] = {0};
+        memcpy(checksumHex, payload + (bodyLength + 1) * 2, 4);
+        if (sum != strtoul(checksumHex, nullptr, 16)) {
+          consoleOut("invalid DS3 power-limit readback checksum");
+          return 15;
+        }
+      } else if (payloadChars < 14 || !strstr(payload, "FEFE")) return 15;
       consoleOut("payload " + String(payload));
 
     // we must handle the DS3 and YC600 differently 
