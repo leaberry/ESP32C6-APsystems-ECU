@@ -4,15 +4,17 @@ Choose one connection method for your Energy dashboard:
 
 | Method | Setup | Controls | Where the energy counter is kept |
 |---|---|---|---|
-| MQTT discovery | Enable MQTT and let HA find the devices | Per-input power limit | Retained MQTT broker data, with pending changes in ECU RAM |
+| MQTT discovery | Enable MQTT and let HA find the devices | Per-input power limit and on-demand polling | Retained MQTT broker data, with pending changes in ECU RAM |
 | Modbus | Add YAML below; no MQTT broker needed | Read-only | ECU daily history plus today's RAM total |
 
-MQTT is the simplest option if you already have a broker. Both methods read
-cached telemetry and do not add inverter radio polls. You can enable both,
+MQTT is the simplest option if you already have a broker. Normal MQTT state
+updates and Modbus reads use cached telemetry. An explicit MQTT poll command
+requests a fresh inverter reading. You can enable both connection methods,
 but **do not add both copies of production to Energy**. Their counters start
 from different records and need not match.
 
 - [MQTT setup](#mqtt-setup)
+- [Automatic and on-demand polling](#automatic-and-on-demand-polling)
 - [Energy dashboard](#energy-dashboard-with-mqtt)
 - [Power limits](#mqtt-power-limits)
 - [MQTT backup and recovery](#mqtt-backups-and-counter-recovery)
@@ -67,6 +69,145 @@ frequency and panel readings. They also reported successful YC600 pairing and
 operation. See the [field verification record](BUILD-VERIFIED.md#issue-17-reporter-verification-2026-09-16-v1414)
 for the evidence and limits. Throttling was explicitly not tested; displaying
 the power-limit control does not confirm that an inverter accepts its commands.
+
+## Automatic and on-demand polling
+
+The ECU normally polls the inverters every 300 seconds. Change **Fleet poll
+interval** under **Menu > Polling and access**. The minimum is five seconds or
+three seconds per configured inverter, whichever is longer. A fleet round reads
+the configured inverters in sequence and can take longer when replies need
+retries. Daylight scheduling pauses automatic polls overnight when time and
+location are valid.
+
+MQTT normally publishes cached HA readings on a paced 15-second cycle. Modbus
+also reads the cache. Neither publication rate determines when the ECU asks
+the inverters for new data.
+
+### Let Home Assistant request polls
+
+1. Enable Home Assistant on **Menu > MQTT**, save, and restart the ECU.
+   Domoticz can stay disabled.
+2. Under **Menu > Polling and access**, uncheck **Enable automatic polling**
+   and select **Save settings**. Let any round already in progress finish.
+3. Read `aps_ecu/<ECU_ID>/fleet/state`. Copy its `poll_session` value.
+4. Publish to `aps_ecu/<ECU_ID>/poll/set` with retain disabled:
+
+   ```json
+   {"poll":99,"session":"COPY_CURRENT_POLL_SESSION_HERE"}
+   ```
+
+Replace `<ECU_ID>` with the ECU's 12-character installation ID. `99` requests
+all configured inverters; `0` requests the first inverter, `1` the second, and
+so on. These numbers are zero-based slots in the ECU inverter list, not serial
+numbers or Domoticz device IDs. Slots can change if you reorganize that list.
+
+The session changes whenever the ECU reconnects to the broker. Read the latest
+value instead of hard-coding it. Commands with an old or missing session are
+rejected, including old retained commands delivered on reconnect. The token
+prevents accidental replay; broker permissions still control access.
+
+The retained fleet state includes `poll_status` and `poll_busy`:
+
+| Status | Meaning |
+|---|---|
+| `idle` | No HA poll has been requested since startup. |
+| `pending` or `running` | The request was accepted and has not finished. |
+| `completed` | The requested inverter, or every configured inverter in a fleet round, supplied valid telemetry. |
+| `rejected: ...` | The command was invalid, automatic polling was enabled, the ECU was busy, or the radio/inverters were unavailable. |
+| `failed: ...` | An accepted request could not finish successfully. The text gives the reason. |
+
+Status is a snapshot, so a quick poll can finish before `pending` is published.
+A rejected second command does not cancel the first; `poll_busy` stays true
+until that first command finishes. Send one request at a time and wait for
+`poll_busy` to become false. There is no command queue or per-request history.
+
+Completion starts a fresh HA state publication cycle without the usual
+15-second wait. Discovery and broker recovery can delay publication, and fleet
+and inverter states arrive separately. A failed fleet round can still update
+the inverters that replied. An MQTT disconnect discards a queued HA request;
+a fleet round already handed to the scheduler can finish locally, but its HA
+request status reports the disconnect.
+
+Manual requests bypass the daylight pause. Schedule them during production
+hours if you want to avoid overnight attempts. A sleeping inverter may not
+reply. Keep **Fleet poll interval** close to your automation's actual cadence:
+HA considers samples stale after the greater of 60 seconds or twice that
+interval plus 10 seconds. Disabling automatic polling does not disable this
+freshness check. Power is calculated from changes between inverter readings;
+the first sample after an ECU restart establishes a baseline and reports zero.
+
+### Home Assistant automation example
+
+Add this MQTT sensor to `configuration.yaml`, merging it into an existing
+`mqtt:` section if you have one. Replace `YOUR_ECU_ID` in all three topic fields.
+Restart Home Assistant, then check the sensor's
+entity ID and adjust the automation if HA assigned a different one.
+
+```yaml
+mqtt:
+  sensor:
+    - name: "ECU poll status"
+      unique_id: "ecu_poll_status"
+      state_topic: "aps_ecu/YOUR_ECU_ID/fleet/state"
+      value_template: "{{ value_json.poll_status }}"
+      json_attributes_topic: "aps_ecu/YOUR_ECU_ID/fleet/state"
+      json_attributes_template: >-
+        {{ {'poll_session': value_json.poll_session,
+            'poll_busy': value_json.poll_busy} | tojson }}
+      availability_topic: "aps_ecu/YOUR_ECU_ID/status"
+```
+
+This automation requests a fleet poll every five minutes while the sun is up.
+Paste it into an automation's YAML editor, replace `YOUR_ECU_ID`, and disable
+automatic polling on the ECU first. Give each ECU its own sensor and unique ID
+if you have more than one.
+
+See Home Assistant's [MQTT sensor configuration](https://www.home-assistant.io/integrations/sensor.mqtt/)
+and [MQTT publish action](https://www.home-assistant.io/integrations/mqtt/#action-mqttpublish)
+for the configuration fields used here.
+
+```yaml
+alias: "Poll solar inverters on demand"
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+conditions:
+  - condition: sun
+    after: sunrise
+    before: sunset
+  - condition: template
+    value_template: >-
+      {{ states('sensor.ecu_poll_status') not in ['unknown', 'unavailable']
+         and state_attr('sensor.ecu_poll_status', 'poll_session')
+         and state_attr('sensor.ecu_poll_status', 'poll_busy') == false }}
+actions:
+  - action: mqtt.publish
+    data:
+      topic: "aps_ecu/YOUR_ECU_ID/poll/set"
+      retain: false
+      payload: >-
+        {{ {'poll': 99,
+            'session': state_attr('sensor.ecu_poll_status', 'poll_session')}
+           | tojson }}
+mode: single
+```
+
+### Legacy MQTT and HTTP polling
+
+The existing Domoticz/legacy client still accepts `{"poll":0}` and
+`{"poll":99}` on `ESP32-ECU-<chipId>/in`, without a session field. Enable
+**Domoticz** under **Menu > MQTT** and use a message format other than
+ThingSpeak. The console prints the exact command topic when it subscribes.
+This chip ID is different from `ECU_ID`; HA's command topic uses `ECU_ID`.
+Both clients can share a broker. Legacy commands keep their existing behavior
+and do not update HA's request status, though their readings reach HA telemetry.
+
+For a single inverter, the local HTTP endpoint is
+`http://<ecu-ip>/api/poll/0`. Replace `0` with its slot number. The old upstream
+`?POLL=0` syntax is not supported here, and `/api/poll/99` is not a fleet
+endpoint. HTTP and legacy MQTT requests require automatic polling to be off.
+The HTTP response acknowledges dispatch, not a successful inverter reply.
+Web-page **Poll** actions remain available when automatic polling is enabled.
 
 ## Energy dashboard with MQTT
 

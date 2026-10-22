@@ -1,5 +1,23 @@
 # Build and hardware verification
 
+## Issue #37: Home Assistant on-demand polling
+
+The host test runs the HA MQTT receiver and dispatch with an in-memory broker
+and fake radio calls. It covers single-inverter and fleet requests, malformed
+values, old sessions, retained replay after reconnect, automatic-polling and
+busy rejection, missing replies, configuration changes before dispatch, and
+state refresh after completion. Existing HA energy recovery and power-control
+tests remain in the same harness.
+
+HA, scheduler, polling collection and reassembly host tests pass. Both named
+firmware layouts compile with ESP32 core 3.3.8. The documentation's YAML and
+Jinja examples pass parsing and template checks, and the edited documents'
+local links resolve.
+
+This feature has not been tested against a live broker and inverter. The HA
+automation example still needs a field check. Existing radio verification
+below does not establish this new command path's behavior on hardware.
+
 ## Issue #30 follow-up: DS3 readback metadata (2026-10-14)
 
 The reporter says the plain `DS3_pergola` still applies power limits without

@@ -25,6 +25,7 @@ jobs:
       - name: Test polling collection, reassembly and event log bounds
         run: |
           python3 tools/test_poll_collection.py
+          python3 tools/test_poll_scheduler.py
           python3 tools/test_poll_reassembly.py
           python3 tools/test_event_log.py
       - name: Test NTP and antenna settings

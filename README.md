@@ -414,17 +414,28 @@ the board MAC; Home Assistant's separate client ID follows ECU_ID.
 ## Connect Home Assistant
 
 Use the consolidated [Home Assistant guide](HomeAssistant.md) for MQTT discovery,
-Energy dashboard setup, power limits, broker backups and the read-only Modbus
+Energy dashboard setup, on-demand polling, power limits, broker backups and the read-only Modbus
 alternative. It includes copy-ready Modbus YAML and troubleshooting.
 
 For existing Domoticz users, its MQTT formats and command topic are unchanged.
 Home Assistant can run alongside it on the same broker. Configure the broker
-in the existing MQTT page; the separate Home Assistant page enables discovery.
+under **Menu > MQTT**, where each mode has its own enable switch.
+
+### Choose when the inverters are polled
+
+Leave **Enable automatic polling** checked under **Menu > Polling and access**
+to let the ECU schedule reads. The default fleet interval is 300 seconds;
+daylight scheduling pauses reads overnight when time and location are valid.
+
+To let a Home Assistant automation schedule reads, disable automatic polling
+and send commands through HA's MQTT client. Domoticz does not need to be
+enabled. Follow [Automatic and on-demand polling](HomeAssistant.md#automatic-and-on-demand-polling)
+for topics, session tokens, completion status and a YAML example. That section
+also covers the legacy MQTT commands and single-inverter HTTP endpoint.
 
 ## Troubleshooting
 
 For missing inverter readings or intermittent failures, see [Polling diagnostics](POLL-DIAGNOSTICS.md). The recorder is included, off by default, and can be enabled or cleared from the web interface.
- and other features
 
 - **No fresh readings:** check daylight, time/location, signal, inverter power
   and the last poll time. The default poll interval is five minutes.
