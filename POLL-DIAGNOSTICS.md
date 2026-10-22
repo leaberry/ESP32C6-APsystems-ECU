@@ -1,15 +1,17 @@
 # Polling diagnostics
 
-Polling diagnostics are included in the firmware. They are off by default and
-use the existing flight recorder switch. A saved choice to enable recording is
-preserved across firmware updates.
+Polling diagnostics are off by default. Enable them with the flight recorder
+switch; the saved setting survives firmware updates. For poll scheduling and
+MQTT commands, see [Automatic and on-demand polling](HomeAssistant.md#automatic-and-on-demand-polling).
 
 ## Collect logs
 
 1. Open **Menu > Polling and access**.
 2. Check **Enable persistent flight recorder** and save.
-3. Keep your usual poll interval. Let the ECU run in daylight for 30–60 minutes,
-   preferably until the problem happens. Write down when it happened.
+3. Keep your usual poll interval. Let the ECU run in daylight for 30 to 60 minutes,
+   preferably until the problem happens. Write down when it happened. If HA
+   schedules your polls, keep that automation running and record `poll_status`
+   from the fleet state as well.
 4. Open **Menu > Diagnostic snapshot**. Download **Download poll log**,
    **Download report**, and **Download flight recorder**. If the ECU crashed,
    also download **Download crash dump** and keep the matching firmware ELF.

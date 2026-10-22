@@ -4,7 +4,7 @@
 
 ### Default 8 MB build
 
-`partitions.csv` now defaults to the recommended 8 MB dual-OTA layout and is
+`partitions.csv` uses the recommended 8 MB dual-OTA layout and is
 identical to `partitions-8mb-ota.csv`.
 
 1. Install Arduino IDE 2.x.
@@ -72,19 +72,38 @@ builds raw IEEE 802.15.4/NWK/APS frames, acknowledges and reassembles fragmented
 responses, and renders the subset of TI `AF_INCOMING_MSG` expected by the
 proven decoders. Pairing persists each inverter's PAN and short radio address.
 
-Important modules include:
+The main modules are:
 
-- `ZIGBEE_A_TRANSPORT.ino` and `ZIGBEE_COORDINATOR.ino` — native radio path;
-- `APS_CRYPTO.ino` — plaintext/APsystems AES envelope;
-- `POLL_SCHEDULER.ino` — cooperative fleet arbitration;
-- `INVERTER_INFO.ino` — model and firmware query;
-- `ENERGY_HISTORY.ino` — low-wear journal, statistics and backup/restore;
-- `GRID_PROFILE.ino` — guarded protection profile operations;
-- `SUNSPEC_MODBUS.ino` — read-only Modbus/SunSpec service; and
-- `PORTAL_WIFI.ino`, `WEB_UI.ino` and related pages — refactored local UI.
+- `ZIGBEE_A_TRANSPORT.ino` and `ZIGBEE_COORDINATOR.ino`: native radio path.
+- `APS_CRYPTO.ino`: plaintext/APsystems AES envelope.
+- `POLL_SCHEDULER.ino`: cooperative fleet arbitration.
+- `INVERTER_INFO.ino`: model and firmware query.
+- `ENERGY_HISTORY.ino`: low-wear journal, statistics and backup/restore.
+- `GRID_PROFILE.ino`: guarded protection profile operations.
+- `SUNSPEC_MODBUS.ino`: read-only Modbus/SunSpec service.
+- `PORTAL_WIFI.ino`, `WEB_UI.ino` and related pages: local UI.
 
 The ZNP-to-native operation map is in [PORTING-NOTES.md](PORTING-NOTES.md).
 Security analysis is in [SECURITY-AUDIT.md](SECURITY-AUDIT.md).
+
+### Home Assistant poll dispatch
+
+`HOME_ASSISTANT.ino` subscribes to `aps_ecu/<ECU_ID>/poll/set` on its own client.
+The callback validates a zero-based slot or `99`, checks the connection session,
+and records one pending request. `haPollLoop()` rechecks configuration and busy
+state before calling `polling()` or requesting a manual scheduler round.
+`pollingWorkPending()` includes queued rounds as well as active ones.
+
+The scheduler calls `haPollRoundFinished()` after collecting the fleet result.
+HA then resets its publication cursor and deadline so the next state cycle
+includes the result and updated samples. No callback runs a radio transaction,
+and no request or status is written to flash. HA power-limit commands are
+rejected while an HA poll is pending or running. Legacy commands and web actions
+keep their existing dispatch behavior.
+
+`python3 tools/test_home_assistant.py` tests the command path with fake radio
+calls. `python3 tools/test_poll_scheduler.py` runs the production scheduler with
+fake replies and checks manual dispatch, failed rounds and completion callbacks.
 
 ## Release automation
 

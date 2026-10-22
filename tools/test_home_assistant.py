@@ -70,10 +70,15 @@ char ECU_ID[13]="123456789ABC",haDiscoveryPrefix[49]="homeassistant",fleetName[3
 char Mqtt_Broker[65]="broker",Mqtt_Port[8]="1883",Mqtt_Username[33]="",Mqtt_Password[33]="";
 const char *VERSION="test";
 int inverterCount=2,actionFlag=0,desiredThrottle[9];unsigned long pollIntervalSeconds=30;
-struct {char invSerial[13];char invLocation[33];int invType;bool conPanels[4];}Inv_Prop[9];
+struct {char invSerial[13];char invID[5];char invLocation[33];int invType;bool conPanels[4];}Inv_Prop[9];
 struct {float pw_total,heath,acv,freq,power[4],dcv[4],dcc[4];bool radioMetricsValid;int radioRssi,radioLqi;}Inv_Data[9];
 bool polled[9],night=false,applySuccess=true;int commands=0,lastCommandInverter=-1;
 bool pollingNightModeActive(){return night;}
+int zigbeeUp=1,singlePolls=0,lastPoll=-1,fleetRequests=0;
+bool schedulerBusy=false,pollSuccess=true;
+bool pollingWorkPending(){return schedulerBusy;}
+void pollSchedulerRequest(bool manual){assert(manual);schedulerBusy=true;++fleetRequests;}
+void polling(int which){++singlePolls;lastPoll=which;polled[which]=pollSuccess;}
 uint64_t energyTodayWhFor(int){return 42;}
 float round1(float v){return roundf(v*10)/10;}
 bool setMaxPower(int which){++commands;lastCommandInverter=which;return applySuccess;}
@@ -171,6 +176,59 @@ int main(){
  actionFlag=0;legacy(packet,packet.size()-1);assert(actionFlag==0);
  legacy(packet+"garbage",packet.size());assert(actionFlag==240&&desiredThrottle[0]==100);
  actionFlag=0;
+ // HA-only polling uses the real receiver and dispatch, with radio calls stubbed.
+ auto pollCommand=[&](std::string value,std::string session){
+  std::string b="{\"poll\":"+value+",\"session\":\""+session+"\"}";
+  String t=haBase+"/poll/set";haReceive(t.data(),(uint8_t*)b.data(),b.size());
+ };
+ haStateDocument(state,-1);assert(state["poll_session"]==haSession);
+ for(const char *value:{"-1","1","98","100","0.5","\"0\"","null","true"}){
+  pollCommand(value,haSession);assert(haPollTarget<0);
+ }
+ pollCommand("0","old");assert(haPollTarget<0);
+ Polling=true;pollCommand("0",haSession);assert(haPollTarget<0);Polling=false;
+ zigbeeUp=0;pollCommand("0",haSession);assert(haPollTarget<0);zigbeeUp=1;
+ actionFlag=47;pollCommand("0",haSession);assert(haPollTarget<0&&actionFlag==47);actionFlag=0;
+ schedulerBusy=true;pollCommand("99",haSession);assert(haPollTarget<0);schedulerBusy=false;
+ haControl=0;pollCommand("0",haSession);assert(haPollTarget<0);haControl=-1;
+ strcpy(Inv_Prop[0].invID,"0000");pollCommand("0",haSession);assert(haPollTarget<0);strcpy(Inv_Prop[0].invID,"1234");
+ inverterCount=0;pollCommand("99",haSession);assert(haPollTarget<0);inverterCount=1;
+ pollCommand("0",haSession);assert(haPollTarget==0&&singlePolls==0);
+ haTelemetry(0);command(body("100"));assert(haControl<0);
+ haStateDocument(state,0);assert(state["control_available"]==false);
+ pollCommand("99",haSession);assert(haPollTarget==0&&haPollStatus=="rejected: busy");
+ haNextState=tick+15000;haPollLoop();assert(singlePolls==1&&lastPoll==0&&haPollTarget<0&&haPollStatus=="completed"&&haNextState==0&&haStateCursor==-1);
+ pollSuccess=false;pollCommand("0",haSession);haPollLoop();assert(singlePolls==2&&haPollStatus=="failed: inverter did not reply");pollSuccess=true;
+ pollCommand("99",haSession);haPollLoop();assert(fleetRequests==1&&haPollRunning);
+ haStateDocument(state,-1);assert(state["poll_busy"]==true);
+ haPollLoop();assert(fleetRequests==1);schedulerBusy=false;haPollRoundFinished(true);
+ assert(haPollTarget<0&&haPollStatus=="completed");
+ pollCommand("99",haSession);haPollLoop();schedulerBusy=false;haPollRoundFinished(false);
+ assert(haPollStatus=="failed: inverter did not reply");
+ pollCommand("99",haSession);haPollLoop();schedulerBusy=false;haPollLoop();assert(haPollTarget<0&&haPollStatus=="failed: poll did not start");
+ pollCommand("0",haSession);Inv_Prop[0].invSerial[11]='9';haPollLoop();Inv_Prop[0].invSerial[11]='1';assert(singlePolls==2&&haPollTarget<0);
+ pollCommand("0",haSession);Polling=true;haPollLoop();Polling=false;assert(singlePolls==2&&haPollTarget<0);
+ pollCommand("0",haSession);actionFlag=24;haPollLoop();assert(singlePolls==2&&actionFlag==24);actionFlag=0;
+ pollCommand("0",haSession);haClient.disconnect();haNextConnect=0;haLoop();drain();assert(singlePolls==2&&haPollTarget<0);
+ assert(std::find(haClient.subscriptions.begin(),haClient.subscriptions.end(),haBase+"/poll/set")!=haClient.subscriptions.end());
+ haEnabled=false;pollCommand("0",haSession);assert(haPollTarget<0);haEnabled=true;
+ // A retained command from an earlier connection cannot start a poll.
+ haClient.retained[haBase+"/poll/set"]="{\"poll\":99,\"session\":\""+haSession+"\"}";
+ haClient.disconnect();haNextConnect=0;haLoop();drain();assert(haPollTarget<0&&fleetRequests==3);
+ haClient.retained.erase(haBase+"/poll/set");
+ for(const char *b:{"not json","{}","{\"poll\":0}","{\"poll\":0,\"session\":null}"}){
+  String t=haBase+"/poll/set";haReceive(t.data(),(uint8_t*)b,strlen(b));assert(haPollTarget<0);
+ }
+ inverterCount=2;strcpy(Inv_Prop[1].invID,"5678");
+ pollCommand("1",haSession);haPollLoop();assert(singlePolls==3&&lastPoll==1);
+ pollCommand("0",haSession);haEnabled=false;haLoop();assert(haPollTarget<0&&singlePolls==3);haEnabled=true;
+ inverterCount=1;
+ // The legacy polling payloads still use their original action flags.
+ for(int target:{0,99}){
+  std::string b="{\"poll\":"+std::to_string(target)+"}";
+  legacy(b,b.size());assert(actionFlag==(target==99?48:47));actionFlag=0;
+  Polling=true;legacy(b,b.size());assert(actionFlag==0);Polling=false;
+ }
  assert(haOwnDiscoveryTopic(haDiscoveryTopic(-1))&&!haOwnDiscoveryTopic("homeassistant/device/some_other_ecu/config"));
  // Inventory checkpoint must be acknowledged before emitting a new discovery topic.
  haInventoryBootstrap=true;haInventoryCorrupt=false;haInventoryAwaited=0;haDiscoveryCursor=-1;haRegistry.clear();haRegistry["topics"].to<JsonArray>();

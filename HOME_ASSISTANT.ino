@@ -15,6 +15,68 @@ static char haControlSerial[13]={};
 static JsonDocument haRegistry;
 static bool haInventoryBootstrap=false,haInventoryCorrupt=false,haDisabledDone=false;
 static uint32_t haInventorySequence=0,haInventoryAwaited=0,haInventorySentAt=0;
+static int haPollTarget=-1,haPollCount=0;
+static bool haPollRunning=false;
+static String haPollSession,haPollStatus="idle";
+static char haPollSerials[9][13]={};
+
+void haPollRefresh() {
+  haStateCursor=-1;haNextState=0;
+}
+
+void haPollFinish(const char *status) {
+  haPollTarget=-1;haPollRunning=false;haPollStatus=status;
+  haPollRefresh();
+}
+
+void haPollRoundFinished(bool succeeded) {
+  if(haPollRunning)haPollFinish(succeeded?"completed":"failed: inverter did not reply");
+}
+
+void haPollReceive(uint8_t *payload,unsigned int length) {
+  JsonDocument command;
+  if(length>160||deserializeJson(command,payload,length)||!command["poll"].is<int>()||
+     !command["session"].is<const char *>()||haSession.length()==0||command["session"]!=haSession) {
+    haPollStatus="rejected: invalid or stale command";haPollRefresh();return;
+  }
+  int target=command["poll"];
+  if(target!=99&&(target<0||target>=inverterCount||!strcmp(Inv_Prop[target].invID,"0000"))) {
+    haPollStatus="rejected: invalid inverter";haPollRefresh();return;
+  }
+  if(Polling) {haPollStatus="rejected: automatic polling enabled";haPollRefresh();return;}
+  if(haPollTarget>=0||haControl>=0||actionFlag||pollingWorkPending()) {
+    haPollStatus="rejected: busy";haPollRefresh();return;
+  }
+  if(zigbeeUp!=1||inverterCount==0) {
+    haPollStatus="rejected: radio or inverter unavailable";haPollRefresh();return;
+  }
+  haPollTarget=target;haPollCount=inverterCount;haPollSession=haSession;
+  for(int i=0;i<inverterCount;++i)strlcpy(haPollSerials[i],Inv_Prop[i].invSerial,13);
+  haPollStatus="pending";haPollRefresh();
+}
+
+void haPollLoop() {
+  if(haPollTarget<0)return;
+  if(!haEnabled||!haClient.connected()||haPollSession!=haSession) {
+    haPollFinish("failed: MQTT session changed");return;
+  }
+  if(haPollRunning) {
+    // A request can be dropped before the scheduler starts if the radio goes down.
+    if(!pollingWorkPending())haPollFinish("failed: poll did not start");
+    return;
+  }
+  bool changed=haPollCount!=inverterCount;
+  for(int i=0;i<inverterCount&&!changed;++i)changed=strcmp(haPollSerials[i],Inv_Prop[i].invSerial)!=0;
+  if(changed||Polling||zigbeeUp!=1) {haPollFinish("failed: polling configuration changed");return;}
+  if(actionFlag||haControl>=0||pollingWorkPending()) {haPollFinish("failed: busy");return;}
+  if(haPollTarget==99) {
+    haPollRunning=true;haPollStatus="running";pollSchedulerRequest(true);
+  } else {
+    int which=haPollTarget;
+    polling(which);
+    haPollFinish(polled[which]?"completed":"failed: inverter did not reply");
+  }
+}
 
 String haBrokerKey(){return String(Mqtt_Broker)+":"+Mqtt_Port;}
 String haDeviceKey(int which){return "aps_ecu_"+String(ECU_ID)+(which<0?String():"_"+String(Inv_Prop[which].invSerial));}
@@ -119,6 +181,8 @@ void haStateDocument(JsonDocument &doc,int which) {
   doc.clear();bool night=pollingNightModeActive();
   doc["ecu_valid"]=true;doc["energy_valid"]=haMeterReady;doc["today_valid"]=timeRetrieved;
   if(which<0) {
+    doc["poll_session"]=haSession;doc["poll_status"]=haPollStatus;
+    doc["poll_busy"]=haPollTarget>=0;
     float watts=0;uint64_t today=0;bool valid=inverterCount>0;
     for(int i=0;i<inverterCount;++i){watts+=Inv_Data[i].pw_total;today+=energyTodayWhFor(i);valid=valid&&haFresh(i)&&polled[i];}
     doc["power_valid"]=night||valid;doc["power_w"]=night?0:round1(watts);
@@ -138,7 +202,7 @@ void haStateDocument(JsonDocument &doc,int which) {
   doc["frequency_hz"]=Inv_Data[which].freq;doc["radio_rssi"]=Inv_Data[which].radioRssi;
   doc["radio_lqi"]=Inv_Data[which].radioLqi;
   // Unknown is not an optimistic confirmation of the last command.
-  doc["control_available"]=fresh&&haControl<0;
+  doc["control_available"]=fresh&&haControl<0&&haPollTarget<0;
   if(desiredThrottle[which]>=20&&desiredThrottle[which]<=500)doc["limit_w"]=desiredThrottle[which];
   else doc["limit_w"]="None";
   doc["control_status"]=haControlStatus[which];
@@ -153,6 +217,7 @@ void haReceive(char *topic,uint8_t *payload,unsigned int length) {
   if(String(topic)==haBase+"/inventory"){haRegistryReceive(payload,length);return;}
   if(String(topic)==haBase+"/energy"){haEnergyReceive(payload,length);return;}
   if(!haEnabled)return;
+  if(String(topic)==haBase+"/poll/set") {haPollReceive(payload,length);return;}
   if(String(topic)==String(haDiscoveryPrefix)+"/status") {
     if(length==6&&!memcmp(payload,"online",6)){haDiscoveryPending=true;haDiscoveryCursor=-1;}
     return;
@@ -166,7 +231,7 @@ void haReceive(char *topic,uint8_t *payload,unsigned int length) {
      command["session"]!=haSession||command["value"].as<int>()<20||command["value"].as<int>()>500) {
     haControlStatus[which]="rejected: invalid or stale command";return;
   }
-  if(haControl>=0||actionFlag||!haFresh(which)||!polled[which]||pollingNightModeActive()) {
+  if(haControl>=0||haPollTarget>=0||actionFlag||!haFresh(which)||!polled[which]||pollingNightModeActive()) {
     haControlStatus[which]="rejected: busy or inverter unavailable";return;
   }
   haControl=which;haControlSession=haSession;haControlValue=command["value"];haControlStatus[which]="pending";strlcpy(haControlSerial,Inv_Prop[which].invSerial,13);
@@ -253,12 +318,14 @@ void haBegin() {
 }
 
 void haLoop() {
+  if(!haEnabled&&haPollTarget>=0)haPollFinish("failed: Home Assistant disabled");
   if((!haEnabled&&!haConfigured)||haDisabledDone)return;
   uint32_t now=millis();
   if(haClient.connected()&&haConnectedBroker!=haBrokerKey()) {
     haClient.publish((haBase+"/status").c_str(),"offline",true);haClient.disconnect();
   }
   if(!haClient.connected()) {
+    if(haPollTarget>=0)haPollFinish("failed: MQTT disconnected");
     if(WiFi.status()!=WL_CONNECTED||((int32_t)(now-haNextConnect)<0))return;
     haNextConnect=now+30000;haClient.setServer(Mqtt_Broker,atoi(Mqtt_Port));
     char session[17];snprintf(session,sizeof(session),"%08lX%08lX",(unsigned long)esp_random(),(unsigned long)esp_random());haSession=session;
@@ -266,6 +333,7 @@ void haLoop() {
     if(!haClient.connect(clientId.c_str(),Mqtt_Username,Mqtt_Password,status.c_str(),1,true,"offline"))return;
     haConnectedBroker=haBrokerKey();
     haDiscoveryPending=true;haDiscoveryCursor=-1;haStateCursor=-1;
+    haNextState=0;
     haInventoryBootstrap=false;haInventoryCorrupt=false;haInventoryAwaited=0;
     haRegistry.clear();haRegistry["topics"].to<JsonArray>();haEnergyReconnect();
     haClient.subscribe((haBase+"/inventory").c_str());
@@ -276,10 +344,12 @@ void haLoop() {
     haPublishJson(haBase+"/inventory",probe,false);
     if(haEnabled)haPublishJson(haBase+"/energy",probe,false);
     if(haEnabled){haClient.subscribe((String(haDiscoveryPrefix)+"/status").c_str());haClient.subscribe((haBase+"/inverter/+/limit/set").c_str());}
+    if(haEnabled)haClient.subscribe((haBase+"/poll/set").c_str());
     haClient.publish(status.c_str(),haEnabled?"online":"offline",true);
   }
   haClient.loop();
   haEnergyCommit();
+  haPollLoop();
   if(haControl>=0&&!actionFlag) {
     int which=haControl;haControl=-1;
     if(!haClient.connected()||haControlSession!=haSession){haControlStatus[which]="failed: MQTT session changed";return;}

@@ -66,6 +66,7 @@ time_t pollingNextResumeEpoch() {
 }
 
 bool pollingRoundInProgress() { return pollRoundActive; }
+bool pollingWorkPending() { return pollRoundActive || pollRoundRequested; }
 
 uint8_t pollSchedulerCurrentInverter() {
   return pollRoundActive ? pollNextInverter : 0xFF;
@@ -132,7 +133,9 @@ void pollSchedulerLoop() {
   if (pollNextInverter >= YC600_MAX_NUMBER_OF_INVERTERS) {
     pollRoundActive = false;
     pollRoundManual = false;
-    if (pollingRoundSucceeded() && timeRetrieved) pollLastSuccessfulEpoch = ecuNow();
+    bool succeeded = pollingRoundSucceeded();
+    if (succeeded && timeRetrieved) pollLastSuccessfulEpoch = ecuNow();
+    haPollRoundFinished(succeeded);
     eventSend(2);
     consoleOut(F("inverter poll round complete"));
     flightRecorderActivity("idle");
