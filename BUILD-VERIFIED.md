@@ -1,5 +1,27 @@
 # Build and hardware verification
 
+## QT2 timeout capture retention (2026-10-25)
+
+TobiasTTM's follow-up exported 512 timeout records from the older
+`ESP32C6-ECU_v1_4_13-qt2-dev` build, covering about 30 minutes across four
+inverters. The file contains no received ASDUs. It demonstrates an export
+from that installation, but cannot validate telemetry scales or the rebased
+firmware. The report also identifies a panic reset and stored crash dump;
+the dump and matching ELF are needed to investigate. See [QT2.md](QT2.md).
+
+`ESP32C6-ECU_v1_4_19-qt2-dev2` records the first timeout per silent run and
+counts repeated timeouts without writing more records. Sanitized production
+capture tests reproduce 512 timeouts across four inverters, then 5,000 more,
+while preserving preceding received frames on both ring sizes. Recovery,
+changed serials, queue overflow, failed writes and low-space retry are covered.
+The decoder and fleet polling regressions also pass; numerical scales and
+radio behavior are unchanged.
+
+Both Arduino core 3.3.8 builds pass: 1,646,354 bytes of program storage and
+110,144 bytes of static globals, leaving 217,536 bytes before runtime
+allocations. Both partition tables match the supported layouts. Physical
+testing of this capture-retention change remains pending.
+
 ## QT2 rebase and voltage review (2026-10-25)
 
 `ESP32C6-ECU_v1_4_19-qt2-dev` builds on `main` at `17d8a79` with Arduino

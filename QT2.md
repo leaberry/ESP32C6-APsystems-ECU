@@ -86,11 +86,51 @@ L1–L3, L2–L3, L1–L2. This is an inference, not a confirmed register defini
 The third conductor's electrical state and matching raw captures are missing.
 The [APsystems cable page](https://latam.apsystems.com/en/portfolio-item/3-phase-bus-cable-4mm%C2%B2-h07-5-5m/)
 identifies brown=L1, black=L2 and grey=L3, but does not define telemetry order.
+The reporter subsequently clarified that he used the connector pin labels;
+inside his older units the wires are red, black and green. Cable color alone
+is therefore not a reliable phase identifier for these tests.
 
 Agreement within 2 V against a house energy meter on a balanced supply does
 not distinguish phase-to-neutral voltage from line-to-line voltage divided
 by sqrt(3). The old phase-to-neutral labels are therefore removed. Reported
 values and scales remain unchanged; no inferred 400 V values are published.
+
+## October 25 diagnostic follow-up
+
+[The later comment](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6403601776)
+confirms that these older QT2 units have three AC conductors, L1/L2/L3, with
+PE connected to the frame and no neutral. This supports removing the previous
+phase-to-neutral claim, but does not establish whether the internal reference
+is a computed or virtual neutral. The inferred line-pair mapping remains open.
+The reporter also switched physical units behind the test configuration while
+looking for intact fuses; future comparisons need the actual inverter serial.
+
+The attached [capture](https://github.com/user-attachments/files/33938928/qt2-capture.json)
+is JSONL despite its `.json` extension. It contains one export header and
+512 consecutive timeout records, 128 per inverter, with no received ASDUs
+or valid telemetry. Sequences 11843–12354 span 21:21:24–21:51:39 local time
+(UTC+01:00), or 30 minutes 15 seconds. All records use one boot ID and firmware
+`ESP32C6-ECU_v1_4_13-qt2-dev`. Storage reports ready and zero dropped records;
+normal ring overwrites are not counted as drops. Earlier contents are unavailable.
+This attachment supplies no raw voltage, current, frequency or energy values.
+
+The [diagnostic report](https://github.com/user-attachments/files/33938971/aps-ecu-diagnostics.txt)
+shows four configured QT2s, a 12-second requested polling interval, and repeated
+successful transmissions followed by receive timeouts late in the evening.
+That does not establish why the inverters were silent; sleep, connectivity and
+configuration cannot be distinguished from these records. Reset reason 4 is
+an ESP-IDF panic reset, and a 12,164-byte crash dump is stored. Diagnosing that
+requires the downloaded crash dump and the ELF from the exact build that
+crashed. The report alone does not identify a fault in the QT2 decoder.
+
+This exposed a capture-retention problem: repeated timeouts can consume every
+slot. Starting with `ESP32C6-ECU_v1_4_19-qt2-dev2`, each inverter records only
+the first timeout in an uninterrupted silent run. A received frame, changed
+serial or ECU restart allows another timeout record. Suppressed repeats are
+counted in the export header, independently of storage/queue drops. Failed
+storage attempts remain eligible for retry. Polling cadence and retries are
+unchanged, and received frames still follow normal bounded-ring retention.
+No voltage/current calibration changes follow from this attachment.
 
 ## Integration and compatibility
 
@@ -127,7 +167,8 @@ the link on the QT2 details page. The admin-authenticated endpoint is
 `/diagnostics/qt2`; its attachment is `qt2-capture.jsonl`.
 
 The log contains post-decryption, reassembled ASDUs (including rejected
-telemetry and information/configuration replies), poll timeouts, serial,
+telemetry and information/configuration replies), the first timeout of each
+silent run, serial,
 firmware versions, source/cluster, RSSI/LQI, connected-input mask, boot ID,
 64-bit uptime and local clock/UTC offset. A zero local epoch means the clock
 was not synchronized. Valid polls also include `ac_readings_v` in wire order, unverified voltage
@@ -141,13 +182,17 @@ Storage is a checksummed circular file, written after synchronous inverter
 transactions. It retains 512 records on the 8 MB layout (about 205 KiB), or
 128 records on the 4 MB layout (about 51 KiB). At two QT2s polled every five
 minutes, 512 records cover roughly 21 hours; retries, info replies and faster
-polling shorten that window. Oldest records are overwritten. Download after
+polling shorten that window. Repeated timeouts from an uninterrupted silent
+run do not consume additional slots. Oldest records are overwritten. Download after
 each useful test session. Records survive restart, with a boot ID distinguishing
 clock resets. No file is created on a fleet without QT2 traffic.
 
 Allocation leaves at least 96 KiB free for settings/history. If space or writes
 fail, telemetry continues and the export reports `storage_ready` and
-`dropped_since_boot`. The four-entry pending queue bounds RAM use. An abrupt
+`dropped_since_boot`. The header also reports `suppressed_timeouts_since_boot`
+and `timeout_policy: "first_until_rx_or_serial_change"`. Timeout suppression
+is RAM-only and starts fresh at ECU restart. The four-entry pending queue
+bounds RAM use. An abrupt
 power loss may lose queued/in-progress records; checksums reject damaged
 records at restart/export. A slow download can encounter an overwritten slot;
 that is reported as `missing_or_overwritten`, rather than returning mixed data.
@@ -161,15 +206,20 @@ Wi-Fi or MQTT credentials.
    production and naturally varying light. Record which physical PV input is
    enabled and the inverter firmware version.
 2. At known times, note independent DC voltage/current per connected input,
-   phase-to-neutral and line-to-line voltages, and inverter AC output power.
-   Identify conductors by both terminal and cable color, record neutral wiring
-   and any floating conductor, and match the meter timestamps to raw captures. Record the reference
+   line-to-line voltages and inverter AC output power. Record any existing
+   phase-to-neutral reference separately, including its measurement point;
+   these older QT2 units have no neutral connection. Identify phases by connector
+   pin, record any floating conductor, and match meter timestamps to raw captures.
+   Record the reference
    instrument and its units; a reading on an MPPT pair must be identified as
    a pair total. These references cannot be inferred from the radio dump.
 3. For energy calibration, record an independent energy meter at the start
    and end of a steady interval, with timestamps. Download the capture for
    the same interval. Include natural restart/overnight behavior when available.
-4. Share the downloaded JSONL and those reference readings for analysis.
+4. Download while useful daytime readings are still retained. Before sharing,
+   check for `event: "rx"`, nonempty `asdu_hex`, and `valid_telemetry: true`;
+   an all-timeout export cannot calibrate measurements. Share the JSONL and
+   timestamped reference readings for analysis.
    Polls provide both device and host timing, allowing validation of the clock
    unit independently of the energy conversion. No throttle test is required.
 

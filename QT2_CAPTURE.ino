@@ -10,10 +10,18 @@ Qt2CaptureRecord qt2Pending[QT2_CAPTURE_QUEUE] = {};
 size_t qt2PendingCount = 0;
 uint32_t qt2CaptureSequence = 0, qt2CaptureBoot = 0;
 std::atomic<uint32_t> qt2CaptureDropped{0};
+std::atomic<uint32_t> qt2CaptureSuppressedTimeouts{0};
+char qt2TimeoutSerial[YC600_MAX_NUMBER_OF_INVERTERS][13] = {};
 size_t qt2CaptureCapacity = 0;
 SemaphoreHandle_t qt2CaptureMutex = nullptr;
 bool qt2CaptureReady = false;
 uint32_t qt2CaptureRetryAt = 0;
+
+void qt2CaptureRetryTimeout(const Qt2CaptureRecord &r) {
+  if (!r.event) return;
+  for (int i = 0; i < YC600_MAX_NUMBER_OF_INVERTERS; ++i)
+    if (!strcmp(qt2TimeoutSerial[i], r.serial)) qt2TimeoutSerial[i][0] = 0;
+}
 
 bool qt2CaptureEnsureFile() {
   if (qt2CaptureReady) return true;
@@ -103,7 +111,18 @@ void qt2CaptureBegin() {
 void qt2CaptureObserve(int which, const uint8_t *data, size_t length,
                        uint16_t source, uint16_t cluster, int8_t rssi, uint8_t lqi) {
   if (which < 0 || which >= inverterCount || Inv_Prop[which].invType != 3) return;
-  if (qt2PendingCount == QT2_CAPTURE_QUEUE || length > 300 || (!data && length)) {
+  if (length > 300 || (!data && length)) {
+    ++qt2CaptureDropped;
+    return;
+  }
+  // Preserve replies when an inverter stays silent overnight. A received frame
+  // or a changed serial starts a new timeout run; polling itself is unchanged.
+  if (data) qt2TimeoutSerial[which][0] = 0;
+  else if (!strcmp(qt2TimeoutSerial[which], Inv_Prop[which].invSerial)) {
+    ++qt2CaptureSuppressedTimeouts;
+    return;
+  }
+  if (qt2PendingCount == QT2_CAPTURE_QUEUE) {
     ++qt2CaptureDropped;
     return;
   }
@@ -122,6 +141,7 @@ void qt2CaptureObserve(int which, const uint8_t *data, size_t length,
   strlcpy(r.inverterVersion, Inv_Data[which].firmwareVersion, sizeof(r.inverterVersion));
   for (int i=0;i<4;++i) if (Inv_Prop[which].conPanels[i]) r.connectedMask |= 1<<i;
   if (length) memcpy(r.data, data, length);
+  if (!data) strlcpy(qt2TimeoutSerial[which], r.serial, sizeof(qt2TimeoutSerial[which]));
 }
 
 void qt2CaptureLoop() {
@@ -135,10 +155,13 @@ void qt2CaptureLoop() {
       r.checksum = qt2CaptureChecksum(r);
       if (file && file.seek((r.sequence % qt2CaptureCapacity)*sizeof(r)) &&
           file.write((const uint8_t *)&r, sizeof(r)) == sizeof(r)) ++qt2CaptureSequence;
-      else ++qt2CaptureDropped;
+      else { ++qt2CaptureDropped; qt2CaptureRetryTimeout(r); }
     }
     file.close();
-  } else qt2CaptureDropped += qt2PendingCount;
+  } else {
+    qt2CaptureDropped += qt2PendingCount;
+    for (size_t i=0;i<qt2PendingCount;++i) qt2CaptureRetryTimeout(qt2Pending[i]);
+  }
   qt2PendingCount = 0;
   xSemaphoreGive(qt2CaptureMutex);
 }
@@ -153,6 +176,8 @@ void qt2CaptureDownload(AsyncWebServerRequest *request) {
   cursor->next = cursor->last >= qt2CaptureCapacity ? cursor->last-qt2CaptureCapacity+1 : 1;
   cursor->line = "{\"schema\":\"qt2-capture/v1\",\"event\":\"export\",\"capacity\":" +
       String(qt2CaptureCapacity) + ",\"dropped_since_boot\":" + String(qt2CaptureDropped.load()) +
+      ",\"suppressed_timeouts_since_boot\":" + String(qt2CaptureSuppressedTimeouts.load()) +
+      ",\"timeout_policy\":\"first_until_rx_or_serial_change\"" +
       ",\"storage_ready\":" + String(qt2CaptureReady ? "true" : "false") + "}\n";
   xSemaphoreGive(qt2CaptureMutex);
   auto response = request->beginChunkedResponse("application/x-ndjson",

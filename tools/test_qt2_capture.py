@@ -11,6 +11,7 @@ harness = r'''
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@ harness = r'''
 #include "QT2_CAPTURE.h"
 using std::min;
 #define VERSION "test"
+#define YC600_MAX_NUMBER_OF_INVERTERS 9
 #define pdTRUE 1
 using SemaphoreHandle_t = void *;
 SemaphoreHandle_t xSemaphoreCreateMutex() {return (void *)1;}
@@ -32,8 +34,8 @@ bool timeRetrieved=true;
 int64_t ecuNow() {return 1800000000;}
 int currentUtcOffsetMinutes=-360;
 int inverterCount=2;
-struct Props {int invType=3;char invSerial[13]="901000010817";bool conPanels[4]={true,true,false,true};} Inv_Prop[2];
-struct Data {char firmwareVersion[20]="5.123";} Inv_Data[2];
+struct Props {int invType=3;char invSerial[13]="901000010817";bool conPanels[4]={true,true,false,true};} Inv_Prop[9];
+struct Data {char firmwareVersion[20]="5.123";} Inv_Data[9];
 size_t strlcpy(char *d,const char *s,size_t n) {size_t len=strlen(s);size_t k=min(len,n-1);memcpy(d,s,k);d[k]=0;return len;}
 std::vector<uint8_t> disk;
 bool failWrite=false;
@@ -85,9 +87,9 @@ int main() {
   assert(r.connectedMask==11 && r.length==4 && r.event==0 && !memcmp(r.data,data,4));
   assert(!strcmp(r.serial,"901000010817") && !strcmp(r.ecuVersion,"test") && !strcmp(r.inverterVersion,"5.123"));
   for(size_t i=0;i<sizeof(r);++i) {auto bad=r;((uint8_t *)&bad)[i]^=1;assert(!qt2CaptureValid(bad));}
-  for(int i=0;i<5;++i) qt2CaptureObserve(0,nullptr,0,0,262,0,0);
+  for(int i=0;i<5;++i) qt2CaptureObserve(0,data,4,11,262,-60,200);
   assert(qt2PendingCount==4 && qt2CaptureDropped==1);qt2CaptureLoop();
-  assert(slot(5).event==1 && slot(5).length==0);
+  assert(slot(5).event==0 && slot(5).length==4);
   for(int i=0;i<600;++i) {++ticks;qt2CaptureObserve(0,data,4,11,262,-60,200);qt2CaptureLoop();}
   assert(qt2CaptureSequence==605 && disk.size()==512*sizeof(r));
   for(uint32_t seq=94;seq<=605;++seq) {auto stored=slot(seq);assert(qt2CaptureValid(stored)&&stored.sequence==seq);}
@@ -106,6 +108,56 @@ int main() {
   qt2CaptureObserve(0,data,4,11,262,-60,200);qt2CaptureLoop();
   assert(disk.empty() && qt2CaptureDropped==dropped+1);
   std::cout<<"PASS smaller 4 MB capture capacity and low-space protection\n";
+
+  // The October 25 attachment had 512 timeouts, 128 from each of four units.
+  // Keep the preceding RX records on both flash layouts, even through a long outage.
+  inverterCount=4;
+  for(size_t capacity:{size_t(512),size_t(128)}) {
+    disk.clear();SPIFFS.available=capacity==512?2000000:500000;
+    qt2CaptureReady=false;qt2CaptureSequence=0;qt2CaptureRetryAt=0;
+    qt2CaptureDropped=0;qt2CaptureSuppressedTimeouts=0;
+    memset(qt2TimeoutSerial,0,sizeof(qt2TimeoutSerial));
+    qt2CaptureBegin();assert(qt2CaptureCapacity==capacity);
+    for(int i=0;i<4;++i) {
+      Inv_Prop[i].invType=3;snprintf(Inv_Prop[i].invSerial,13,"90000000000%d",i);
+      qt2CaptureObserve(i,data,4,11,262,-60,200);
+    }
+    qt2CaptureLoop();assert(qt2CaptureSequence==4);
+    for(int round=0;round<64;++round)for(int i=0;i<4;++i)for(int retry=0;retry<2;++retry) {
+      ++ticks;qt2CaptureObserve(i,nullptr,0,0,262,0,0);qt2CaptureLoop();
+    }
+    assert(qt2CaptureSequence==8 && qt2CaptureSuppressedTimeouts==508 && qt2CaptureDropped==0);
+    for(uint32_t seq=1;seq<=8;++seq) {
+      auto stored=slot(seq);assert(qt2CaptureValid(stored)&&stored.sequence==seq);
+      assert(stored.event==(seq>4) && stored.length==(seq>4?0:4));
+    }
+    for(int n=0;n<5000;++n) {qt2CaptureObserve(n%4,nullptr,0,0,262,0,0);qt2CaptureLoop();}
+    assert(qt2CaptureSequence==8 && qt2CaptureSuppressedTimeouts==5508);
+    // Any received ASDU, including an unrecognized variant, ends the silent run.
+    qt2CaptureObserve(0,data,4,11,262,-60,200);
+    qt2CaptureObserve(0,nullptr,0,0,262,0,0);qt2CaptureLoop();
+    assert(qt2CaptureSequence==10 && slot(10).event==1);
+    qt2CaptureObserve(0,nullptr,0,0,262,0,0);assert(qt2PendingCount==0);
+    strcpy(Inv_Prop[0].invSerial,"900000000009");
+    qt2CaptureObserve(0,nullptr,0,0,262,0,0);qt2CaptureLoop();
+    assert(qt2CaptureSequence==11 && !strcmp(slot(11).serial,"900000000009"));
+    // A full queue or failed write must not suppress the next storable timeout.
+    for(int n=0;n<4;++n)qt2CaptureObserve(1,data,4,11,262,-60,200);
+    qt2CaptureObserve(1,nullptr,0,0,262,0,0);assert(qt2CaptureDropped==1);
+    qt2CaptureLoop();qt2CaptureObserve(1,nullptr,0,0,262,0,0);
+    assert(qt2PendingCount==1);failWrite=true;qt2CaptureLoop();failWrite=false;
+    assert(qt2CaptureDropped==2);
+    qt2CaptureObserve(1,nullptr,0,0,262,0,0);assert(qt2PendingCount==1);
+    qt2CaptureLoop();assert(slot(qt2CaptureSequence).event==1);
+  }
+  disk.clear();SPIFFS.available=100000;qt2CaptureReady=false;qt2CaptureRetryAt=0;
+  memset(qt2TimeoutSerial,0,sizeof(qt2TimeoutSerial));
+  qt2CaptureObserve(0,nullptr,0,0,262,0,0);qt2CaptureLoop();
+  assert(qt2TimeoutSerial[0][0]==0);
+  ticks+=60001;SPIFFS.available=2000000;
+  qt2CaptureObserve(0,nullptr,0,0,262,0,0);assert(qt2PendingCount==1);qt2CaptureLoop();
+  assert(slot(qt2CaptureSequence).event==1);
+  std::cout<<"PASS four-inverter timeout flood preserves replies, recovery/serial changes rearm capture, and queue/storage failures retry\n";
 }
 '''
 with tempfile.TemporaryDirectory(prefix="ecu-qt2-capture-") as directory:
