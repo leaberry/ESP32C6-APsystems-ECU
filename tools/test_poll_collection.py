@@ -124,6 +124,8 @@ assert len(captures) == 2
 code += '\nconst char* legacyCaptures[] = {' + ','.join('"'+s+'"' for s in captures) + '};\n'
 qt2 = json.loads((root/'tools/fixtures/qt2.json').read_text())['captures'][0]['hex'][:-8]
 code += '\nconst char* qt2Capture = '+json.dumps(qt2)+';\n'
+qt2_variant29 = json.loads((root/'tools/fixtures/qt2_variant29.json').read_text(encoding='utf-8'))['captures'][0]['hex']
+code += '\nconst char* qt2Variant29 = '+json.dumps(qt2_variant29)+';\n'
 code += r'''
 ApsRxFrame capturedReply(int i){
  ApsRxFrame f={};f.receivedAt=now;f.pan=pans[i];f.cluster=0x0106;
@@ -227,10 +229,10 @@ int main(){
  polling(1);assert(published[1]==1);
  // Replay a real QT2 ASDU through the fleet collector and production decoder.
  reset();Inv_Prop[0].invType=3;
- auto qt2Reply=[](){
+ auto qt2Reply=[](const char* hex=qt2Capture){
   ApsRxFrame f={};f.receivedAt=now;f.pan=pans[0];f.cluster=0x0106;
-  f.sourceEp=f.destEp=0x14;f.lqi=200;f.rssi=-60;f.len=strlen(qt2Capture)/2;
-  for(size_t j=0;j<f.len;++j){unsigned b;sscanf(qt2Capture+2*j,"%2x",&b);f.data[j]=b;}
+  f.sourceEp=f.destEp=0x14;f.lqi=200;f.rssi=-60;f.len=strlen(hex)/2;
+  for(size_t j=0;j<f.len;++j){unsigned b;sscanf(hex+2*j,"%2x",&b);f.data[j]=b;}
   apsSerialToBcd(Inv_Prop[0].invSerial,f.data);checksum(f);return f;
  };
  onSend=[&](int){auto f=qt2Reply();f.data[10]=0xde;checksum(f);queue.push_back(f);queue.push_back(qt2Reply());};
@@ -240,6 +242,11 @@ int main(){
  reset();onSend=[&](int){auto f=qt2Reply();f.data[40]^=1;queue.push_back(f);};
  polling(0);assert(!polled[0]&&published[0]==0&&decodedCount[0]==0);
  assert(capturedFrames==4&&capturedTimeouts==2);
+ reset();Inv_Prop[0].invType=3;capturedFrames=0;capturedTimeouts=0;
+ onSend=[&](int){queue.push_back(qt2Reply(qt2Variant29));};
+ pollingForRound(0);assert(polled[0]&&published[0]==1&&decodedCount[0]==1);
+ assert(std::abs(Inv_Data[0].acv-230.7)<0.01&&std::abs(Inv_Data[0].freq-49.98)<0.01);
+ assert(capturedFrames==1&&capturedTimeouts==0);
  std::cout<<"PASS QT2 fleet polling, rejected-frame capture and timeout capture\n";
  std::cout<<"PASS telemetry collection: captured YC600/QS1 decoding, DS3 checksum rejection, all responders, duplicates, validation, stale frames, late recovery, retries, PAN isolation, manual polls and TX failures\n";
 }

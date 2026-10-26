@@ -7,6 +7,9 @@
 // Layout and scales from TobiasTTM's captures and DC injection tests.
 // Offsets include the six-byte serial. See QT2.md for evidence and limits.
 static constexpr float QT2_ENERGY_COUNTS_PER_WH = 32000.0f;
+static inline bool qt2TelemetryVariantSupported(uint8_t value) {
+  return value == 0x29 || value == 0x30;
+}
 struct Qt2Telemetry {
   float acv[3]; // Reported scale; reference and phase order remain unverified.
   float dcv[4];
@@ -36,9 +39,11 @@ static inline bool decodeQt2(const char *hex, size_t chars,
     if (i < 6 && (hi != qt2Nibble(serial[2*i]) ||
                   lo != qt2Nibble(serial[2*i+1]))) return false;
   }
+  // Captured telemetry uses 0x29 or 0x30 here; both share the decoded layout.
   // A DD/DE configuration reply has the same length as telemetry.
   if (bytes[6] != 0xFB || bytes[7] != 0xFB || bytes[8] != 0x5C ||
-      bytes[9] != 0xBB || bytes[10] != 0xBB || bytes[11] != 0x30 ||
+      bytes[9] != 0xBB || bytes[10] != 0xBB ||
+      !qt2TelemetryVariantSupported(bytes[11]) ||
       bytes[103] != 0xFE || bytes[104] != 0xFE) return false;
   auto u16 = [&](size_t off) -> uint16_t {
     return ((uint16_t)bytes[off] << 8) | bytes[off+1];

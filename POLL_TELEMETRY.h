@@ -1,4 +1,5 @@
 #pragma once
+#include "QT2_PROTOCOL.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,7 +16,7 @@ inline PollTelemetryCheck pollTelemetryCheck(const uint8_t *data, size_t size, i
   if (model < 0 || model > 3 || data[9] != (model >= 2 ? 0xBB : 0xB1))
     return POLL_BAD_KIND;
   if (model == 3 && size != 105) return POLL_BAD_LENGTH;
-  if (model == 3 && (data[10] != 0xBB || data[11] != 0x30)) return POLL_BAD_KIND;
+  if (model == 3 && (data[10] != 0xBB || !qt2TelemetryVariantSupported(data[11]))) return POLL_BAD_KIND;
   // Highest energy field read for four inputs ends at byte 66 (DS3) or 55.
   if (size < (model == 2 ? 70U : 59U)) return POLL_BAD_LENGTH;
   if (model < 2 && !(data[12] || data[13] || data[14])) return POLL_BAD_VALUE;

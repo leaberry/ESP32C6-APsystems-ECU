@@ -127,6 +127,8 @@ harness += "const char *captures[]={\n" + ",\n".join(
 lab = json.loads((ROOT / "tools/fixtures/qt2_lab.json").read_text(encoding="utf-8"))["captures"]
 harness += "const char *labCaptures[]={\n" + ",\n".join(json.dumps(c["hex"]) for c in lab) + "};\n"
 harness += "const double labSteadySeconds=" + repr(lab[-1]["seconds_since_capture_start"]-lab[-2]["seconds_since_capture_start"]) + ";\n"
+variant29 = json.loads((ROOT / "tools/fixtures/qt2_variant29.json").read_text(encoding="utf-8"))["captures"]
+harness += "const char *variant29Captures[]={\n" + ",\n".join(json.dumps(c["hex"]) for c in variant29) + "};\n"
 # Existing YC600/QS1 fixture strings and DS3 capture from main.
 legacy = re.findall(r'strncpy\(inMessage, "([0-9a-fA-F]+)"',
                     (ROOT / "test.ino").read_text())[:3]
@@ -137,7 +139,7 @@ std::string wrap(const std::string &hex) {
 }
 void near(float x,float y,float tol=.001f) {if(std::abs(x-y)>tol) {std::cerr<<"actual="<<x<<" expected="<<y<<"\n";abort();}}
 void put(std::string &s,size_t offset,uint32_t n,size_t bytes=2) {
-  char b[9];snprintf(b,sizeof(b),bytes==2?"%04X":"%08X",n);s.replace(offset*2,bytes*2,b);
+  char b[9];snprintf(b,sizeof(b),"%0*X",int(bytes*2),n);s.replace(offset*2,bytes*2,b);
 }
 void checksum(std::string &s) {
   unsigned sum=0;for(size_t i=8;i<101;++i) sum+=std::stoul(s.substr(i*2,2),nullptr,16);
@@ -259,6 +261,33 @@ int main() {
   near(Inv_Data[0].pw_total,0);near(recorded,0);
   near(en_saved[0][1],finish.energy[1]/32000.0f);
   std::cout<<"PASS measured DC voltage/current, counter scale and seconds, reverse-current limitation, and no credit for mains-disconnected injection\n";
+
+  // The observed 0x29 variant has the same telemetry layout and checksum.
+  strcpy(Inv_Prop[0].invSerial,"901000000002");
+  t_saved[0]=0;recorded=0;Inv_Data[0].freq=0;Inv_Data[0].en_total=0;
+  for(const char* frame:variant29Captures) {
+    assert(decodeQt2(frame,210,Inv_Prop[0].invSerial,q));
+    incoming=wrap(frame);assert(decodePollAnswer(0)==0);
+  }
+  near(recorded,271.4234345f*1054/3600,.01f);
+  assert(Inv_Data[0].pw_total>0);
+  assert(decodeQt2(variant29Captures[0],210,Inv_Prop[0].invSerial,q));
+  near(q.acv[0],230.7);near(q.acv[1],233.7);near(q.acv[2],229.9);
+  near(q.frequency,49.98);near(q.temperature,16.16);
+  near(q.dcv[0],861/26.3f);near(q.dcc[0],169/86.5f);
+  assert(q.timestamp==4863 && q.energy[0]==157035);
+  base=variant29Captures[0];
+  for(size_t i=0;i<base.size();++i) {reject(base.substr(0,i));auto bad=base;bad[i]='G';reject(bad);}
+  for(unsigned variant=0;variant<256;++variant) {
+    if(variant==0x29 || variant==0x30) continue;
+    auto bad=base;put(bad,11,variant,1);checksum(bad);reject(bad);
+  }
+  bad=base;bad[60]='F';reject(bad); // Corrupt payload, unchanged checksum.
+  bad=base;bad[0]='8';reject(bad);
+  bad=base;put(bad,9,0xDDDE);checksum(bad);reject(bad);
+  bad=base;put(bad,103,0);reject(bad);
+  reject(base+"00");
+  std::cout<<"PASS captured 0x29 telemetry and production energy, with malformed and unsupported variants rejected without state changes\n";
 
 }
 '''

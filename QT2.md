@@ -16,8 +16,10 @@ this integration has not yet been run against a physical QT2.
 Nine records are telemetry and two are configuration replies. Every record is
 109 bytes in the old dump: 105 bytes of serial plus L2 data, followed by four
 legacy ZNP source/radio/FCS bytes. The native transport supplies the 105-byte
-ASDU without that trailer. The telemetry signature is `FB FB 5C BB BB 30` at
-offset 6; configuration replies instead start `FB FB 5C DD DE 01`.
+ASDU without that trailer. The original telemetry signature is
+`FB FB 5C BB BB 30` at offset 6. The October 26 capture also establishes
+`FB FB 5C BB BB 29` with the same decoded layout; both are accepted.
+Configuration replies instead start `FB FB 5C DD DE 01`.
 
 All eleven records pass the same checksum: the big-endian value at offsets
 101–102 equals the sum of bytes 8–100. `FE FE` ends L2 at offsets 103–104.
@@ -191,6 +193,39 @@ No new AC reference measurements were included, so the AC labels and SunSpec
 unavailable voltage registers remain unchanged. The remaining field checks
 are normal daytime operation on the updated firmware, other DC inputs,
 AC voltage mapping and grid-side power/energy against a reference meter.
+
+## October 26 rejected telemetry variant
+
+[TobiasTTM's report](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6410910004)
+identified an inverter that paired successfully but always reported an invalid
+packet. Its [capture](https://github.com/user-attachments/files/33953488/qt2-capture.zip)
+contains 167 replies from that inverter. Every reply has the expected 105-byte
+length, serial, checksum and terminator, but byte 11 is `0x29` instead of `0x30`.
+Both the decoder and fleet collector had incorrectly required `0x30`, based
+on the captures available when support was added.
+
+The existing field offsets give 49.94 to 50.03 Hz, 228.1 to 236.3 V across
+the three AC readings, 16.16 to 16.94 degrees C, and plausible DC readings.
+The device clock advances 1,054 seconds over 1,054.719 host seconds. Counter
+differences imply an average 271.4 W using the current scale. These are
+consistency checks, not independent meter measurements. The inverter firmware
+is reported as unknown, so the capture does not establish what byte 11 means
+or which firmware versions use each value.
+
+`ESP32C6-ECU_v1_4_19-qt2-dev4` accepts the observed `0x29` and `0x30` variants
+through a shared check in both validation paths. Exact length, hexadecimal
+syntax, configured serial, telemetry kind, checksum and terminator checks
+remain. Unknown variant values and configuration replies are still rejected.
+Three anonymized [captured frames](tools/fixtures/qt2_variant29.json) cover
+telemetry and energy decoding; a fleet test also replays this variant. The
+regression fails before the fix and passes afterward.
+
+The export was made by `ESP32C6-ECU_v1_4_13-qt2-dev`, so it does not verify
+the updated firmware on hardware. The remaining merge check is a normal
+daytime capture on the latest build, including the previously rejected unit.
+Meter comparisons, other-input tests and exact AC phase mapping are optional
+follow-ups for experimental support. The earlier crash investigation has been
+dropped from this PR and is not a merge requirement.
 
 ## Integration and compatibility
 

@@ -1,5 +1,29 @@
 # Build and hardware verification
 
+## QT2 telemetry variant validation (2026-10-26)
+
+TobiasTTM's capture contains 167 valid 105-byte replies with `0x29` at byte 11.
+The decoder and fleet collector required `0x30`, rejecting every reply from
+that inverter. The captured-frame regression reproduces the decoder rejection
+before the fix. `ESP32C6-ECU_v1_4_19-qt2-dev4` accepts both observed variants
+through shared validation while preserving the other frame checks.
+
+Sanitized decoder, fleet collection and capture-storage tests pass. New
+coverage replays three anonymized `0x29` captures, checks energy accumulation,
+and passes a real reply through fleet polling. Malformed packets, configuration
+replies and all other byte-11 values remain rejected without changing decoder
+state. Existing `0x30` and other inverter regressions pass.
+
+Both Arduino core 3.3.8 builds pass: 1,646,418 bytes of program storage and
+110,144 bytes of static globals, leaving 217,536 bytes before runtime
+allocations. The generated partition tables match the 8 MB OTA and 4 MB
+USB-only layouts, and both application images fit. No hardware was flashed.
+
+The supplied capture uses the older v1.4.13 QT2 build. Hardware confirmation
+on this revision remains pending; the remaining merge check is a daytime
+capture including the previously rejected inverter. Meter comparisons are
+optional follow-ups. See [QT2.md](QT2.md#october-26-rejected-telemetry-variant).
+
 ## QT2 DC calibration fixtures (2026-10-25)
 
 TobiasTTM supplied a mains-disconnected DC injection test with raw radio
