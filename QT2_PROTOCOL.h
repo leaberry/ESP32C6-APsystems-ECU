@@ -4,8 +4,9 @@
 #include <stdint.h>
 #include <string.h>
 
-// Layout and provisional scales from TobiasTTM's captures in PR #1.
+// Layout and scales from TobiasTTM's captures and DC injection tests.
 // Offsets include the six-byte serial. See QT2.md for evidence and limits.
+static constexpr float QT2_ENERGY_COUNTS_PER_WH = 32000.0f;
 struct Qt2Telemetry {
   float acv[3]; // Reported scale; reference and phase order remain unverified.
   float dcv[4];
@@ -54,7 +55,7 @@ static inline bool decodeQt2(const char *hex, size_t chars,
   next.timestamp = u16(38);
   for (size_t panel = 0; panel < 4; ++panel) {
     next.dcv[panel] = u16(26 + 2*(panel/2)) / 26.3f;
-    next.dcc[panel] = u16(30 + 2*panel) / 89.0f;
+    next.dcc[panel] = u16(30 + 2*panel) / 86.5f; // PV2 lab calibration; other channels await checks.
     const size_t off = 70 + 4*panel;
     next.energy[panel] = ((uint32_t)u16(off) << 16) | u16(off+2);
   }

@@ -48,7 +48,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_19-qt2-dev2"
+#define VERSION  "ESP32C6-ECU_v1_4_19-qt2-dev3"
 
 #include <TimeLib.h>
 #include <time.h>

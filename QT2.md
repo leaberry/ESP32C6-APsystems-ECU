@@ -33,21 +33,21 @@ All multi-byte values are big-endian.
 | Offset | Field | Current interpretation | Evidence and remaining uncertainty |
 | --- | --- | --- | --- |
 | 20–25 | Status | Preserved raw only | Changes during the contributor's mains-off/startup tests; individual bits are not established. |
-| 26, 28 | Two DC voltages | Divide by 26.3; shared by inputs 1/2 and 3/4 | The October 25 reference measurements agree within 0.1 V over 20–50 V. Sharing/order follows the contributor's mapping; paired raw frames are still needed. |
-| 30, 32, 34, 36 | Four DC currents | Divide by 89 A, provisional | Loaded capture decodes to 8.90 A/0.15 A/5.81 A/0.20 A; annotation says roughly 10 A and 6 A. October reference readings are about 6–7.5% low at 4–10 A. Raw frames and input ordering still need confirmation. |
-| 38 | Inverter clock | Unsigned 16-bit seconds, provisional | First two captures advance 585 to 645. Actual host timing was not supplied. New logs include a separate monotonic clock for comparison. |
+| 26, 28 | Two DC voltages | Divide by 26.3; shared by inputs 1/2 and 3/4 | Paired raw frames agree within 0.1 V over 20 to 50 V on PV4. PV1 drives the first field; PV4 drives the second. Full input pairing still needs independent checks. |
+| 30, 32, 34, 36 | Four DC currents | Divide by 86.5 to get A | PV2 raw values agree within 0.03 A at 2, 4, 6, 8 and 10 A on one unit. Other channels and units remain unverified. |
+| 38 | Inverter clock | Unsigned 16-bit seconds | The long DC test advances 1,569 ticks over 1,569.534 host seconds. |
 | 40, 42, 44 | Three AC voltages | Divide by 10 V; AC readings 1/2/3 with unverified reference and order | First capture: 234.0/235.6/236.7 V. October pair-injection tests suggest line-to-line voltage divided by sqrt(3), not established phase-to-neutral measurements. See below. |
 | 48 | Temperature | Divide by 100 degrees C | Produces plausible values, e.g. 19.51 degrees C; negative-temperature encoding is untested. |
 | 50 | Frequency | Divide by 100 Hz | First capture is 50.03 Hz; both mains-off captures report zero. 60 Hz operation is untested. |
-| 70, 74, 78, 82 | Four energy counters | Unsigned 32-bit; divide by 31,600 Wh, provisional | Scale is from the PR. The dump alone cannot establish Wh calibration. Production uses counter differences divided by inverter elapsed time. |
+| 70, 74, 78, 82 | Four energy counters | Unsigned 32-bit; divide by 32,000 to get Wh | DC injection supports this scale, but the counters also advance without mains. Grid-side energy accuracy remains unverified. Production uses counter differences divided by inverter elapsed time. |
 
 The initial poll establishes a baseline without adding historic production.
 Duplicate/backwards clocks (including reboot/wrap) rebaseline; backwards
 energy counters never subtract energy or create negative power. As with the
 existing decoders, intervals crossing those discontinuities are not credited.
 The two mains-off captures have zero frequency but their counters still rise
-by a combined 2,710 units over 120 inverter seconds (about 2.6 W with the
-provisional scale). Their exact physical meaning therefore needs checking.
+by a combined 2,710 units over 120 inverter seconds (about 2.5 W with the
+current scale). Their exact physical meaning therefore needs checking.
 Zero-frequency intervals and the first interval after grid recovery establish
 a baseline without crediting AC production; raw counters are still captured.
 The existing float energy representation also limits precision at high counter
@@ -66,10 +66,9 @@ reports these lab-supply and multimeter comparisons:
 | 50.0 V | 50.0 V | 8.0 A | 7.5 A |
 | | | 10.0 A | 9.3 A |
 
-These results support the existing DC voltage divisor. Current reads low at
-higher loads, but changing its divisor from these rounded readings alone would
-be premature. The comment does not include matching raw frames or the exact
-firmware/scales used. Keep `/89` provisional until those are available.
+These initial results supported the existing DC voltage divisor, but lacked
+matching raw frames and the exact firmware/scales used. The later DC calibration
+capture below supplies the evidence for changing the current divisor.
 
 The reporter also applied 235 VAC between each pair of conductors, with these
 results under the previous L1/L2/L3 labels:
@@ -130,7 +129,68 @@ serial or ECU restart allows another timeout record. Suppressed repeats are
 counted in the export header, independently of storage/queue drops. Failed
 storage attempts remain eligible for retry. Polling cadence and retries are
 unchanged, and received frames still follow normal bounded-ring retention.
-No voltage/current calibration changes follow from this attachment.
+No voltage/current calibration changes follow from this timeout-only attachment.
+
+## October 25 DC calibration capture
+
+[TobiasTTM's latest test](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6405032386)
+includes a [PCAPNG, JSONL export and crash dump](https://github.com/user-attachments/files/33941214/QT2.testing.zip).
+Mains remained unplugged. PV1 was supplied with 20.5 V; PV4 received stepped
+voltages. A current source between the PV1 and PV2 negative terminals then
+injected positive current into PV2 and reverse current into PV1.
+
+The PCAPNG contains 334 complete telemetry replies with valid radio FCS,
+105-byte ASDU length, signature, terminator and additive checksum, all from
+one inverter. Every reply reports zero frequency. The JSONL contains 66 valid
+received telemetry records and 446 timeouts from the older
+`ESP32C6-ECU_v1_4_13-qt2-dev` build. It does not validate the rebased firmware.
+Eleven representative ASDUs, with anonymized serial and original packet
+numbers, are preserved in [the lab fixture](tools/fixtures/qt2_lab.json).
+
+PV4 voltage medians are 525, 789, 1,052 and 1,317 counts at 20, 30, 40 and
+50 V. Dividing by 26.3 gives 19.96, 30.00, 40.00 and 50.08 V. PV1 remains
+about 538 counts, or 20.46 V. Keep the voltage divisor and field order.
+
+| Applied PV2 current | Median raw count | Previous divisor 89 | New divisor 86.5 |
+| --- | --- | --- | --- |
+| 2 A | 173 | 1.944 A | 2.000 A |
+| 4 A | 346 | 3.888 A | 4.000 A |
+| 6 A | 518 | 5.820 A | 5.988 A |
+| 8 A | 690 | 7.753 A | 7.977 A |
+| 10 A | 864 | 9.708 A | 9.988 A |
+
+Stable samples support 86.5 counts/A. The shared decoder uses that divisor
+starting with `qt2-dev3`; PV1, PV3, PV4 and other units still need checks.
+Despite reverse injection, PV1's current word stays near zero (2 to 11 counts).
+This test supplies no evidence for interpreting the current words as signed.
+
+The long 10 A interval contains 182 replies. Between packets 1804/1808 and
+3694/3698, the PV2 counter rises by 2,853,905 over 1,569 inverter seconds.
+A linear fit against host time gives 1,818.675 counter units/s. At 32,000
+counts/Wh, that is 204.60 W, close to the supplied 20.5 V times 10 A = 205 W.
+The previous 31,600 divisor gives about 207.2 W. The inverter clock advances
+at 0.99988 seconds per host second, supporting the existing seconds conversion.
+
+`qt2-dev3` therefore uses 32,000 counts/Wh. Stored historical totals are left
+unchanged; the first poll after restart establishes the new baseline. These
+counters advance with mains disconnected, so this experiment checks a DC-side
+or internal estimate. It does not establish exported AC energy or inverter
+efficiency. Keep the zero-frequency and grid-recovery guards, and compare
+normal production against an AC energy meter before treating QT2 energy as
+calibrated. The new tests replay these rising counters and require zero credited
+production while frequency is zero.
+
+The supplied 12,164-byte crash file has a valid CRC32 and contains an ESP-IDF
+flash-coredump wrapper around a RISC-V ELF core. Its crashed-task pointer
+identifies the `async_tcp` task. The build metadata targets ESP32-C5, but the
+archive contains no application `.elf`; `aps-ecu-coredump.elf` is the dump
+itself. The exact application ELF from that crashed build is still needed for
+a source-level backtrace. This identifies a task, not the cause of the panic.
+
+No new AC reference measurements were included, so the AC labels and SunSpec
+unavailable voltage registers remain unchanged. The remaining field checks
+are normal daytime operation on the updated firmware, other DC inputs,
+AC voltage mapping and grid-side power/energy against a reference meter.
 
 ## Integration and compatibility
 

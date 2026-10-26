@@ -31,6 +31,7 @@ harness = r'''
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cctype>
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -123,6 +124,9 @@ fixtures = json.loads((ROOT / "tools/fixtures/qt2.json").read_text())["captures"
 # The original dump includes four trailing ZNP bytes outside the L2 frame.
 harness += "const char *captures[]={\n" + ",\n".join(
     json.dumps(c["hex"][:-8]) for c in fixtures) + "};\n"
+lab = json.loads((ROOT / "tools/fixtures/qt2_lab.json").read_text(encoding="utf-8"))["captures"]
+harness += "const char *labCaptures[]={\n" + ",\n".join(json.dumps(c["hex"]) for c in lab) + "};\n"
+harness += "const double labSteadySeconds=" + repr(lab[-1]["seconds_since_capture_start"]-lab[-2]["seconds_since_capture_start"]) + ";\n"
 # Existing YC600/QS1 fixture strings and DS3 capture from main.
 legacy = re.findall(r'strncpy\(inMessage, "([0-9a-fA-F]+)"',
                     (ROOT / "test.ino").read_text())[:3]
@@ -160,7 +164,7 @@ int main() {
   near(q.frequency,50.03);near(q.temperature,19.51);
   near(q.dcv[0],43.11787);near(q.dcv[1],43.11787);
   near(q.dcv[2],7.52852);near(q.dcv[3],7.52852);
-  near(q.dcc[0],2.011236);near(q.dcc[1],.089888);near(q.dcc[2],.134831);near(q.dcc[3],.179775);
+  near(q.dcc[0],2.069364);near(q.dcc[1],.092486);near(q.dcc[2],.138728);near(q.dcc[3],.184971);
   assert(q.timestamp==585 && q.energy[0]==432676 && q.energy[1]==19830 && q.energy[2]==5456 && q.energy[3]==5963);
   incoming=wrap(captures[3]);assert(decodePollAnswer(0)==0);
   near(Inv_Data[0].freq,0);near(Inv_Data[0].acv,1.7);
@@ -187,10 +191,10 @@ int main() {
 
   // Known 1 Wh per input over 60 seconds => 60 W each, 240 W total.
   base=captures[0];put(base,38,100);
-  for(int i=0;i<4;++i) put(base,70+4*i,31600,4);
+  for(int i=0;i<4;++i) put(base,70+4*i,32000,4);
   checksum(base);t_saved[0]=0;recorded=0;Inv_Data[0].en_total=0;
   incoming=wrap(base);assert(decodePollAnswer(0)==0);near(recorded,0);near(Inv_Data[0].pw_total,0);
-  put(base,38,160);for(int i=0;i<4;++i) put(base,70+4*i,63200,4);checksum(base);
+  put(base,38,160);for(int i=0;i<4;++i) put(base,70+4*i,64000,4);checksum(base);
   incoming=wrap(base);assert(decodePollAnswer(0)==0);near(recorded,4);near(Inv_Data[0].pw_total,240);
   assert(decodePollAnswer(0)==0);near(recorded,4);near(Inv_Data[0].pw_total,0); // duplicate
   put(base,38,1);checksum(base);incoming=wrap(base);assert(decodePollAnswer(0)==0);near(recorded,4); // reboot/wrap
@@ -202,7 +206,7 @@ int main() {
   Inv_Prop[0].conPanels[2]=Inv_Prop[0].conPanels[3]=false;
   t_saved[0]=0;incoming=wrap(captures[0]);assert(decodePollAnswer(0)==0);
   incoming=wrap(captures[1]);assert(decodePollAnswer(0)==0);
-  near(Inv_Data[0].pw_total,104.573f,.1f);
+  near(Inv_Data[0].pw_total,103.266f,.1f);
   Inv_Prop[0].conPanels[2]=Inv_Prop[0].conPanels[3]=true;
   std::cout<<"PASS energy baselines, duplicate/reset clocks, reset counters, unsigned counters and disconnected panels\n";
 
@@ -229,6 +233,33 @@ int main() {
   assert(!setMaxPower(-1) && !setMaxPower(9));assert(transmissions==0 && reads==0);
   for(int type=0;type<3;++type) {Inv_Prop[0].invType=type;assert(inverterSupportsThrottle(0));}
   std::cout<<"PASS legacy models, MQTT, SunSpec phase registers and QT2 control rejection without radio traffic\n";
+  // Independent lab references: PV4 voltage steps and PV2 positive current.
+  Inv_Prop[0].invType=3;strcpy(Inv_Prop[0].invSerial,"901000000001");
+  for(int i=0;i<4;++i) {
+    assert(decodeQt2(labCaptures[i],210,Inv_Prop[0].invSerial,q));
+    near(q.dcv[2],20.0f+10*i,.1f);near(q.dcv[3],q.dcv[2]);
+    near(q.dcv[0],20.5f,.1f);near(q.dcv[1],q.dcv[0]);near(q.frequency,0);
+  }
+  for(int i=0;i<5;++i) {
+    assert(decodeQt2(labCaptures[4+i],210,Inv_Prop[0].invSerial,q));
+    near(q.dcc[1],2.0f+2*i,.04f);
+    // Negative injection on PV1 is not reported as a signed negative current.
+    assert(q.dcc[0]>=0 && q.dcc[0]<.15f);
+  }
+  Qt2Telemetry start={},finish={};
+  assert(decodeQt2(labCaptures[9],210,Inv_Prop[0].invSerial,start));
+  assert(decodeQt2(labCaptures[10],210,Inv_Prop[0].invSerial,finish));
+  near(float(finish.timestamp-start.timestamp),float(labSteadySeconds),1.0f);
+  near((finish.energy[1]-start.energy[1])/QT2_ENERGY_COUNTS_PER_WH*3600/labSteadySeconds,205.0f,1.0f);
+  // The counters advance with mains unplugged, but must never credit grid output.
+  t_saved[0]=0;recorded=0;Inv_Data[0].freq=50;
+  incoming=wrap(labCaptures[9]);assert(decodePollAnswer(0)==0);
+  incoming=wrap(labCaptures[10]);assert(decodePollAnswer(0)==0);
+  assert(finish.energy[1]>start.energy[1]+2800000);
+  near(Inv_Data[0].pw_total,0);near(recorded,0);
+  near(en_saved[0][1],finish.energy[1]/32000.0f);
+  std::cout<<"PASS measured DC voltage/current, counter scale and seconds, reverse-current limitation, and no credit for mains-disconnected injection\n";
+
 }
 '''
 

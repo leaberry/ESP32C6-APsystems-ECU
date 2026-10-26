@@ -1,5 +1,26 @@
 # Build and hardware verification
 
+## QT2 DC calibration fixtures (2026-10-25)
+
+TobiasTTM supplied a mains-disconnected DC injection test with raw radio
+captures. All 334 complete, validated replies report zero frequency. PV4
+voltage supports the existing 26.3 divisor; five PV2 current levels support
+86.5 counts/A. A 182-reply steady interval supports 32,000 counter units/Wh
+against supplied DC power, and confirms the inverter clock runs in seconds.
+See [QT2.md](QT2.md#october-25-dc-calibration-capture) for measurements and limits.
+
+`ESP32C6-ECU_v1_4_19-qt2-dev3` applies the current and counter scales. Eleven
+anonymized lab frames now exercise the production decoder, including rising
+counters with zero credited production while mains is absent. Sanitized QT2
+decoder, capture-storage and fleet-polling suites pass, as does the QT2 UI suite.
+
+Both Arduino core 3.3.8 builds pass: 1,646,394 bytes of program storage and
+110,144 bytes of static globals, leaving 217,536 bytes before runtime
+allocations. Generated partition tables match the 8 MB OTA and 4 MB USB-only
+layouts, and application images fit their slots. No device was flashed.
+Other DC channels/units, actual exported AC energy and operation of this
+revision on QT2 hardware remain unverified.
+
 ## QT2 timeout capture retention (2026-10-25)
 
 TobiasTTM's follow-up exported 512 timeout records from the older

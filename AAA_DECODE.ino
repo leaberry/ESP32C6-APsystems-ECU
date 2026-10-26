@@ -290,7 +290,7 @@ We keep stacking the increases so we have also en_inc_total
 
             //we calculate a new energy value for this panel and remember it
             if (Inv_Prop[which].invType == 3) {
-              en_saved[which][x] = en_extr / 31600.0f; // Provisional Wh scale; see QT2.md.
+              en_saved[which][x] = en_extr / QT2_ENERGY_COUNTS_PER_WH; // DC counter scale; grid export remains unverified.
             } else if ( Inv_Prop[which].invType == 2) {
               en_saved[which][x] = (en_extr / (float)1000 /100) * 1.66; //[Wh]
             } else {

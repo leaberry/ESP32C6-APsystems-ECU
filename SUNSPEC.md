@@ -44,7 +44,8 @@ all contain `0xFFFF`. AC current is also unavailable. Unit 1 remains aggregate
 Model 101; when QT2 is configured, AC current and voltage are unavailable there
 too. The unverified reported AC readings remain available through HTTP, MQTT
 and diagnostic captures.
-QT2 power and energy use provisional calibration; see [QT2.md](QT2.md).
+QT2 counter scaling has a DC-injection reference test; grid-side power and
+energy accuracy remain unverified. See [QT2.md](QT2.md).
 
 Home Assistant's built-in Modbus integration can read aggregate and per-inverter
 power and energy without HACS. See [HomeAssistant.md](HomeAssistant.md) for a
