@@ -1,5 +1,21 @@
 # Build and hardware verification
 
+## QT2 daytime reporter verification (2026-10-27)
+
+[TobiasTTM's report](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6454377987)
+confirms a full day of operation with three QT2 inverters on his ESP32-C5 build
+of dev4 (`c575acf`). The retained 36-minute capture has 472 valid replies,
+including 238 from the previously rejected `0x29` unit. All frames replay
+through the production decoder and energy accounting with AddressSanitizer
+and UndefinedBehaviorSanitizer. Low-light inverter restarts produce no false
+power spikes. See [QT2.md](QT2.md#october-27-daytime-verification) for the scope.
+
+v1.4.20 keeps the tested QT2 logic and replaces the development version and
+web asset cache versions with release versions. GitHub Actions builds both
+release layouts and runs all 27 Python and eight JavaScript suites. The field
+report does not establish native C6 radio behavior with QT2 or independently
+calibrated grid-export energy.
+
 ## QT2 telemetry variant validation (2026-10-26)
 
 TobiasTTM's capture contains 167 valid 105-byte replies with `0x29` at byte 11.

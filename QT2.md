@@ -1,15 +1,16 @@
 # QT2 experimental monitoring and capture
 
-QT2 monitoring is rebased on `main` at `17d8a79` (v1.4.19), including its
-fleet polling, Home Assistant, settings restore and power-limit fixes. The
+QT2 monitoring is included in v1.4.20, built on v1.4.19's fleet polling,
+Home Assistant, settings restore and power-limit fixes. The
 implementation uses the evidence in [TobiasTTM's PR #1](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/1). ESP32-C5 support remains outside this PR.
 
 TobiasTTM supplied the QT2 idea, initial field mapping and scale
 factors, eleven annotated captures, subsequent reference measurements, and reported
 testing two QT2 units on an ESP32-C5. The original capture text is preserved in
 [`tools/fixtures/qt2.json`](tools/fixtures/qt2.json), from PR commit
-`53b3c8f6a5d0ee4e06a343917d392c6de619bf6a`. These are contributor observations;
-this integration has not yet been run against a physical QT2.
+`53b3c8f6a5d0ee4e06a343917d392c6de619bf6a`. His October 27 daytime test confirms
+this integration on three QT2 inverters using his ESP32-C5 setup. Release
+binaries target ESP32-C6; native C6 radio behavior with QT2 remains unverified.
 
 ## What the dump establishes
 
@@ -191,7 +192,7 @@ a source-level backtrace. This identifies a task, not the cause of the panic.
 
 No new AC reference measurements were included, so the AC labels and SunSpec
 unavailable voltage registers remain unchanged. The remaining field checks
-are normal daytime operation on the updated firmware, other DC inputs,
+at that point were normal daytime operation on the updated firmware, other DC inputs,
 AC voltage mapping and grid-side power/energy against a reference meter.
 
 ## October 26 rejected telemetry variant
@@ -221,11 +222,38 @@ telemetry and energy decoding; a fleet test also replays this variant. The
 regression fails before the fix and passes afterward.
 
 The export was made by `ESP32C6-ECU_v1_4_13-qt2-dev`, so it does not verify
-the updated firmware on hardware. The remaining merge check is a normal
-daytime capture on the latest build, including the previously rejected unit.
+the updated firmware on hardware. The remaining merge check at that point was
+a normal daytime capture, including the previously rejected unit; the October
+27 report below completes that check.
 Meter comparisons, other-input tests and exact AC phase mapping are optional
 follow-ups for experimental support. The earlier crash investigation has been
 dropped from this PR and is not a merge requirement.
+
+## October 27 daytime verification
+
+[TobiasTTM reported a full day of successful operation](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6454377987)
+with all three installed inverters displaying properly on his ESP32-C5 build
+of `ESP32C6-ECU_v1_4_19-qt2-dev4` (`c575acf`). The retained
+[capture](https://github.com/user-attachments/files/34048467/qt2-capture.1.zip)
+contains 512 consecutive records spanning about 36 minutes late in the day.
+All 472 received frames are valid telemetry: 88 and 146 replies from the two
+`0x30` units, plus 238 replies from the previously rejected `0x29` unit, which
+reports firmware 1.110. The remaining 40 records are timeouts, concentrated on
+the weakest-signal unit. Received telemetry resumes after those interruptions.
+
+All frames replay successfully through the production decoder and energy
+accounting with sanitizers. Ten inverter clock/counter discontinuities during
+low-light restarts establish new baselines without false power spikes. The
+ECU boot ID is unchanged throughout the retained window, ending at about
+20.5 hours of uptime. The logger reports zero dropped records and suppresses
+repeated timeouts without consuming the retained telemetry slots.
+
+This completes the agreed field check for experimental support, merged in
+[PR #7](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7). The capture is
+a retained end-of-day window, not an independently recorded full-day trace.
+Other-input calibration, exact AC phase interpretation and comparison against
+an AC energy meter remain optional follow-up work. No crash investigation is
+required for this release.
 
 ## Integration and compatibility
 

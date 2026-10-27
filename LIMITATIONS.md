@@ -48,11 +48,14 @@ reliability.
 
 ## Still requiring validation or intentionally unsupported
 
-**QT2 is experimental:** captured-frame decoder/integration tests pass, but
-physical QT2 testing of this implementation, other DC inputs/units, grid-side
-energy calibration, input/phase ordering and negative-temperature encoding
-remain open. One unit's PV4 voltage and PV2 current/DC counter scale have
-reference measurements and raw-frame regression coverage. QT2
+**QT2 is experimental:** TobiasTTM confirmed daytime operation with three
+inverters using his ESP32-C5 build of dev4. The retained capture includes 472
+valid replies across both known telemetry variants, and production-code replay
+handles low-light restarts without false power spikes. Native C6 radio behavior
+with QT2, other DC inputs/units, grid-side energy calibration, input/phase
+ordering and negative-temperature encoding remain open. One unit's PV4 voltage
+and PV2 current/DC counter scale have reference measurements and raw-frame
+regression coverage. QT2
 control writes are disabled. Automatic capture and reference-measurement
 instructions are in [QT2.md](QT2.md).
 

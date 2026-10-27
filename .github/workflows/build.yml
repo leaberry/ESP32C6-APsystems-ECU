@@ -138,6 +138,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - name: Download both firmware builds
         uses: actions/download-artifact@v4
         with:
@@ -158,10 +159,16 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${{ github.ref_name }}"
-          release-assets/*
-          --repo "${{ github.repository }}"
-          --verify-tag
-          --generate-notes
-          --title "ESP32C6 APsystems ECU ${{ github.ref_name }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="release-notes/${GITHUB_REF_NAME}.md"
+          if [[ -f "$notes" ]]; then
+            note_args=(--notes-file "$notes")
+          else
+            note_args=(--generate-notes)
+          fi
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            "${note_args[@]}" \
+            --title "ESP32C6 APsystems ECU $GITHUB_REF_NAME"

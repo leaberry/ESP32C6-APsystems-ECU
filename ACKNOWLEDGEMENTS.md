@@ -27,7 +27,9 @@ broad; an omission should be treated as a documentation bug and corrected.
 - **TobiasTTM** proposed QT2 support in
   [PR #1](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/1), supplied
   annotated QT2 captures and the initial field mapping/scale factors, and
-  reported tests with two QT2 inverters. His data and idea underpin this
+  performed DC and AC bench calibration, caught the `0x29` telemetry validation
+  bug, and confirmed a full day of operation with three QT2 inverters on his
+  ESP32-C5 setup. His data and idea underpin this
   project's QT2 monitoring implementation and repeatable decoder fixtures.
   See [QT2.md](QT2.md) for the analysis and remaining calibration work.
 

@@ -1,7 +1,7 @@
 # ESP32-C6 APsystems ECU
 
 This project turns an ESP32-C6 board into a local controller (ECU) for up to
-nine APsystems YC600, QS1 or DS3 solar microinverters. It reads production over
+nine APsystems YC600, QS1, DS3 or QT2 solar microinverters. It reads production over
 the board's built-in radio and shows it in a web page. No separate Zigbee module
 or cloud account is needed.
 
@@ -15,10 +15,13 @@ devices and readings for two DS3s in v1.4.14. QS1, encrypted communication,
 physical power limits and replacement-board pairing still need field testing.
 See [LIMITATIONS.md](LIMITATIONS.md) for the scope of these results.
 
-QT2 monitoring is experimental and has not yet been tested with this firmware.
+QT2 monitoring is experimental. TobiasTTM confirmed a full day of operation
+with three QT2 inverters using his ESP32-C5 build of the dev4 source.
 It adds four PV inputs, three AC readings with unverified phase mapping, and
 automatic diagnostic capture. Thanks to TobiasTTM for the idea, captures and
-reference measurements. See [QT2.md](QT2.md) for the evidence and test procedure.
+reference measurements. Release binaries target ESP32-C6; the C5 test does not
+establish C6 radio behavior with QT2. See [QT2.md](QT2.md) for the evidence and
+remaining calibration limits.
 
 ## Find the instructions you need
 
