@@ -24,7 +24,7 @@ std::deque<std::string> queued;
 uint32_t clockMs=0;uint32_t millis(){return clockMs;}
 char *readZB(char *s){clockMs+=500;if(!queued.empty()){reply=queued.front();queued.pop_front();}strcpy(s,reply.c_str());return s;}
 char *split(char *s,const char *marker){char *p=strstr(s,marker);if(!p)return nullptr;*p=0;return p+strlen(marker);}
-'''+ 'int decodeQueryAnswer(int welke)'+source+r'''
+'''+ 'int inverterCount=9;\n' + (root/'SETPOWER.ino').read_text(encoding='utf-8').split('bool setMaxPower(',1)[0]+ 'int decodeQueryAnswer(int welke)'+source+r'''
 int main(){
  for(int type=0;type<3;++type)for(int watts:{20,100,300,500})for(int calibration:{-5,0,10}){
   Inv_Prop[0]={type,calibration};desiredThrottle[0]=watts;

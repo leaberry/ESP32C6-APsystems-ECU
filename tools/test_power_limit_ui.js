@@ -10,7 +10,7 @@ assert.match(source, /name="pMax"[^>]*min="20" max="500" step="1" required/);
   let refresh,fail=true;
   const data={inv:1,pwMax:100,pow:[50,50],dcv:[30,30],dcc:[2,2],en:[10,10]};
   vm.runInNewContext(script,{
-    URLSearchParams,location:{search:'?inv=1'},document:{getElementById:get},
+    URLSearchParams,location:{search:'?inv=1'},document:{getElementById:get,querySelectorAll:()=>[]},
     fetch:async url=>{assert.equal(url,'/api/data?Inverter=1');if(fail)throw Error('offline');return {json:async()=>data}},
     setInterval:f=>{refresh=f},
   });

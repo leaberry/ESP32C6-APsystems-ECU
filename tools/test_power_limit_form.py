@@ -35,10 +35,11 @@ struct AsyncWebServerRequest{
  int params(){return values.size();}String arg(const char *key){return getParam(key)->value();}
  void send(int code,const char*,const char*){status=code;}
 };
+struct {int invType;} Inv_Prop[9];
 int inverterCount=2,desiredThrottle[9]={},actionFlag=0;
 char requestUrl[100]={};String toSend;
 size_t strlcpy(char *d,const char *s,size_t n){snprintf(d,n,"%s",s);return strlen(s);}
-''' + form + confirm + r'''
+''' + (root/'SETPOWER.ino').read_text(encoding='utf-8').split('bool setMaxPower(',1)[0] + form + confirm + r'''
 int main(){
  for(int slot:{0,1})for(int watts:{20,100,237,500}){
   AsyncWebServerRequest r{{{"INV",String(slot)},{"pMax",String(watts)}}};
@@ -53,6 +54,9 @@ int main(){
   AsyncWebServerRequest r{values};actionFlag=0;desiredThrottle[0]=123;
   assert(!handleForms(&r)&&r.status==400&&actionFlag==0&&desiredThrottle[0]==123);
  }
+ Inv_Prop[0].invType=3;actionFlag=0;desiredThrottle[0]=123;
+ AsyncWebServerRequest qt2{{{"INV","0"},{"pMax","100"}}};
+ assert(!handleForms(&qt2)&&qt2.status==400&&actionFlag==0&&desiredThrottle[0]==123);
  std::cout<<"Throttle form queues correct slot/value and returns to registered details page; invalid inputs rejected\n";
 }
 '''

@@ -45,6 +45,10 @@ if ( intern ) {    //DebugPrintln("the request comes from inside the network");
       request->send ( 200, "text/plain", "invalid value(s)" );
       return; 
     }
+    if (!inverterSupportsThrottle(Invert)) {
+      request->send(400, "text/plain", "Output limiting is not supported for this inverter model");
+      return;
+    }
     desiredThrottle[Invert] = throtVal;
     actionFlag = 240+Invert;
     String term = "attempt throttling inverter " + String(Invert) + " to " + String(throtVal);

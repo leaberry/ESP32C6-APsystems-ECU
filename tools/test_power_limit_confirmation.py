@@ -52,7 +52,7 @@ char* readZB(char* out){
  replies.pop_front();readCounter=strlen(out)/2;return out;
 }
 char* split(char* s,const char* marker){char* p=strstr(s,marker);if(!p)return nullptr;*p=0;return p+strlen(marker);}
-''' + decoder + (root / 'SETPOWER.ino').read_text(encoding='utf-8') + r'''
+''' + 'bool inverterSupportsThrottle(int);\n' + decoder + (root / 'SETPOWER.ino').read_text(encoding='utf-8') + r'''
 std::string readback(int watts,int model,int calibration=0){
  char hex[5];snprintf(hex,sizeof(hex),"%04X",(int)((watts+calibration)*(model==2?16.59:28.89)));
  return model==2?ds3LimitReply(watts,calibration):std::string("4481FBFB4DDE000000")+hex+"3B660000FEFE";

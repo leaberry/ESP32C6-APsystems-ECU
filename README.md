@@ -15,6 +15,11 @@ devices and readings for two DS3s in v1.4.14. QS1, encrypted communication,
 physical power limits and replacement-board pairing still need field testing.
 See [LIMITATIONS.md](LIMITATIONS.md) for the scope of these results.
 
+QT2 monitoring is experimental and has not yet been tested with this firmware.
+It adds four PV inputs, three AC readings with unverified phase mapping, and
+automatic diagnostic capture. Thanks to TobiasTTM for the idea, captures and
+reference measurements. See [QT2.md](QT2.md) for the evidence and test procedure.
+
 ## Find the instructions you need
 
 - [Install on a new board](#install-on-a-new-board)

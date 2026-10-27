@@ -14,7 +14,7 @@ causes extra Zigbee traffic or blocks the APsystems poll scheduler.
 | 3 | Inverter index 1 |
 | 4-10 | Inverter indexes 2-8 |
 
-Each unit contains the `SunS` marker, Common Model 1, single-phase Inverter
+Each non-QT2 unit contains the `SunS` marker, Common Model 1, single-phase Inverter
 Model 101 and the end model. Model 101 publishes AC current, voltage, power,
 frequency, recorded accumulated energy, combined DC values, cabinet temperature
 and operating state. Unsupported points use SunSpec not-implemented sentinels.
@@ -36,6 +36,16 @@ reference and request address 0. It also detects clients that begin at 40001
 and applies their one-register offset for that TCP connection.
 
 ## Home Assistant
+
+QT2 per-inverter units expose three-phase Model 103, using the same register
+offsets as Model 101. QT2 voltage reference and phase order are unverified,
+so line-to-line registers 77/78/79 and phase-to-neutral registers 80/81/82
+all contain `0xFFFF`. AC current is also unavailable. Unit 1 remains aggregate
+Model 101; when QT2 is configured, AC current and voltage are unavailable there
+too. The unverified reported AC readings remain available through HTTP, MQTT
+and diagnostic captures.
+QT2 counter scaling has a DC-injection reference test; grid-side power and
+energy accuracy remain unverified. See [QT2.md](QT2.md).
 
 Home Assistant's built-in Modbus integration can read aggregate and per-inverter
 power and energy without HACS. See [HomeAssistant.md](HomeAssistant.md) for a

@@ -70,7 +70,7 @@ int apsFindInverter(uint16_t dst,const uint8_t*){
 '''
 for path,sig in [('ZIGBEE_A_TRANSPORT.ino','static bool isPowerControl('),
  ('ZIGBEE_A_TRANSPORT.ino','static bool submitRawAps('),
- ('ZIGBEE_A_TRANSPORT.ino','bool sendZB('),('SETPOWER.ino','bool setMaxPower(')]:
+ ('ZIGBEE_A_TRANSPORT.ino','bool sendZB('),('SETPOWER.ino','bool inverterSupportsThrottle('),('SETPOWER.ino','bool setMaxPower(')]:
     harness += '\n'+function(path,sig)+'\n'
 harness += r'''
 uint16_t le(const std::vector<uint8_t>& f,int p){return f[p]|(f[p+1]<<8);}

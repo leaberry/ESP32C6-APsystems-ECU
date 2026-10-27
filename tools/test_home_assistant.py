@@ -71,7 +71,7 @@ char Mqtt_Broker[65]="broker",Mqtt_Port[8]="1883",Mqtt_Username[33]="",Mqtt_Pass
 const char *VERSION="test";
 int inverterCount=2,actionFlag=0,desiredThrottle[9];unsigned long pollIntervalSeconds=30;
 struct {char invSerial[13];char invLocation[33];int invType;bool conPanels[4];}Inv_Prop[9];
-struct {float pw_total,heath,acv,freq,power[4],dcv[4],dcc[4];bool radioMetricsValid;int radioRssi,radioLqi;}Inv_Data[9];
+struct {float pw_total,heath,acv,acvL2,acvL3,freq,power[4],dcv[4],dcc[4];bool radioMetricsValid;int radioRssi,radioLqi;}Inv_Data[9];
 bool polled[9],night=false,applySuccess=true;int commands=0,lastCommandInverter=-1;
 bool pollingNightModeActive(){return night;}
 uint64_t energyTodayWhFor(int){return 42;}
@@ -85,7 +85,17 @@ bool Polling=false;int iKeuze=0;
 struct {size_t write(uint8_t){return 1;}size_t write(const uint8_t*,size_t n){return n;}void println(){}}Serial;
 void consoleOut(String){}
 '''
-harness+='void MQTT_Receive_Callback'+(root/'MQTT.ino').read_text(encoding='utf-8').split('void MQTT_Receive_Callback',1)[1]
+# Use the production model guards with the fake transport.
+def function(file, signature):
+    source=(root/file).read_text(encoding='utf-8')
+    start=source.index(signature);end=source.index('{',start)+1;depth=1
+    while depth:
+        depth+=(source[end]=='{')-(source[end]=='}');end+=1
+    return source[start:end]
+harness+='constexpr int YC600_MAX_NUMBER_OF_INVERTERS=9;\n'
+harness+=function('SETPOWER.ino','bool inverterSupportsThrottle(')
+harness+=function('handledata.ino','static uint8_t inverterPhysicalPanelCount(')
+harness+='void MQTT_Receive_Callback' +(root/'MQTT.ino').read_text(encoding='utf-8').split('void MQTT_Receive_Callback',1)[1]
 harness+=(root/'HA_ENERGY.ino').read_text(encoding='utf-8')
 harness+=(root/'HOME_ASSISTANT.ino').read_text(encoding='utf-8')
 harness+=r'''
@@ -127,6 +137,23 @@ int main(){
  applySuccess=false;command(valid);haLoop();assert(commands==2&&desiredThrottle[0]==-1);
  haStateDocument(state,0);assert(state["limit_w"]=="None");
  tick+=100000;command(valid);assert(haControl<0&&commands==2);
+
+ // QT2 has four inputs, unverified AC readings, and no writable limit entity.
+ Inv_Prop[0].invType=3;for(bool &panel:Inv_Prop[0].conPanels)panel=true;
+ haDiscoveryDocument(discovery,0);
+ assert(discovery["dev"]["mdl"]=="QT2");
+ assert(discovery["cmps"]["panel4_power_w"]["dev_cla"]=="power");
+ assert(discovery["cmps"]["power_limit"].size()==1);
+ assert(discovery["cmps"]["ac_voltage_v"]["name"]=="AC reading 1 (unverified)");
+ assert(discovery["cmps"]["qt2_ac_reading_3_v"]["unit_of_meas"]=="V");
+ haTelemetry(0);haStateDocument(state,0);
+ assert(state["ac_voltage_reference"]=="unverified"&&!state["control_available"].as<bool>());
+ command(valid);assert(haControl<0&&commands==2);
+ Inv_Prop[0].invType=0;haDiscoveryDocument(discovery,0);
+ assert(discovery["cmps"]["qt2_ac_reading_3_v"].size()==1);
+ // Reject a queued command if the model changes before it can run.
+ command(valid);assert(haControl==0);Inv_Prop[0].invType=3;haLoop();
+ assert(haControl<0&&commands==2);Inv_Prop[0].invType=0;
 
  // Validate HA command boundaries, JSON types, busy/unavailable rejection and routing.
  haTelemetry(0);applySuccess=true;

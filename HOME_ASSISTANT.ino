@@ -71,7 +71,7 @@ void haSensor(JsonObject components,int which,const char *key,const char *name,
 void haDiscoveryDocument(JsonDocument &doc,int which) {
   doc.clear();JsonObject device=doc["dev"].to<JsonObject>();
   device["ids"]=haDeviceKey(which);device["name"]=which<0?String(fleetName):String(Inv_Prop[which].invLocation);
-  device["mf"]="APsystems";device["mdl"]=which<0?"ESP32-C6 ECU":(Inv_Prop[which].invType==1?"QS1":Inv_Prop[which].invType==2?"DS3":"YC600");
+  device["mf"]="APsystems";device["mdl"]=which<0?"ESP32-C6 ECU":(Inv_Prop[which].invType==1?"QS1":Inv_Prop[which].invType==2?"DS3":Inv_Prop[which].invType==3?"QT2":"YC600");
   device["sw"]=VERSION;device["sn"]=which<0?ECU_ID:Inv_Prop[which].invSerial;
   device["cu"]="http://"+WiFi.localIP().toString()+"/";
   if(which>=0)device["via_device"]=haDeviceKey(-1);
@@ -88,7 +88,14 @@ void haDiscoveryDocument(JsonDocument &doc,int which) {
     return;
   }
   haSensor(components,which,"temperature_c","Temperature","temperature","\xC2\xB0" "C","measurement","telemetry_valid");
-  haSensor(components,which,"ac_voltage_v","AC voltage","voltage","V","measurement","telemetry_valid");
+  haSensor(components,which,"ac_voltage_v",Inv_Prop[which].invType==3?"AC reading 1 (unverified)":"AC voltage","voltage","V","measurement","telemetry_valid");
+  for(int reading=2;reading<=3;++reading) {
+    char key[32],name[40];snprintf(key,sizeof(key),"qt2_ac_reading_%d_v",reading);
+    snprintf(name,sizeof(name),"AC reading %d (unverified)",reading);
+    if(Inv_Prop[which].invType==3)
+      haSensor(components,which,key,name,"voltage","V","measurement","telemetry_valid",true);
+    else components[key]["p"]="sensor";
+  }
   haSensor(components,which,"frequency_hz","Frequency","frequency","Hz","measurement","telemetry_valid");
   haSensor(components,which,"radio_rssi","Radio signal","signal_strength","dBm","measurement","radio_valid",true);
   haSensor(components,which,"radio_lqi","Radio link quality","","","measurement","radio_valid",true);
@@ -99,13 +106,15 @@ void haDiscoveryDocument(JsonDocument &doc,int which) {
     for(int metric=0;metric<3;++metric) {
       char key[32],name[40];snprintf(key,sizeof(key),"panel%d_%s",panel+1,suffixes[metric]);
       snprintf(name,sizeof(name),"Panel %d %s",panel+1,metric==0?"power":metric==1?"voltage":"current");
-      if(panel<(Inv_Prop[which].invType==1?4:2)&&Inv_Prop[which].conPanels[panel])
+      if(panel<inverterPhysicalPanelCount(which)&&Inv_Prop[which].conPanels[panel])
         haSensor(components,which,key,name,classes[metric],units[metric],"measurement",metric==0?"power_valid":"telemetry_valid",metric!=0);
       else components[key]["p"]="sensor"; // Explicit deletion on panel/model changes.
     }
   }
   JsonObject limit=components["power_limit"].to<JsonObject>();
-  limit["p"]="number";limit["name"]="Per-input power limit";
+  limit["p"]="number";
+  if(!inverterSupportsThrottle(which)) return; // Remove a previously discovered control.
+  limit["name"]="Per-input power limit";
   limit["uniq_id"]=haDeviceKey(which)+"_power_limit";
   limit["cmd_t"]=haBase+"/inverter/"+Inv_Prop[which].invSerial+"/limit/set";
   limit["cmd_tpl"]=String("{\"value\": {{ value | int }}, \"session\": \"")+haSession+"\"}";
@@ -135,10 +144,15 @@ void haStateDocument(JsonDocument &doc,int which) {
   if(haMeterReady)doc["energy_kwh"]=slot<0?0:(double)haMeter.entries[slot].committed/1000000.0;else doc["energy_kwh"]="None";
   doc["today_kwh"]=(double)energyTodayWhFor(which)/1000.0;
   doc["temperature_c"]=Inv_Data[which].heath;doc["ac_voltage_v"]=Inv_Data[which].acv;
+  if(Inv_Prop[which].invType==3) {
+    doc["qt2_ac_reading_2_v"]=Inv_Data[which].acvL2;
+    doc["qt2_ac_reading_3_v"]=Inv_Data[which].acvL3;
+    doc["ac_voltage_reference"]="unverified";doc["ac_phase_order"]="unverified";
+  }
   doc["frequency_hz"]=Inv_Data[which].freq;doc["radio_rssi"]=Inv_Data[which].radioRssi;
   doc["radio_lqi"]=Inv_Data[which].radioLqi;
   // Unknown is not an optimistic confirmation of the last command.
-  doc["control_available"]=fresh&&haControl<0;
+  doc["control_available"]=inverterSupportsThrottle(which)&&fresh&&haControl<0;
   if(desiredThrottle[which]>=20&&desiredThrottle[which]<=500)doc["limit_w"]=desiredThrottle[which];
   else doc["limit_w"]="None";
   doc["control_status"]=haControlStatus[which];
@@ -161,6 +175,7 @@ void haReceive(char *topic,uint8_t *payload,unsigned int length) {
   int which=-1;
   for(int i=0;i<inverterCount;++i)if(String(topic)==haBase+"/inverter/"+Inv_Prop[i].invSerial+"/limit/set"){which=i;break;}
   if(which<0)return;
+  if(!inverterSupportsThrottle(which)){haControlStatus[which]="rejected: model does not support power limits";return;}
   JsonDocument command;
   if(deserializeJson(command,payload,length)||!command["value"].is<int>()||
      command["session"]!=haSession||command["value"].as<int>()<20||command["value"].as<int>()>500) {
@@ -284,7 +299,7 @@ void haLoop() {
     int which=haControl;haControl=-1;
     if(!haClient.connected()||haControlSession!=haSession){haControlStatus[which]="failed: MQTT session changed";return;}
     // Serial identity is rechecked against the last observed telemetry slot.
-    if(which>=inverterCount||strcmp(haControlSerial,Inv_Prop[which].invSerial)||!haFresh(which)||!polled[which]||pollingNightModeActive()){haControlStatus[which]="failed: inverter changed or unavailable";return;}
+    if(!inverterSupportsThrottle(which)||strcmp(haControlSerial,Inv_Prop[which].invSerial)||!haFresh(which)||!polled[which]||pollingNightModeActive()){haControlStatus[which]="failed: inverter changed or unavailable";return;}
     desiredThrottle[which]=haControlValue;
     bool applied=setMaxPower(which);
     if(!applied)desiredThrottle[which]=-1;

@@ -230,6 +230,15 @@ void restored(){
  assert(settingsHasRestoredIdentity());
 }
 int main(){
+ // QT2 survives backup/restore with all four physical inputs.
+ init();sample["payload"]["inverters"][0]["type"]=3;
+ for(int i=0;i<4;++i)sample["payload"]["inverters"][0]["panels"][i]=true;
+ settingsSeal(sample);assert(settingsValidate(sample)&&settingsApply(sample));
+ JsonDocument qt2Backup;assert(settingsBuildBackup(qt2Backup)&&settingsValidate(qt2Backup));
+ assert(qt2Backup["payload"]["inverters"][0]["type"]==3);
+ for(int i=0;i<4;++i)assert(qt2Backup["payload"]["inverters"][0]["panels"][i]==true);
+ qt2Backup["payload"]["inverters"][0]["type"]=4;settingsSeal(qt2Backup);assert(!settingsValidate(qt2Backup));
+
  init();uint8_t address[8];assert(settingsRadioAddress(address)&&!settingsHasRestoredIdentity());
  assert(settingsStageRestore(sample));assert(files["/basisconfig.json"]=="old configuration");
  assert(settingsRestoreBoot());restored();

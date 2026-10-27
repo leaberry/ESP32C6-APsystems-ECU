@@ -38,6 +38,7 @@ void setup() {
   pollDiagnosticsBegin();
   flightRecorderBegin();
   pairAuditBeginStorage();
+  qt2CaptureBegin();
   // now we know the number of inverters we can find an interval between pollings
   //int pollintervall = 300/inverterCount;
   // takes care for the return to the last webpage after reboot
@@ -79,7 +80,7 @@ void setup() {
   // ****************** mqtt init *********************
   MQTT_Client.setKeepAlive(150);
   MQTT_Client.setServer(Mqtt_Broker, atoi(Mqtt_Port));
-  MQTT_Client.setBufferSize(300); //to avoid freeze ups
+  MQTT_Client.setBufferSize(640); //to avoid freeze ups
   MQTT_Client.setCallback ( MQTT_Receive_Callback ) ;
 
   if ( Mqtt_Format != 0 )
@@ -213,6 +214,7 @@ void loop() {
   energyHistoryLoop();
   systemTemperatureLoop();
   flightRecorderLoop();
+  qt2CaptureLoop();
 
   // Operator work runs before the polite automatic poller. At most one
   // inverter transaction (2.5-second bounded wait) can delay an operator op.

@@ -1,5 +1,98 @@
 # Build and hardware verification
 
+## QT2 telemetry variant validation (2026-10-26)
+
+TobiasTTM's capture contains 167 valid 105-byte replies with `0x29` at byte 11.
+The decoder and fleet collector required `0x30`, rejecting every reply from
+that inverter. The captured-frame regression reproduces the decoder rejection
+before the fix. `ESP32C6-ECU_v1_4_19-qt2-dev4` accepts both observed variants
+through shared validation while preserving the other frame checks.
+
+Sanitized decoder, fleet collection and capture-storage tests pass. New
+coverage replays three anonymized `0x29` captures, checks energy accumulation,
+and passes a real reply through fleet polling. Malformed packets, configuration
+replies and all other byte-11 values remain rejected without changing decoder
+state. Existing `0x30` and other inverter regressions pass.
+
+Both Arduino core 3.3.8 builds pass: 1,646,418 bytes of program storage and
+110,144 bytes of static globals, leaving 217,536 bytes before runtime
+allocations. The generated partition tables match the 8 MB OTA and 4 MB
+USB-only layouts, and both application images fit. No hardware was flashed.
+
+The supplied capture uses the older v1.4.13 QT2 build. Hardware confirmation
+on this revision remains pending; the remaining merge check is a daytime
+capture including the previously rejected inverter. Meter comparisons are
+optional follow-ups. See [QT2.md](QT2.md#october-26-rejected-telemetry-variant).
+
+## QT2 DC calibration fixtures (2026-10-25)
+
+TobiasTTM supplied a mains-disconnected DC injection test with raw radio
+captures. All 334 complete, validated replies report zero frequency. PV4
+voltage supports the existing 26.3 divisor; five PV2 current levels support
+86.5 counts/A. A 182-reply steady interval supports 32,000 counter units/Wh
+against supplied DC power, and confirms the inverter clock runs in seconds.
+See [QT2.md](QT2.md#october-25-dc-calibration-capture) for measurements and limits.
+
+`ESP32C6-ECU_v1_4_19-qt2-dev3` applies the current and counter scales. Eleven
+anonymized lab frames now exercise the production decoder, including rising
+counters with zero credited production while mains is absent. Sanitized QT2
+decoder, capture-storage and fleet-polling suites pass, as does the QT2 UI suite.
+
+Both Arduino core 3.3.8 builds pass: 1,646,394 bytes of program storage and
+110,144 bytes of static globals, leaving 217,536 bytes before runtime
+allocations. Generated partition tables match the 8 MB OTA and 4 MB USB-only
+layouts, and application images fit their slots. No device was flashed.
+Other DC channels/units, actual exported AC energy and operation of this
+revision on QT2 hardware remain unverified.
+
+## QT2 timeout capture retention (2026-10-25)
+
+TobiasTTM's follow-up exported 512 timeout records from the older
+`ESP32C6-ECU_v1_4_13-qt2-dev` build, covering about 30 minutes across four
+inverters. The file contains no received ASDUs. It demonstrates an export
+from that installation, but cannot validate telemetry scales or the rebased
+firmware. The report also identifies a panic reset and stored crash dump;
+the dump and matching ELF are needed to investigate. See [QT2.md](QT2.md).
+
+`ESP32C6-ECU_v1_4_19-qt2-dev2` records the first timeout per silent run and
+counts repeated timeouts without writing more records. Sanitized production
+capture tests reproduce 512 timeouts across four inverters, then 5,000 more,
+while preserving preceding received frames on both ring sizes. Recovery,
+changed serials, queue overflow, failed writes and low-space retry are covered.
+The decoder and fleet polling regressions also pass; numerical scales and
+radio behavior are unchanged.
+
+Both Arduino core 3.3.8 builds pass: 1,646,354 bytes of program storage and
+110,144 bytes of static globals, leaving 217,536 bytes before runtime
+allocations. Both partition tables match the supported layouts. Physical
+testing of this capture-retention change remains pending.
+
+## QT2 rebase and voltage review (2026-10-25)
+
+`ESP32C6-ECU_v1_4_19-qt2-dev` builds on `main` at `17d8a79` with Arduino
+core 3.3.8 for both 8 MB OTA and 4 MB USB-only layouts. Each build uses
+1,645,808 bytes of program storage and 110,024 bytes of static globals,
+leaving 217,656 bytes before runtime allocations. Both generated partition
+tables match their source layouts, and both application images fit their slots.
+
+All 27 Python and eight JavaScript suites listed in CI pass locally. The QT2
+decoder and capture-storage tests use AddressSanitizer and UndefinedBehaviorSanitizer.
+New integration coverage exercises QT2 through the fleet collector, including
+rejected-frame and timeout capture, four-input Home Assistant discovery,
+command refusal after model changes, settings backup/restore, and SunSpec
+not-implemented voltage registers. Existing DS3/YC600/QS1, pairing, control,
+settings, logging and UI regressions pass.
+
+TobiasTTM's October 25 measurements support the DC voltage scale and suggest
+that the AC fields contain line-to-line voltage divided by sqrt(3). Their
+reference and phase order remain unverified, so the old L1/L2/L3 labels are
+removed without changing numerical scales. See [QT2.md](QT2.md) for the
+measurements, interpretation and capture procedure.
+
+This firmware still needs physical QT2 testing. Current/energy calibration,
+input and phase mapping, actual SPIFFS power-loss behavior and capture downloads
+on hardware remain unverified. No device was flashed during this work.
+
 ## Issue #30 follow-up: DS3 readback metadata (2026-10-14)
 
 The reporter says the plain `DS3_pergola` still applies power limits without
@@ -636,7 +729,6 @@ At that initial review, physical antenna switching, reception quality and a
 real private NTP server had not been tested. The Issue #11 report above now
 confirms those functions on the reporter's setup. Advanced GPIO/polarity choices
 and other boards remain unverified. No device was flashed during this review.
-
 This document records evidence for the current source tree. It is not a claim
 that every supported inverter model or control path has been field-tested.
 

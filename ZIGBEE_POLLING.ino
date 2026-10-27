@@ -68,6 +68,8 @@ void pollingCollect(int which, bool fleet) {
     pollDiagnosticsStart(which, attempt + 1, wanted);
     const bool txOk = sendZB(pollCommand);
     if (txOk) accepted = readPollReplies(wanted, accepted, since);
+    if (!(accepted & (1U << which)))
+      qt2CaptureObserve(which, nullptr, 0, 0, 0x0106, 0, 0);
     pollDiagnosticsFinish(txOk, (accepted & (1U << which)) ? 0 : 50, accepted);
     if (accepted & (1U << which)) break;
   }

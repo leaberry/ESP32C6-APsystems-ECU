@@ -1,0 +1,119 @@
+{
+  "source": "https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6405032386",
+  "attachment": "https://github.com/user-attachments/files/33941214/QT2.testing.zip",
+  "pcapng_sha256": "a8099e996136f6a1aeef73382861681ae8fb8290e0420938de9fc03375ad2ab9",
+  "credit": "TobiasTTM supplied the capture and lab reference measurements.",
+  "notes": "Reassembled ASDUs from FCS-valid IEEE 802.15.4 frames; additive checksums verified. Serial replaced with 901000000001; serial bytes are outside the additive checksum. Mains disconnected throughout. PV1 supplied at 20.5 V; current injection was negative on PV1 and positive on PV2. Other channel gains and grid export remain unverified.",
+  "captures": [
+    {
+      "kind": "pv4_voltage",
+      "reference": 20,
+      "packet_numbers": [
+        372,
+        376
+      ],
+      "seconds_since_capture_start": 280.15130710601807,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021a020c000600000001000004b3000a000900080028072b0000ffffffffffffffffffffffffffffffffffff000026e5000000ad000000150000001affffffffffffffffffffffffffffff28e8fefe"
+    },
+    {
+      "kind": "pv4_voltage",
+      "reference": 30,
+      "packet_numbers": [
+        585,
+        588
+      ],
+      "seconds_since_capture_start": 466.46279215812683,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff0000000808002202021a03150000000100020003056c000a000800080028072d0000ffffffffffffffffffffffffffffffffffff00002c4c000000b40000014100000081ffffffffffffffffffffffffffffff2834fefe"
+    },
+    {
+      "kind": "pv4_voltage",
+      "reference": 40,
+      "packet_numbers": [
+        703,
+        707
+      ],
+      "seconds_since_capture_start": 578.7484560012817,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff0000000808002202021a041c000100010002000105dd0009000800080028072e0000ffffffffffffffffffffffffffffffffffff00002c4c000000ec0000027e000002bbffffffffffffffffffffffffffffff295efefe"
+    },
+    {
+      "kind": "pv4_voltage",
+      "reference": 50,
+      "packet_numbers": [
+        787,
+        791
+      ],
+      "seconds_since_capture_start": 668.2377381324768,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff0000000808002202021a052500000001000300010637000a000800080028072f0000ffffffffffffffffffffffffffffffffffff00002c4c00000122000003ee000003fcffffffffffffffffffffffffffffff28affefe"
+    },
+    {
+      "kind": "pv2_current",
+      "reference": 2,
+      "packet_numbers": [
+        1210,
+        1214
+      ],
+      "seconds_since_capture_start": 1081.6482331752777,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021a00c0000100ad0000000007d4000a00080007002807330000ffffffffffffffffffffffffffffffffffff000031a00001136f000006fe000004f2ffffffffffffffffffffffffffffff2bd2fefe"
+    },
+    {
+      "kind": "pv2_current",
+      "reference": 4,
+      "packet_numbers": [
+        1308,
+        1311
+      ],
+      "seconds_since_capture_start": 1239.1936991214752,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021a00c00002015a000000010870000a00080008002807350000ffffffffffffffffffffffffffffffffffff000032dd0001f62c00000712000004f2ffffffffffffffffffffffffffffff2b15fefe"
+    },
+    {
+      "kind": "pv2_current",
+      "reference": 6,
+      "packet_numbers": [
+        1411,
+        1415
+      ],
+      "seconds_since_capture_start": 1405.405893087387,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021a00c100050206000100010917000900080008002807370000ffffffffffffffffffffffffffffffffffff000036e60003d90500000726000004f2ffffffffffffffffffffffffffffff2a4ffefe"
+    },
+    {
+      "kind": "pv2_current",
+      "reference": 8,
+      "packet_numbers": [
+        1505,
+        1509
+      ],
+      "seconds_since_capture_start": 1649.9347651004791,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021b00c1000702b2000100000a0c0009000800070028073c0000ffffffffffffffffffffffffffffffffffff0000400a0007f63400000745000004f2ffffffffffffffffffffffffffffff2a94fefe"
+    },
+    {
+      "kind": "pv2_current",
+      "reference": 10,
+      "packet_numbers": [
+        1627,
+        1631
+      ],
+      "seconds_since_capture_start": 1807.9564681053162,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021b00c100090360000000000aaa000a000800080028073e0000ffffffffffffffffffffffffffffffffffff00004842000ba3020000075f000004f2ffffffffffffffffffffffffffffff2abffefe"
+    },
+    {
+      "kind": "steady_start",
+      "reference": 10,
+      "packet_numbers": [
+        1804,
+        1808
+      ],
+      "seconds_since_capture_start": 1976.413122177124,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021b00c1000a0363000200000b53000900080008002807420000ffffffffffffffffffffffffffffffffffff0000525f000f5be700000775000004f2ffffffffffffffffffffffffffffff2b50fefe"
+    },
+    {
+      "kind": "steady_end",
+      "reference": 10,
+      "packet_numbers": [
+        3694,
+        3698
+      ],
+      "seconds_since_capture_start": 3545.947121143341,
+      "hex": "901000000001fbfb5cbbbb3000010010ffff000000080800a202021a00c100080360000200001174000a00080008002807560000ffffffffffffffffffffffffffffffffffff0000b8f0003ae7f80000083c000004f2ffffffffffffffffffffffffffffff2d0dfefe"
+    }
+  ]
+}

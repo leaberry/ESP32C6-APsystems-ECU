@@ -782,6 +782,7 @@ char *readZB(char out[]) {
       diagnosticsAppend(String(line));
       continue;
     }
+    qt2CaptureObserve(which, f.data, f.len, f.source, f.cluster, f.rssi, f.lqi);
     if (which >= 0 && which < inverterCount) {
       Inv_Data[which].radioRssi = f.rssi;
       Inv_Data[which].radioLqi = f.lqi;
@@ -823,6 +824,7 @@ uint16_t readPollReplies(uint16_t wanted, uint16_t accepted, uint32_t since) {
     }
     pollDiagnosticsReply(which);
     if (which < 0 || !(wanted & (1U << which))) { pollDiagnosticsCount(PD_UNEXPECTED); continue; }
+    qt2CaptureObserve(which, decoded, length, f.source, f.cluster, f.rssi, f.lqi);
     if (accepted & (1U << which)) { pollDiagnosticsCount(PD_DUPLICATE); continue; }
     const PollTelemetryCheck check = pollTelemetryCheck(decoded, length, Inv_Prop[which].invType);
     if (check != POLL_VALID) {
