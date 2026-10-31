@@ -18,7 +18,7 @@ struct PairTraceTx {
 };
 struct PairTraceStage {
   const char *name = nullptr; // firmware string literals only
-  uint32_t at = 0, related = 0;
+  uint32_t at = 0, received = 0, related = 0;
   uint16_t pan = 0, source = 0, found = 0;
   bool conflict = false;
   uint8_t sent = 0, validated = 0, checked = 0, reason[2] = {};
@@ -32,9 +32,11 @@ struct PairTraceAsdu {
 };
 struct PairTraceCapture {
   uint8_t target[6] = {}, count = 0, mode = 0;
-  uint32_t started = 0, ended = 0, omittedStages = 0, asdus = 0;
+  uint32_t started = 0, ended = 0, omittedStages = 0, asdus = 0, otherFrames = 0;
   bool saved = false, restored = false;
   PairTraceStage stages[PAIR_TRACE_STAGES];
+  PairTracePacket other[2]; // first and latest frame without a target match
+  uint8_t otherStage[2] = {};
   PairTraceAsdu answers[4]; // first two and latest two complete replies
 };
 static_assert(sizeof(PairTraceCapture) < 10000, "Bound optional pairing trace RAM");

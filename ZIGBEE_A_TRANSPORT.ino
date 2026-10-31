@@ -240,14 +240,19 @@ static bool sendApsAck(uint16_t pan, uint16_t macDestination,
 static RawReassembly *sessionFor(uint16_t pan, uint16_t source,
                                  uint8_t counter, uint16_t cluster,
                                  bool create) {
-  RawReassembly *oldest = &rawSessions[0];
+  RawReassembly *available = nullptr;
+  RawReassembly *oldest = nullptr;
+  const uint32_t now = millis();
   for (RawReassembly &s : rawSessions) {
     if (s.active && s.pan == pan && s.nwkSource == source &&
         s.counter == counter && s.cluster == cluster) return &s;
-    if (!s.active) oldest = &s;
-    else if (s.updatedAt < oldest->updatedAt) oldest = &s;
+    if (!s.active) available = &s;
+    else if (!oldest || uint32_t(now - s.updatedAt) > uint32_t(now - oldest->updatedAt))
+      oldest = &s;
   }
   if (!create) { pollDiagnosticsCount(PD_FRAGMENT_MISS); return nullptr; }
+  // Preserve unfinished responses whenever a free buffer exists.
+  if (available) oldest = available;
   if (oldest->active) pollDiagnosticsCount(PD_FRAGMENT_EVICT);
   memset(oldest, 0, sizeof(*oldest));
   oldest->active = true;

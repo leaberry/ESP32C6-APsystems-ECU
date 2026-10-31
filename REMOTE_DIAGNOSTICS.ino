@@ -92,6 +92,30 @@ String diagnosticsReportText() {
   report += F("\nLast Wi-Fi disconnect: "); report += wifiLastDisconnectTimestamp();
   report += F("\nLast Wi-Fi disconnect reason: "); report += wifiLastDisconnectReasonText();
   report += F("\nRadio state: "); report += zigbeeUp;
+  if (zigbeeUp == 1) {
+    char radio[160];
+    snprintf(radio, sizeof(radio),
+        "\nRadio channel=%u pan=0x%04X short=0x%04X tx_power_dbm=%d promiscuous=%u",
+        esp_ieee802154_get_channel(), esp_ieee802154_get_panid(),
+        esp_ieee802154_get_short_address(), esp_ieee802154_get_txpower(),
+        esp_ieee802154_get_promiscuous());
+    report += radio;
+  }
+  AntennaSettings antenna;
+  if (!antennaLoad(antenna)) report += F("\nAntenna saved settings: invalid");
+  else {
+    char pins[160];
+    snprintf(pins, sizeof(pins), "\nAntenna saved mode=%d board=%d (0=unmanaged, 1=internal, 2=external; board 0=XIAO, 1=Advanced)",
+        antenna.mode, antenna.board);
+    report += pins;
+    if (antenna.mode) {
+      snprintf(pins, sizeof(pins), "\nAntenna GPIO select=%d level=%d expected=%d enable=%d level=%d expected=%d (saved settings apply after restart)",
+          antenna.selectPin, digitalRead(antenna.selectPin), antennaSelectLevel(antenna),
+          antenna.enablePin, antenna.enablePin >= 0 ? digitalRead(antenna.enablePin) : -1,
+          antenna.enablePin >= 0 ? int(antenna.enableHigh) : -1);
+      report += pins;
+    }
+  }
   report += F("\nConfigured inverters: "); report += inverterCount;
   report += F("\nAutomatic polling: "); report += Polling ? F("enabled") : F("disabled");
   report += F("\nPoll interval seconds: "); report += pollIntervalSeconds;

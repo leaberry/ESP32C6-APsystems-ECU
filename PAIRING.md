@@ -41,6 +41,18 @@ trace. If a trace download is still running, a new pairing can proceed but skips
 its optional detailed recording; finish downloading before starting another
 attempt when a fresh trace is needed.
 
+In `qs1-diag1`, the trace's `rx_total` counts packets that reached the radio
+worker during each stage. `related` counts packets matching the target serial
+or stage address. `OTHER_RX` retains the first and latest nonmatching packet
+across the attempt. Packets rejected by the radio's hardware filter are not
+captured. A successful broadcast transmission alone does not prove that an
+inverter received it.
+
+The diagnostic report also includes the actual radio channel and transmit
+power, saved antenna settings, and antenna GPIO levels. Saved antenna changes
+apply after restart. For a XIAO with External selected, the expected levels are
+GPIO14 HIGH and GPIO3 LOW. See the [manufacturer's RF switch instructions](https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/#back).
+
 ## Evidence and remaining limits
 
 [Issue #25](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/25#issuecomment-5886929541)

@@ -48,12 +48,17 @@ void pairTraceTx(uint16_t cluster, const uint8_t *data, size_t n, uint32_t at, b
 }
 void pairTraceObserve(const uint8_t *b, size_t n, uint32_t at, int8_t rssi, uint8_t lqi) {
   portENTER_CRITICAL(&pairTraceMux);
-  if (pairTraceActive && pairTraceCurrent < PAIR_TRACE_STAGES && b && n <= 128) {
+  if (pairTraceActive && pairTraceCurrent < PAIR_TRACE_STAGES && b && n && n <= 128) {
     auto &s = pairTrace.stages[pairTraceCurrent];
+    if ((int32_t)(at - s.at) < 0) { portEXIT_CRITICAL(&pairTraceMux); return; }
+    ++s.received;
     bool related = n >= 18 && s.source && (pairLe16(b + 8) == s.source || pairLe16(b + 14) == s.source);
     for (size_t i = 1; !related && i + 8 <= n; ++i) related = !memcmp(b + i, pairTrace.target, 6);
-    if (related && (int32_t)(at - s.at) >= 0) {
-      auto &r = s.raw[s.related++ ? 1 : 0];
+    const uint8_t sample = related ? (s.related++ ? 1 : 0) : (pairTrace.otherFrames++ ? 1 : 0);
+    {
+      auto &r = related ? s.raw[sample] : pairTrace.other[sample];
+      if (!related) pairTrace.otherStage[sample] = pairTraceCurrent;
+      r = PairTracePacket{};
       r.at = at; r.length = n; r.rssi = rssi; r.lqi = lqi;
       if (n >= 18) { r.pan = pairLe16(b + 4); r.source = pairLe16(b + 14); }
       PairReply reply; r.reason = checkPairReply(b, n, pairTrace.target, reply);
@@ -118,20 +123,21 @@ bool pairingTraceClear() {
 // Called only under a completed-capture reader lease. Never allocates a report String.
 static size_t pairingTraceLine(size_t index, char *line, size_t cap) {
   if (index == 0) return snprintf(line, cap,
-      "Pairing trace %s; target=%02X%02X%02X%02X%02X%02X started=%lu ended=%lu saved=%u mode=%u restored=%u stages=%u omitted_stages=%lu asdus=%lu\n",
+      "Pairing trace %s; target=%02X%02X%02X%02X%02X%02X started=%lu ended=%lu saved=%u mode=%u restored=%u stages=%u omitted_stages=%lu asdus=%lu other_rx=%lu\n",
       VERSION, pairTrace.target[0], pairTrace.target[1], pairTrace.target[2], pairTrace.target[3], pairTrace.target[4], pairTrace.target[5],
       (unsigned long)pairTrace.started, (unsigned long)pairTrace.ended, pairTrace.saved, pairTrace.mode,
-      pairTrace.restored, pairTrace.count, (unsigned long)pairTrace.omittedStages, (unsigned long)pairTrace.asdus);
+      pairTrace.restored, pairTrace.count, (unsigned long)pairTrace.omittedStages, (unsigned long)pairTrace.asdus,
+      (unsigned long)pairTrace.otherFrames);
   if (index == 1) return snprintf(line, cap,
-      "RAM only: download before restart or another pairing. Detailed recording follows the flight recorder switch. No stages means detailed recording was off. Times are uptime milliseconds. Modes: 0=auto 1=AES 2=plain. Raw samples: first/latest; ASDUs: first two/latest two. TX error 3 means no MAC ACK. Power reasons: 0=valid 1=missing 2=identity 3=mode 4=decrypt 5=length 6=kind 7=checksum 8=value. Raw reason is the discovery parser result, not a power-packet validation result.\n");
+      "RAM only: download before restart or another pairing. Detailed recording follows the flight recorder switch. No stages means detailed recording was off. Times are uptime milliseconds. Modes: 0=auto 1=AES 2=plain. Raw samples: first/latest target per stage and first/latest OTHER_RX overall; ASDUs: first two/latest two. rx_total counts frames reaching the worker on channel 16, before target matching; hardware-filtered frames are not visible. TX ok means local transmission, not an inverter reply. TX error 3 means no MAC ACK. Power reasons: 0=valid 1=missing 2=identity 3=mode 4=decrypt 5=length 6=kind 7=checksum 8=value. Raw reason is the discovery parser result, not a power-packet validation result.\n");
   index -= 2;
   const uint8_t *data = nullptr; size_t length = 0; int used = 0;
   if (index < size_t(pairTrace.count) * 6) {
     const auto &s = pairTrace.stages[index / 6]; size_t row = index % 6;
     if (!row) return snprintf(line, cap,
-        "stage=%u name=%s at=%lu pan=%04X source=%04X found=%04X conflict=%u tx=%u related=%lu raw_omitted=%lu checked=%u validated=%u reason=%u/%u\n",
+        "stage=%u name=%s at=%lu pan=%04X source=%04X found=%04X conflict=%u tx=%u rx_total=%lu related=%lu raw_omitted=%lu checked=%u validated=%u reason=%u/%u\n",
         (unsigned)(index / 6), s.name, (unsigned long)s.at, s.pan, s.source, s.found, s.conflict, s.sent,
-        (unsigned long)s.related, (unsigned long)(s.related > 2 ? s.related - 2 : 0), s.checked, s.validated, s.reason[0], s.reason[1]);
+        (unsigned long)s.received, (unsigned long)s.related, (unsigned long)(s.related > 2 ? s.related - 2 : 0), s.checked, s.validated, s.reason[0], s.reason[1]);
     if (row <= 3) {
       const auto &t = s.tx[row - 1];
       used = snprintf(line, cap, " TX at=%lu cluster=%04X ok=%u error=%d bytes=%u data=", (unsigned long)t.at, t.cluster, t.ok, t.error, t.length);
@@ -144,11 +150,21 @@ static size_t pairingTraceLine(size_t index, char *line, size_t cap) {
     }
   } else {
     index -= size_t(pairTrace.count) * 6;
+    const size_t otherCount = pairTrace.otherFrames < 2 ? pairTrace.otherFrames : 2;
+    if (index < otherCount) {
+      const auto &r = pairTrace.other[index];
+      used = snprintf(line, cap, " OTHER_RX stage=%u at=%lu pan=%04X source=%04X rssi=%d lqi=%u reason=%s bytes=%u raw=",
+          pairTrace.otherStage[index], (unsigned long)r.at, r.pan, r.source, r.rssi, r.lqi,
+          pairReplyCheckName((PairReplyCheck)r.reason), r.length);
+      data = r.data; length = r.length;
+    } else {
+    index -= otherCount;
     if (index >= 4 || index >= pairTrace.asdus) return 0;
     const auto &a = pairTrace.answers[index];
     used = snprintf(line, cap, " ASDU stage=%u at=%lu pan=%04X source=%04X cluster=%04X bytes=%u data=",
         a.stage, (unsigned long)a.at, a.pan, a.source, a.cluster, a.length);
     data = a.data; length = a.length;
+    }
   }
   if (used < 0 || (size_t)used >= cap) return 0;
   for (size_t i = 0; i < length && (size_t)used + 3 < cap; ++i) used += snprintf(line + used, cap - used, "%02X", data[i]);

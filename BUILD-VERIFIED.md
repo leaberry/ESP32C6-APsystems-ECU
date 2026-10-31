@@ -1,5 +1,50 @@
 # Build and hardware verification
 
+## Issue #39 QS1 pairing investigation (2026-10-31)
+
+The [reporter's v1.4.20 logs](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6542135811)
+contain three failed pairing attempts across two QS1 units on a 4 MB XIAO
+ESP32-C6. All 21 local broadcasts completed, but no target-related receive
+sample or matched pairing reply was recorded. Both saved inverter IDs remain
+`0000`. The enabled receive counter records only two frames for the boot; the
+logs contain no completed poll attempts. These captures do not establish a
+telemetry-decoder rejection or confirm the cause of the pairing failure.
+
+The four legacy application payloads and channel 16 match the upstream
+`patience4711/ESP32-read-APS-inverters` source. Upstream uses a TI modem and its
+network stack; this firmware constructs raw frames and requires a fresh reply
+on the operational PAN. Matching the payloads does not establish identical
+over-the-air behavior. The original trace kept only target-related packets,
+and the report did not include antenna settings or actual radio configuration.
+
+`ESP32C6-ECU_v1_4_20-qs1-diag1` records a receive count per pairing stage and
+the first/latest nonmatching frame across the attempt, while retaining the
+existing target samples. The report adds radio channel, PAN, short address,
+transmit power, receive-filter mode, saved antenna selection and GPIO levels.
+Recording remains optional and bounded; hardware-filtered traffic is still
+invisible. No pairing acceptance rule or radio command was changed.
+
+The shared fragment allocator did have a separate defect: an older occupied
+buffer could replace a free-buffer candidate during the search. An interleaved
+packet regression fails before the fix and passes afterward. Free buffers now
+take priority, and a full table evicts the oldest active session using elapsed
+time across clock wrap. This defect is not established as the cause of #39.
+
+Ten host suites pass: reassembly, telemetry collection, legacy pairing,
+transport fallback and trace downloads, DS3-H parsing, pairing audit, ZNP
+commands, radio diagnostics, QT2 decoding, and device settings. The trace tests
+cover unrelated traffic, preserved target samples, stale frames, disabled
+recording, bounded storage and downloads split into seven-byte chunks. No
+hardware was flashed; QS1 pairing still needs a new field capture.
+
+Both ESP32 core 3.3.8 layouts build successfully: 1,647,710 bytes of program
+storage and 110,496 bytes of static globals. Each application image is
+1,647,824 bytes. The image flash-size headers, partition-table checksums and
+entries match the named 8 MB OTA and 4 MB USB-only layouts; both images fit
+their application partitions. Staged firmware source files match the edited
+checkout. Test packages contain application images and partition tables for
+comparison, without merged installation images.
+
 ## QT2 daytime reporter verification (2026-10-27)
 
 [TobiasTTM's report](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6454377987)

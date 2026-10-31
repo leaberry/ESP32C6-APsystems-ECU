@@ -27,7 +27,8 @@ code = r'''
 using std::min;
 using String=std::string;
 #include "POLL_DIAGNOSTICS.h"
-void pollDiagnosticsCount(PollDiagCounter,uint32_t){}
+uint32_t counters[PD_COUNT]={};
+void pollDiagnosticsCount(PollDiagCounter counter,uint32_t count){counters[counter]+=count;}
 void pollDiagnosticsRaw(uint16_t,uint16_t){}
 constexpr int pdTRUE=1;
 constexpr uint8_t YC600_MAX_NUMBER_OF_INVERTERS=9;
@@ -37,7 +38,8 @@ bool pairTransportAsdu(uint16_t,uint16_t,uint16_t,const uint8_t*,size_t,uint32_t
 bool pairReceiveActive(){return probeMode;}
 bool radioPreference(const char*,uint32_t*,bool write){peerWrites+=write;return true;}
 void diagnosticsAppend(String){}
-uint32_t millis(){return 10000;}
+uint32_t clockMs=10000;
+uint32_t millis(){return clockMs;}
 bool apsRxQueue=true;
 bool sendApsAck(uint16_t,uint16_t,uint16_t,uint8_t,uint8_t,uint16_t,uint16_t,uint8_t,uint8_t,uint8_t){++acks;return true;}
 '''
@@ -77,6 +79,39 @@ int main(){
  assert(probeAsdus==2 && received.size()==normalCount && peerWrites==writesBefore && acks==acksBefore+3);
  acceptProbeAsdu=false;processApsFrame(frame(0,1,2,4000));processApsFrame(frame(0,2,1,4001));
  assert(received.size()==normalCount&&peerWrites==writesBefore);
+ // A fast inverter starts another response while a slow one is incomplete.
+ // A completed buffer must win over an older active buffer anywhere in the table.
+ probeMode=false;received.clear();memset(rawSessions,0,sizeof(rawSessions));
+ memset(counters,0,sizeof(counters));
+ clockMs=100;processApsFrame(frame(0,1,2,100));
+ clockMs=200;processApsFrame(frame(1,1,2,200));
+ clockMs=300;processApsFrame(frame(1,2,1,300));
+ assert(received.size()==1);
+ auto next=frame(1,1,2,400);next.bytes[25]=2;
+ clockMs=400;processApsFrame(next);
+ clockMs=500;processApsFrame(frame(0,2,1,500));
+ next=frame(1,2,1,600);next.bytes[25]=2;
+ clockMs=600;processApsFrame(next);
+ assert(received.size()==3&&counters[PD_FRAGMENT_EVICT]==0&&counters[PD_FRAGMENT_MISS]==0);
+ assert(received[1].source==1&&received[1].receivedAt==100&&received[1].len==24);
+ // A free slot before an existing session must not hide the matching session.
+ auto existing=sessionFor(0xA3D8,3,3,0x0106,true);
+ assert(sessionFor(0xA3D8,3,3,0x0106,true)==existing);
+ // Exhaustion evicts only the oldest active session, including across millis wrap.
+ memset(rawSessions,0,sizeof(rawSessions));clockMs=0xFFFFFFF0;
+ for(int i=0;i<9;++i){
+  auto s=sessionFor(0xA3D8,i+1,1,0x0106,true);s->updatedAt=clockMs++;
+ }
+ clockMs=20;
+ auto refreshed=sessionFor(0xA3D8,1,1,0x0106,false);assert(refreshed);
+ refreshed->updatedAt=10;
+ auto evicted=sessionFor(0xA3D8,2,1,0x0106,false);assert(evicted);
+ assert(sessionFor(0xA3D8,10,1,0x0106,false)==nullptr);
+ assert(counters[PD_FRAGMENT_EVICT]==0);
+ assert(sessionFor(0xA3D8,10,1,0x0106,true)==evicted);
+ assert(counters[PD_FRAGMENT_EVICT]==1);
+ assert(sessionFor(0xA3D8,1,1,0x0106,false)==refreshed);
+ std::cout<<"PASS free-buffer preference, interleaved responses and oldest eviction across clock wrap\n";
  std::cout<<"PASS APS reassembly: nine simultaneous inverters, original fragment timestamp, duplicate first fragment and direct replies\n";
 }
 '''
