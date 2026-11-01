@@ -142,6 +142,7 @@ static bool radioPreference(const char *serial, uint32_t *value, bool write) {
 
 static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
                           const char *reason) {
+  if (passiveCaptureOwnsRadio()) return false;
   if (!rawRadioStarted || !frame || bytes < 4 || bytes > 125 ||
       !rawTxMutex || !rawTxDone) return false;
   if (xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) {
@@ -150,6 +151,7 @@ static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
     return false;
   }
 
+  if (passiveCaptureOwnsRadio()) { xSemaphoreGive(rawTxMutex); return false; }
   static uint8_t txFrame[128];
   memset(txFrame, 0, sizeof(txFrame));
   txFrame[0] = (uint8_t)(bytes + 2);  // PHY length includes hardware FCS.
@@ -431,6 +433,8 @@ static void rawWorker(void *) {
   RawRxFrame frame;
   for (;;) {
     if (xQueueReceive(rawRxQueue, &frame, portMAX_DELAY) == pdTRUE) {
+      if (passiveCaptureObserve(frame.bytes, frame.captured, frame.receivedAt,
+                                frame.channel, frame.rssi, frame.lqi)) continue;
       pollDiagnosticsCount(PD_RX);
       pairTransportObserve(frame.bytes,frame.captured,frame.receivedAt);
       radioTraceObserve(frame.bytes, frame.captured, frame.channel,
@@ -650,6 +654,7 @@ bool apsRadioLoadPeer(const char *serial, uint16_t *pan, uint16_t *source) {
 }
 
 bool rawRadioSetPan(uint16_t pan) {
+  if (passiveCaptureOwnsRadio()) return false;
   esp_err_t a = esp_ieee802154_set_panid(pan);
   esp_err_t b = esp_ieee802154_set_short_address(0x0000);
   if (a == ESP_OK && b == ESP_OK) rawCurrentPan = pan;
@@ -657,6 +662,7 @@ bool rawRadioSetPan(uint16_t pan) {
 }
 
 bool rawRadioSetPromiscuous(bool enabled) {
+  if (passiveCaptureOwnsRadio() && !enabled) return false;
   esp_err_t result = esp_ieee802154_set_promiscuous(enabled);
   if (result == ESP_OK) rawPromiscuous = enabled;
   return result == ESP_OK;
@@ -692,6 +698,24 @@ bool rawRadioStart() {
            rawRadioStarted ? "OK" : "FAILED");
   diagnosticsAppend(String(line));
   return rawRadioStarted;
+}
+
+uint32_t rawRadioDroppedFrames() { return rawRxDropped; }
+
+bool rawRadioBeginPassive() {
+  if (!rawRadioStarted || !rawTxMutex ||
+      xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) return false;
+  // Sleep before changing filters. Promiscuous mode disables hardware MAC ACKs.
+  bool ok = esp_ieee802154_sleep() == ESP_OK;
+  ok = ok && esp_ieee802154_set_promiscuous(true) == ESP_OK;
+  ok = ok && esp_ieee802154_get_promiscuous();
+  ok = ok && esp_ieee802154_set_channel(APS_CHANNEL) == ESP_OK;
+  ok = ok && esp_ieee802154_set_rx_when_idle(true) == ESP_OK;
+  ok = ok && esp_ieee802154_receive() == ESP_OK;
+  if (!ok) esp_ieee802154_sleep();
+  else rawPromiscuous = true;
+  xSemaphoreGive(rawTxMutex);
+  return ok;
 }
 
 bool sendZB(char command[]) {

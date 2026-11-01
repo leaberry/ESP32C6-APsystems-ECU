@@ -123,6 +123,23 @@ server.on("/diagnostics/pairing-trace", HTTP_GET, [](AsyncWebServerRequest *requ
   pairingTraceDownload(request);
 });
 
+server.on("/diagnostics/passive", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  passiveCaptureControl(request);
+});
+server.on("/diagnostics/passive/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  auto response = request->beginResponse(200, "text/plain", passiveCaptureStatus());
+  response->addHeader("Cache-Control", "no-store"); request->send(response);
+});
+server.on("/diagnostics/passive/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  passiveCaptureDownload(request);
+});
+
 server.on("/diagnostics/pairing-log", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }

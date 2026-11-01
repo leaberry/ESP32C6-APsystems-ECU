@@ -122,6 +122,11 @@ void setup() {
 //*                         LOOP
 //*****************************************************************************
 void loop() {
+  if (passiveCaptureLoop()) {
+    // HTTP downloads remain available. Reboot releases the radio and resumes work.
+    delay(1);
+    return;
+  }
   ecuTimeLoop(); // Apply DST and update solar windows before day/night decisions.
 
 // ***************************************************************************

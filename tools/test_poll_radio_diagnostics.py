@@ -46,10 +46,16 @@ bool rawRadioSetPan(uint16_t){return true;}
 using esp_err_t=int;
 const int ESP_OK=0, ESP_IEEE802154_TX_ERR_CCA_BUSY=1, ESP_IEEE802154_TX_ERR_COEXIST=2;
 bool rawRadioStarted=true,rawTxSucceeded=false;
+bool passive=false;
+bool passiveCaptureOwnsRadio(){return passive;}
 int rawTxMutex=1,rawTxDone=2,rawTxFailure=0;
+bool claimDuringLock=false;
 std::vector<int> errors;size_t transmissions=0;
 int pdMS_TO_TICKS(int n){return n;}
-int xSemaphoreTake(int semaphore,int ticks){return semaphore==rawTxMutex||ticks?pdTRUE:0;}
+int xSemaphoreTake(int semaphore,int ticks){
+ if(semaphore==rawTxMutex&&claimDuringLock)passive=true;
+ return semaphore==rawTxMutex||ticks?pdTRUE:0;
+}
 void xSemaphoreGive(int){} void vTaskDelay(int){}
 const char *esp_err_to_name(int){return "mock";}
 std::vector<uint8_t> lastSent;
@@ -99,6 +105,10 @@ int main(){
  assert(!radioTransmit(outbound,sizeof(outbound),true,"test")&&transmissions==12&&counters[PD_TX_FAIL]==failedBefore+1);
  std::cout<<"PASS production receive path: target RX, unfragmented ACK flag, app queue overflow, parser rejection, missing/evicted fragments, ACK failure, successful reassembly\n";
  std::cout<<"PASS production transmit path: separate CCA/coexistence counters and exhausted retry failure\n";
+ passive=true;transmissions=0;
+ assert(!radioTransmit(outbound,sizeof(outbound),true,"passive")&&transmissions==0);
+ passive=false;claimDuringLock=true;
+ assert(!radioTransmit(outbound,sizeof(outbound),true,"claimed while waiting")&&transmissions==0);
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

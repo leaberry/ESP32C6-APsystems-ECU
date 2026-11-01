@@ -1,5 +1,54 @@
 # Build and hardware verification
 
+## Issue #39 passive capture and path comparison (2026-11-01)
+
+The [diag1 field report](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6555062709)
+contains two detailed attempts with seven successful local broadcasts each,
+zero worker RX counts in every stage, and no unrelated samples. The persistent
+journal contains four failed diag1 attempts across two QS1 units. The XIAO
+report confirms channel 16 and the expected external-antenna GPIO levels.
+There are no completed polls or recorded parser/queue failures in that boot.
+The reporter tested at about one metre. This is no evidence of a decoder
+rejecting received replies; hardware filtering or missing replies remain open.
+
+QS1 and QT2 use the same legacy four-command pairing sequence. Encrypted DS3
+units use discovery before assignment, repeated commits where needed, and power
+verification. Normal raw transmission/reception is shared across the models.
+Two upstream differences remain hypotheses for QS1 compatibility: legacy
+command spacing is 4.7 seconds here versus upstream's 1.5-second delay, and
+upstream configures an ECU-derived IEEE address while this firmware preserves
+a separate radio identity. The application payloads match, but there is no
+successful QS1 over-the-air capture establishing the required headers/timing.
+Changing the decoder, identity or timing is not justified by these logs alone.
+The legacy path listens on `FFFF` throughout the handshake, whereas the DS3
+fallback also probes the operating PAN before assignment. A QS1 reply on an
+unexpected PAN/address could be removed by hardware before either parser sees
+it. The passive capture is intended to test that possibility as well.
+
+Diag2 adds an opt-in, RAM-only passive capture on channel 16. The main loop
+claims the radio between controller transactions. It stays paused until reboot;
+the TX function refuses sends and the worker bypasses normal processing while
+passive. Espressif's `esp_ieee802154_set_promiscuous(true)` disables automatic
+RX/TX and enhanced ACK handling in the pinned driver's API implementation.
+Capture setup sleeps the radio before switching filters and checks each step.
+Failed setup leaves normal work suspended and requires restart.
+
+The capture stores at most 256 frames for 120 seconds, stops on exhaustion,
+and exports raw bytes with receive uptime, channel, RSSI and LQI. Downloads
+require a stopped capture and hold a reader lease until completion/disconnect.
+No radio identity, pairing record or inverter setting is modified. RF loss
+and Wi-Fi coexistence can still hide traffic; queue drops are recorded.
+Host tests cover setup failure, ownership, TX suppression, capacity, timeout
+across uptime wrap, stale frames, download leases/chunking and PCAP conversion.
+No hardware capture or successful QS1 pairing has been performed locally.
+
+Both layouts build with ESP32 core 3.3.8 / ESP-IDF 5.5.4: 1,656,010 bytes of
+program storage and 110,528 bytes of static globals. Each application image is
+1,656,112 bytes. Flash-size headers, partition checksums/maps, application bounds
+and staged firmware source hashes match both the 4 MB and 8 MB layouts. Nine
+Python host suites and two browser-script suites pass, including the new capture
+tests and the existing pairing, reassembly, QT2 and recorded-log checks.
+
 ## Issue #39 QS1 pairing investigation (2026-10-31)
 
 The [reporter's v1.4.20 logs](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6542135811)

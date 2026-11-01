@@ -92,6 +92,7 @@ String diagnosticsReportText() {
   report += F("\nLast Wi-Fi disconnect: "); report += wifiLastDisconnectTimestamp();
   report += F("\nLast Wi-Fi disconnect reason: "); report += wifiLastDisconnectReasonText();
   report += F("\nRadio state: "); report += zigbeeUp;
+  report += F("\nPassive capture: "); report += passiveCaptureStatus();
   if (zigbeeUp == 1) {
     char radio[160];
     snprintf(radio, sizeof(radio),
