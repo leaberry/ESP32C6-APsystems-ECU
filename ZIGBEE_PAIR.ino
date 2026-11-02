@@ -38,6 +38,7 @@ void pairOnActionflag() {
 
 bool pairing(int which) {
   if (which < 0 || which >= inverterCount) return false;
+  if (Inv_Prop[which].invType == 1) return pairQs1(which);
   // The verified fallback uses DS3 BB telemetry. Other models keep their existing path.
   if (Inv_Prop[which].invType == 2 &&
       (apsSerialDefaultsToEncrypted(Inv_Prop[which].invSerial) || apsInverterUsesEncryption(which)))

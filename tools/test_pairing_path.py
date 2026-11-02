@@ -91,6 +91,8 @@ bool aesDefault=false; int fallbackCalls=0;
 bool apsSerialDefaultsToEncrypted(const char*){return aesDefault;}
 bool apsInverterUsesEncryption(int){return false;}
 bool pairWithTransportFallback(int){++fallbackCalls;return false;}
+int qs1Calls=0;
+bool pairQs1(int){++qs1Calls;return false;}
 void delay(unsigned);
 bool sendZB(char[]);
 std::vector<uint8_t> unhex(const std::string &s) {
@@ -223,10 +225,12 @@ int main() {
   }
   reset();radioOk=false;
   check(!pairing(0) && !saves && !pairReceiveActive(),"radio setup failure cleans up session");
-  for(int model : {0,1}) {
+  for(int model : {0,3}) {
     reset();Inv_Prop[0].invType=model;aesDefault=true;fallbackCalls=0;
-    check(pairing(0)&&fallbackCalls==0,"non-DS3 models retain their pairing path");
+    check(pairing(0)&&fallbackCalls==0&&qs1Calls==0,"YC600 and QT2 retain their pairing path");
   }
+  reset();Inv_Prop[0].invType=1;
+  check(!pairing(0)&&qs1Calls==1&&txCount==0,"only QS1 delegates to captured-header pairing");
   reset();Inv_Prop[0].invType=2;fallbackCalls=0;
   check(!pairing(0)&&fallbackCalls==1&&txCount==0,"encrypted-default DS3 delegates to verified fallback");
   aesDefault=false;

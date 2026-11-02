@@ -123,6 +123,12 @@ server.on("/diagnostics/pairing-trace", HTTP_GET, [](AsyncWebServerRequest *requ
   pairingTraceDownload(request);
 });
 
+server.on("/diagnostics/qs1-capture", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
+  if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }
+  qs1CaptureDownload(request);
+});
+
 server.on("/diagnostics/passive", HTTP_POST, [](AsyncWebServerRequest *request) {
   if (checkRemote(request->client()->remoteIP().toString())) { request->redirect("/denied"); return; }
   if (!request->authenticate("admin", pswd)) { request->requestAuthentication(); return; }

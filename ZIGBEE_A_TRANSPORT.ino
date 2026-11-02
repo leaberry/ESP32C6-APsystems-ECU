@@ -435,6 +435,8 @@ static void rawWorker(void *) {
     if (xQueueReceive(rawRxQueue, &frame, portMAX_DELAY) == pdTRUE) {
       if (passiveCaptureObserve(frame.bytes, frame.captured, frame.receivedAt,
                                 frame.channel, frame.rssi, frame.lqi)) continue;
+      if (qs1CaptureObserve(frame.bytes, frame.captured, frame.receivedAt,
+                            frame.channel, frame.rssi, frame.lqi)) continue;
       pollDiagnosticsCount(PD_RX);
       pairTransportObserve(frame.bytes,frame.captured,frame.receivedAt);
       radioTraceObserve(frame.bytes, frame.captured, frame.channel,
@@ -716,6 +718,44 @@ bool rawRadioBeginPassive() {
   else rawPromiscuous = true;
   xSemaphoreGive(rawTxMutex);
   return ok;
+}
+
+// Only the QS1 pairing path uses these settings and this packet builder.
+bool rawQs1Reception(uint16_t pan, bool unfiltered) {
+  if (passiveCaptureOwnsRadio() || !rawRadioStarted || !rawTxMutex ||
+      xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) return false;
+  bool ok = esp_ieee802154_sleep() == ESP_OK;
+  ok = ok && rawRadioSetPan(pan) && rawRadioSetPromiscuous(unfiltered);
+  ok = ok && esp_ieee802154_get_panid() == pan &&
+       esp_ieee802154_get_promiscuous() == unfiltered &&
+       esp_ieee802154_get_channel() == APS_CHANNEL;
+  ok = ok && esp_ieee802154_receive() == ESP_OK;
+  if (!ok) {
+    esp_ieee802154_sleep(); rawRadioStarted = false; zigbeeUp = 0;
+    diagnosticsAppend("QS1 radio setup/restore failed; restart required");
+  }
+  xSemaphoreGive(rawTxMutex);
+  return ok;
+}
+
+bool apsSendQs1Pairing(uint16_t sourcePan, uint16_t destPan, uint16_t cluster,
+                       const uint8_t *data, size_t length, bool repeatOnOperating) {
+  uint8_t nwk = ++rawNwkSequence, aps = ++rawApsCounter;
+  for (uint8_t copy = 0; copy < (repeatOnOperating ? 2 : 1); ++copy) {
+    uint8_t frame[64];
+    size_t n = qs1PairingFrame(frame, sizeof(frame), sourcePan, copy ? sourcePan : destPan,
+                              cluster, data, length, ++rawMacSequence, nwk, aps, copy ? 13 : 15);
+    if (!n) return false;
+    uint32_t at = millis();
+    rawTxFailure = 0;
+    bool ok = radioTransmit(frame, n, true, "QS1 pairing");
+    int error = ok ? 0 : (rawTxFailure ? rawTxFailure : -1);
+    qs1CaptureTx(frame, n, at, ok, error);
+    pairTraceTx(cluster, data, length, at, ok, error);
+    if (!ok) return false;
+    if (repeatOnOperating && !copy) delay(20);
+  }
+  return true;
 }
 
 bool sendZB(char command[]) {

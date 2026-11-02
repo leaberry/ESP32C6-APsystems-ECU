@@ -1,5 +1,54 @@
 # Build and hardware verification
 
+## Issue #39 QS1 framing test (2026-11-02)
+
+The [new field captures](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6571922111)
+contain three complete four-command sequences from the older controller. Their
+application payloads and APS headers match the native sequence after normalizing
+controller identity and counters. The primary packets use MAC `8801`, destination
+PAN `FFFF`, a separate operating source PAN, and NWK `0008` without a source IEEE
+field. The native legacy builder used MAC `8841` and NWK `1008`. Captured command
+intervals are about 2.15 seconds. One capture also contains operating-PAN copies
+with the same NWK/APS counters and radius 13, shortly after the primary packets.
+
+Diag3 uses a separate QS1 builder and pairing function for these headers and
+repeats, with 2.15-second spacing. It listens on the operating PAN throughout the
+handshake and requires fresh, identity-matched verification before saving.
+Existing DS3 and QT2 frame builders, pairing paths and polling are unchanged.
+ECU/radio identities are preserved. Previously learned routes remain available
+for fresh verification after an unsuccessful operating-network attempt.
+
+An automatic RAM capture records outgoing frames, all worker RX frames, stages,
+listening PAN, filter mode, signal strength, local TX errors and queue drops.
+It retains the first 64 and latest 192 events. After failed verification, two
+read-only queries run with address filtering off; those RX frames bypass normal
+matching, telemetry and peer learning, including queued packets processed after
+restoration. Downloads hold a reader lease; pairing refuses to overwrite a
+capture still being downloaded. Normal filtered reception must be restored
+before pairing can be saved. Failed radio setup requires restart.
+
+The captures include a controller Route Reply addressed to one target QS1, but
+no target-QS1 data replies. They do not prove which change is required, whether
+the operating-PAN copies originated in the controller's own stack, or whether
+additional routing exchanges are needed. This build does not implement new
+routing responses. Its capture can expose network requests received during the
+next attempt. Hardware pairing, automatic ACK behavior and subsequent polling
+remain unverified locally. Queue-drop counts cannot measure RF losses.
+
+All 21 captured primary/repeated pairing frames match the production QS1
+builder byte for byte when supplied the captured identities and counters.
+Fifteen Python host suites and four browser-script suites pass, covering QS1
+success/failure cleanup, strict reply verification, saved-network fallback,
+capture retention/downloads, DS3/QT2 paths, polling, reassembly and diagnostics.
+The QS1 tests run the production pairing flow, TX builder and receive matcher.
+They exercise failed transmissions, radio setup/restoration, storage failure,
+wrong identities/PANs, conflicting replies, and isolation of unfiltered probes.
+
+Both layouts build with ESP32 core 3.3.8 / ESP-IDF 5.5.4: 1,664,366 bytes of
+program storage and 110,560 bytes of static globals. Each application image is
+1,664,480 bytes. Flash-size headers, partition checksums/maps, application bounds
+and staged firmware source contents match both the 4 MB and 8 MB layouts.
+
 ## Issue #39 passive capture and path comparison (2026-11-01)
 
 The [diag1 field report](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6555062709)

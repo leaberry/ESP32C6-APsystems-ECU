@@ -1,5 +1,55 @@
 # Pairing and communication mode
 
+## QS1 test in diagnostic build 3
+
+`ESP32C6-ECU_v1_4_20-qs1-diag3` changes QS1 pairing to match the packet headers,
+command spacing and operating-network repeats seen in the older controller's
+capture. It keeps listening on the operating network during the handshake.
+DS3 and QT2 retain their existing pairing and polling paths. The fragment-buffer
+fix from diag1 remains included. Successful QS1 pairing still needs a field test.
+
+1. Install the application for your board's flash size using the
+   [same-layout USB upgrade procedure](README.md#usb-update-either-board-size-while-keeping-its-data),
+   including the partition comparison. Keep the ECU ID and inverter list.
+2. Confirm the version ends in `-qs1-diag3`. Turn off the older controller.
+   Test during daylight with the QS1 powered and the external antenna connected.
+   Keep the XIAO's External antenna setting and board preset.
+3. Choose **Pair inverter** for one QS1. Allow up to three minutes for the result.
+   Do not start passive capture for this test.
+4. Open **Diagnostic snapshot** and choose **Download QS1 pairing capture**,
+   **Download pairing log**, and **Download report**. Send all three files and
+   say which inverter you tested, whether pairing succeeded, and whether power
+   readings appeared afterward.
+5. Download before restarting or pairing again. If testing the second QS1,
+   save the first set of files before repeating these steps.
+
+The QS1 packet capture starts automatically and needs no flight-recorder setting.
+It stays in RAM and records full outgoing packets and packets delivered by the
+radio, including unmatched replies and network commands. It retains the first
+64 and latest 192 events, reports overwritten events and queue drops, and includes
+timing, stage, listening PAN, filter mode, signal strength and local TX errors.
+Finish any capture download before starting another QS1 pairing attempt.
+
+If normal verification fails, the build briefly listens with address filtering
+off and sends two read-only discovery queries. These packets are recorded but
+cannot verify pairing or update learned peers. Normal filtered reception must
+be restored before a successful pairing can be saved. Radio setup or restoration
+failure stops radio operation until restart. Hardware filtering during normal
+pairing, RF loss and Wi-Fi coexistence can still hide packets.
+
+The old project's Zigbee modem handled the radio headers and network messages
+inside its own firmware. This project builds those packets itself. Comparing
+complete packets helps find differences that application logs cannot show.
+
+For Wireshark, from the repository root run:
+
+```powershell
+py tools/passive_capture_to_pcap.py aps-qs1-pairing-capture.csv qs1-pairing.pcap
+```
+
+Send the original CSV too. It retains stage and TX-result details absent from
+the PCAP; a successful local transmission does not prove inverter reception.
+
 ## Passive capture in the Issue 39 diagnostic build
 
 `ESP32C6-ECU_v1_4_20-qs1-diag2` can listen while the older controller pairs a
