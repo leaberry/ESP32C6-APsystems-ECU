@@ -53,6 +53,8 @@ bool rawRadioSetPromiscuous(bool value){rawPromiscuous=value;return true;}
 uint16_t esp_ieee802154_get_panid(){return currentPan;}
 bool esp_ieee802154_get_promiscuous(){return rawPromiscuous;}
 int esp_ieee802154_get_channel(){return 16;}
+int esp_ieee802154_set_channel(uint8_t){return ESP_OK;}
+void qs1CaptureFilter(bool){}
 int esp_ieee802154_receive(){return ++receiveCalls==failReception?-1:0;}
 struct Inv {char invSerial[13]="806000000001";int invType=1;uint8_t transportMode=0;uint16_t transportTag=0;};
 Inv Inv_Prop[1];int inverterCount=1,saves=0,normalOps=0;
@@ -69,6 +71,12 @@ void qs1CaptureStage(const char* s,uint16_t){stage=s;}
 void qs1CaptureSetProbe(bool value){probe=value;}
 void qs1CaptureTx(const uint8_t*,size_t,uint32_t,bool,int){++traceTx;}
 void qs1CaptureEnd(bool saved,bool restored){capturedSaved=saved;capturedRestored=restored;}
+void qs1CaptureResult(int,uint16_t,const uint8_t*,size_t){}
+// BATCH_STUBS_BEGIN
+bool qs1BatchBefore(int,const uint8_t*,const uint8_t*,bool &already){already=false;return true;}
+bool qs1BatchAfter(int,const uint8_t*,const uint8_t*,bool&,char*,uint16_t&,uint16_t&){return true;}
+void pairTransportStop(){}
+// BATCH_STUBS_END
 void pairAuditStep(PairAuditStage,bool,uint8_t,uint16_t){}
 void pairAuditEvent(PairAuditStage,bool,uint8_t,uint16_t,uint16_t,uint16_t,uint16_t,int8_t,uint8_t,bool){}
 void pairTraceBegin(const uint8_t*,bool){}void pairTracePause(){}
@@ -85,6 +93,7 @@ bool saveVerifiedPairing(int,const char* id,uint16_t pan,uint16_t source){
 }
 bool radioTransmit(const uint8_t*b,size_t n,bool,const char*){
  frames.emplace_back(b,b+n);sentAt.push_back(now++);listenPans.push_back(currentPan);filters.push_back(rawPromiscuous);
+ ++traceTx;
  return int(frames.size())!=failTx;
 }
 void delay(unsigned);
@@ -126,10 +135,8 @@ int main(){
  for(size_t i=8;i<frames.size();++i)assert(frames[i][0]==0x41&&listenPans[i]==0xA3D8&&!filters[i]);
  for(int mode=0;mode<4;++mode){
   reset();if(mode==0)reply=false;if(mode==1)wrongUid=true;if(mode==2)wrongPan=true;if(mode==3)conflict=true;
-  probeReply=true;assert(!pairQs1(0));assert(!saves&&!normalOps&&frames.size()==13);
-  assert(filters[11]&&filters[12]&&!rawPromiscuous&&!probe&&capturedRestored&&!capturedSaved);
-  // Only read-only discovery queries are sent with MAC ACKs disabled.
-  assert(frames[11][21]==0x0C&&frames[11][22]==2&&frames[12][19]==0x0C&&frames[12][20]==2);
+  probeReply=true;assert(!pairQs1(0));assert(!saves&&!normalOps&&frames.size()==11);
+  assert(!rawPromiscuous&&!probe&&capturedRestored&&!capturedSaved);
  }
  for(int fail=1;fail<=11;++fail){reset();failTx=fail;assert(!pairQs1(0)&&!saves&&!normalOps);assert(!probe&&!rawPromiscuous);}
  reset();failReception=1;assert(!pairQs1(0)&&frames.empty()&&!saves);
@@ -141,7 +148,8 @@ int main(){
  reset();assert(!pairQs1(-1)&&!pairQs1(1));
  uint8_t b[80]={},payload[40]={};
  assert(!qs1PairingFrame(b,1,0xA3D8,0xFFFF,0x020C,payload,6,1,1,1,15));
- assert(!qs1PairingFrame(b,sizeof(b),0xFFFF,0xFFFF,0x020C,payload,6,1,1,1,15));
+ assert(qs1PairingFrame(b,sizeof(b),0xFFFF,0xFFFF,0x020C,payload,6,1,1,1,15));
+ assert(!qs1PairingFrame(b,sizeof(b),0xFFFF,0xFFFF,0x020D,payload,6,1,1,1,15));
  assert(!qs1PairingFrame(b,sizeof(b),0xA3D8,0xFFFF,0x0006,payload,6,1,1,1,15));
  assert(!qs1PairingFrame(b,sizeof(b),0xA3D8,0xFFFF,0x020C,payload,40,1,1,1,15));
  std::cout<<"PASS QS1 captured headers, operating-PAN copies, timing, identity/PAN validation, log-only probes, saved routes and failure cleanup\n";

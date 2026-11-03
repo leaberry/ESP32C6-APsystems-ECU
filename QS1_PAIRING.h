@@ -8,7 +8,8 @@ inline size_t qs1PairingFrame(uint8_t *out, size_t cap, uint16_t sourcePan,
                              uint16_t destPan, uint16_t cluster, const uint8_t *data,
                              size_t length, uint8_t mac, uint8_t nwk, uint8_t aps,
                              uint8_t radius) {
-  if (!out || !data || !length || length > 32 || !sourcePan || sourcePan == 0xFFFF ||
+  if (!out || !data || !length || length > 32 || !sourcePan ||
+      (sourcePan == 0xFFFF && (destPan != 0xFFFF || cluster != 0x020C)) ||
       (destPan != sourcePan && destPan != 0xFFFF) ||
       (cluster != 0x020D && cluster != 0x020C && cluster != 0x010F && cluster != 0x0101)) return 0;
   bool crossPan = destPan != sourcePan;

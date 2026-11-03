@@ -36,6 +36,7 @@ bool pairTransportAsdu(uint16_t,uint16_t,uint16_t,const uint8_t*,size_t,uint32_t
 bool pairReceiveActive(){return false;}
 bool radioPreference(const char*,uint32_t*,bool){return true;}
 void diagnosticsAppend(String){}
+void qs1CaptureTx(const uint8_t*,size_t,uint32_t,bool,int){}
 uint32_t millis(){return 100;}
 bool queueFull=false,txOk=true;
 const int pdTRUE=1;

@@ -15,6 +15,8 @@ preamble = next(n.value.value for n in tree.body if isinstance(n, ast.Assign)
                 and any(isinstance(t, ast.Name) and t.id == 'code' for t in n.targets))
 code = preamble.split('#include "PASSIVE_CAPTURE.ino"')[0]
 code += r'''
+String qs1DiagnosticIdentity(){return "ECU test\n";}
+String diagnosticsReportText(){return "radio and antenna snapshot\n";}
 #include "QS1_DIAGNOSTICS.ino"
 int main(){
  uint8_t raw[]={5,2,0,7,0,0};
@@ -26,12 +28,13 @@ int main(){
  assert(!qs1CaptureObserve(raw,sizeof(raw),101,16,-40,10));
  qs1CaptureTx(raw+1,3,100,true,0);
  qs1CaptureDownload(&request);assert(request.status==409);
- clockMs=110;qs1CaptureSetProbe(true);qs1CaptureStage("observe",0xA3D8);
+ clockMs=110;qs1CaptureSetProbe(true);qs1CaptureFilter(true);qs1CaptureStage("observe",0xA3D8);
  assert(qs1CaptureObserve(raw,sizeof(raw),111,16,-40,10));
  clockMs=120;qs1CaptureSetProbe(false);
  assert(qs1CaptureObserve(raw,sizeof(raw),115,16,-40,10));
  clockMs=121;assert(!qs1CaptureObserve(raw,sizeof(raw),121,16,-40,10));
  dropped=3;qs1CaptureEnd(false,true);
+ char header[800];assert(qs1CaptureLine(0,header,sizeof(header))<sizeof(header));
  qs1CaptureDownload(&request);assert(request.status==200&&qs1Readers==1);
  assert(!qs1CaptureBegin("806000000002",0x1234));
  String csv;uint8_t buffer[7];size_t n;
@@ -50,9 +53,20 @@ int main(){
  qs1CaptureEnd(false,true);
  Qs1Capture ring;
  for(uint32_t i=0;i<300;++i){Qs1Packet p={};p.at=i;p.direction='R';ring.add(p);}
- assert(ring.count()==256&&ring.rx==300&&ring.total-ring.count()==44);
- for(size_t i=0;i<64;++i)assert(ring.at(i).at==i);
- for(size_t i=64;i<256;++i)assert(ring.at(i).at==i+44);
+ assert(ring.count()==6&&ring.rx==300&&ring.total-ring.count()==294);
+ for(size_t i=0;i<3;++i)assert(ring.at(i).at==i);
+ for(size_t i=3;i<6;++i)assert(ring.at(i).at==i+294);
+ assert(ring.stage("middle",0x1234,301));
+ Qs1Packet middle={};middle.at=301;middle.direction='T';ring.add(middle);
+ assert(ring.count()==7&&ring.at(6).at==301&&ring.phase[0].rx==300);
+ Qs1Capture pinned;
+ for(uint32_t i=0;i<20;++i){Qs1Packet p={};p.at=i;p.direction='R';p.target=i==5;pinned.add(p);}
+ assert(pinned.count()==7&&pinned.at(6).at==5&&pinned.phase[0].extraTarget());
+ for(size_t i=1;i<Qs1Capture::stages;++i)assert(pinned.stage("bounded",1,i));
+ assert(!pinned.stage("overflow",1,100)&&pinned.omittedStages==1);
+ assert(csv.find("# before: radio and antenna snapshot")!=String::npos);
+ assert(csv.find("# after: ECU test")!=String::npos);
+ assert(csv.find("# stage=")!=String::npos);
  std::cout<<"PASS QS1 capture: raw RX/TX, first/latest retention, stale/wrap handling, probe isolation, leases and chunked/disconnected downloads\n";
 }
 '''

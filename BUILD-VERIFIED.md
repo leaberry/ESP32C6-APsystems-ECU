@@ -1,5 +1,62 @@
 # Build and hardware verification
 
+## Issue #39 combined diagnostic and Issue #25 comparison (2026-11-03)
+
+The [diag3 field report](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6605945272)
+contains two attempts for the same QS1. All 26 requested transmissions report
+local success. One attempt has no RX; the other contains a forwarded discovery
+request and a MAC-secured packet from another previously seen source. The
+forwarder's PAN/address match a different QS1 in the earlier passive capture.
+Neither packet verifies the target. Queue drops and overwritten events are zero.
+Filtering was disabled only during the final queries, leaving earlier foreign-PAN
+replies and network commands outside that observation window.
+
+The [Issue 25 probe5 capture](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/25#issuecomment-5865095407)
+shows plaintext firmware replies on `FFFF`, then valid plaintext power data on
+the operating network after the operating-PAN `020D` variation. Prepare/commit
+alone had not established operating-network contact in that run. Earlier steps
+may have contributed; this does not prove isolated `020D` sufficiency. Native AES
+requests had no application replies. The useful lessons for QS1 are checking
+network migration separately from contact, rejecting forwarded requests as
+pairing evidence, and comparing firmware/power reads and both header formats.
+The original ECU host firmware does not establish the modem's on-air translation.
+
+Diag4 combines these tests with before/after discovery, whole-handshake unfiltered
+observation and a receive-only channel scan. Version/power tests still send
+broadcast requests if discovery has not identified a target. Such broadcasts
+retain raw samples only; they cannot claim a validated target response. Directed
+reads use the existing pairing transport's UID/source/PAN ownership, reassembly
+and APS acknowledgements, suppressing peer learning and telemetry publication.
+Read-only old-controller payload IDs never replace stored ECU or radio identity.
+Fresh filtered pairing verification and successful restoration/storage remain
+required. Successful verification skips subsequent assignment variations.
+
+The single CSV bundle includes report snapshots, the completed pairing journal,
+actual radio identity, per-stage samples/results, assembled directed responses,
+queue/retention losses and channel counts. A first target-related sample is kept
+separately when background traffic displaces it. Serial matching for sample
+retention is diagnostic only and cannot change pairing acceptance. The capture
+allocation is reused, and download leases prevent replacement during export.
+
+The production batch is exercised with silent, already paired, foreign-network,
+wrong-UID, relay-echo and directed-PAN recovery cases, every radio setup failure
+in the silent run, and storage failure. Tests check the stage/time bounds,
+broadcast reads when discovery fails, restoration and suppression of false saves.
+Capture tests cover per-stage retention, target pinning, maximum stages, clock
+wrap, queued unfiltered frames, download/disconnect leases and chunked export.
+DS3 and QT2 functional paths remain unchanged; shared TX instrumentation only
+records packets while the QS1 capture is active. Hardware behavior remains
+unverified for this build, including automatic MAC ACKs and network migration.
+
+Sixteen Python host suites and four browser-script suites pass. Both original
+Issue 25 probe5 power responses also pass the current DS3 telemetry validator
+without changing their bytes. Both layouts build with ESP32 core 3.3.8 /
+ESP-IDF 5.5.4: 1,673,224 bytes of program storage and 110,600 bytes of static
+globals. Each application image is 1,673,328 bytes. Image flash-size headers,
+partition checksums/maps, application bounds and compiled source contents match
+the 4 MB and 8 MB packages. Capture storage is heap-allocated and bounded below
+78,000 bytes by a compile-time check; report strings use additional heap.
+
 ## Issue #39 QS1 framing test (2026-11-02)
 
 The [new field captures](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6571922111)

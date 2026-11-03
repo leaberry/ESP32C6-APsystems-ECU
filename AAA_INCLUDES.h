@@ -48,7 +48,7 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_20-qs1-diag3"
+#define VERSION  "ESP32C6-ECU_v1_4_20-qs1-diag4"
 #include "PASSIVE_CAPTURE.h"
 #include "QS1_PAIRING.h"
 #include "QS1_DIAGNOSTICS.h"

@@ -41,6 +41,7 @@ jobs:
           python3 tools/test_pairing_audit.py
           python3 tools/test_passive_capture.py
           python3 tools/test_qs1_pairing.py
+          python3 tools/test_qs1_batch.py
           python3 tools/test_qs1_capture.py
           node tools/test_passive_capture_ui.js
           node tools/test_pairing_status.js

@@ -1,5 +1,75 @@
 # Pairing and communication mode
 
+## Combined QS1 test in diagnostic build 4
+
+`ESP32C6-ECU_v1_4_20-qs1-diag4` runs the QS1 checks in one session and puts the
+results in one download. Install the matching application using the
+[same-layout upgrade procedure](README.md#usb-update-either-board-size-while-keeping-its-data),
+including the partition comparison. Keep the ECU ID, radio identity and inverter
+list. DS3 and QT2 keep their existing pairing and polling paths.
+
+1. Test during daylight with the QS1 powered. Turn off the older controller.
+   Confirm the version ends in `-qs1-diag4` and the external antenna is connected
+   and selected. Restart after changing antenna settings.
+2. Choose **Pair inverter** for one QS1, once. Allow up to six minutes. The page
+   stays on the pairing screen while the tests run. Do not start passive capture.
+3. Open **Diagnostic snapshot** and choose **Download QS1 test bundle**.
+4. Attach `aps-qs1-test-bundle.csv` to Issue 39, even if pairing fails. Say which
+   QS1 you tested, whether pairing succeeded, and whether power readings appeared
+   afterward. No separate report, pairing log, ZIP, flight-recorder setting or
+   Wireshark conversion is needed.
+5. Save the file before restarting or pairing again. If testing another QS1,
+   download the first result before starting its test.
+
+The suite first listens quietly and checks the current network, discovery PAN
+`FFFF`, the older controller's `A3D8`, the earlier ESP32 test's `10C4`, and any
+different saved peer network. Duplicate networks are skipped. These two fixed
+historical PANs are Issue 39 test presets, not automatic pairing destinations.
+Version and power reads compare the short network header from the old capture
+with the native extended header. They also compare the current controller ID
+with the old project's default ID in read requests only. No stored identity is
+changed. A freshly identified target receives directed reads; otherwise the
+suite sends broadcasts on the current and old-controller networks and records
+raw responses without claiming to identify or reassemble the target's reply.
+
+If the target is already found on the operating network, the initial assignment
+is skipped. Otherwise the normal diag3 handshake runs. Failed verification is
+followed by slower preparation, three commits and a settling period, then the
+operating-PAN `020D` variation investigated in Issue 25. Each variation is followed
+by fresh filtered verification. Further assignment variations stop on success.
+
+If needed, a complete handshake is repeated with address filtering off, followed
+by queries on the current, discovery and historical networks. This observation
+pass disables automatic MAC acknowledgements and cannot itself verify pairing.
+Filtered verification follows it. After the final application reads, a failed
+run briefly listens on channels 11 through 26 without transmitting there. A
+quiet channel scan does not prove the inverter is absent. Normal channel 16,
+PAN and filtering must be restored before a pairing can be saved.
+
+The RAM bundle contains before/after diagnostic reports, radio IEEE and ECU
+identities, antenna settings, the pairing journal, per-stage results and counts,
+raw RX/TX samples, and the last assembled response for each directed read.
+Transmissions include software APS acknowledgements; automatic hardware MAC
+acknowledgements are not captured. Up to 52 stages retain their first three and
+latest three events plus the first sample containing the target serial, with
+known request echoes excluded from that extra slot. This preserves evidence from
+the middle of the run under background traffic. Omitted events/stages, queue drops
+and per-channel RX counts are explicit. The allocation is reused for later runs;
+downloads block replacement until completion or disconnect.
+
+Raw samples and reports remain bounded. Hardware filtering during normal phases,
+RF loss and Wi-Fi coexistence can still hide traffic. Application reads do not
+publish telemetry or learn peers. A forwarded request, diagnostic read or packet
+seen only during unfiltered observation cannot save a pairing.
+
+The existing converter also accepts the bundle:
+
+```powershell
+py tools/passive_capture_to_pcap.py aps-qs1-test-bundle.csv qs1-test.pcap
+```
+
+Keep the CSV: the PCAP omits the reports, validation results and assembled replies.
+
 ## QS1 test in diagnostic build 3
 
 `ESP32C6-ECU_v1_4_20-qs1-diag3` changes QS1 pairing to match the packet headers,

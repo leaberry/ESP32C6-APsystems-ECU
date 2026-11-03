@@ -13,9 +13,14 @@ bool pairQs1(int which) {
   empty_serial2();
   ok = ok && radioTraceBegin() && rawQs1Reception(zbOperationalPan, false);
   pairAuditStep(PA_RADIO, ok, 1, zbOperationalPan);
+  bool already = false;
+  if (ok) ok = qs1BatchBefore(which, uid, ecu, already);
+  if (ok) ok = rawQs1Reception(zbOperationalPan, false) &&
+      pairReceiveBegin(Inv_Prop[which].invSerial, zbOperationalPan);
   const uint16_t clusters[] = {0x020D, 0x020C, 0x010F, 0x0101};
   const char *stages[] = {"qs1-bootstrap", "qs1-discovery", "qs1-assign", "qs1-commit"};
-  for (uint8_t step = 0; step < 4 && ok; ++step) {
+  if (already) { qs1CaptureStage("handshake-skipped-existing-target",zbOperationalPan); qs1CaptureResult(-3,0,nullptr,0); }
+  for (uint8_t step = 0; step < 4 && ok && !already; ++step) {
     uint8_t data[17] = {}; size_t length = step == 0 || step == 2 ? 17 : 6;
     memcpy(data, step == 3 ? ecu : uid, 6);
     if (length == 17) {
@@ -27,6 +32,7 @@ bool pairQs1(int which) {
     pairTraceStage(stages[step], zbOperationalPan, 0);
     uint32_t at = millis();
     ok = apsSendQs1Pairing(zbOperationalPan, 0xFFFF, clusters[step], data, length, true);
+    qs1CaptureResult(ok?0:-1,0,nullptr,0);
     pairAuditStep(PA_COMMAND, ok, step, zbOperationalPan);
     uint32_t elapsed = millis() - at;
     if (ok && elapsed < 2150) delay(2150 - elapsed);
@@ -36,6 +42,7 @@ bool pairQs1(int which) {
   if (ok) {
     qs1CaptureStage("qs1-settle", zbOperationalPan);
     delay(10000);
+    qs1CaptureResult(0,0,nullptr,0);
     pairReceiveVerify();
     qs1CaptureStage("qs1-verify", zbOperationalPan);
     pairTraceStage("qs1-verify", zbOperationalPan, 0);
@@ -45,6 +52,7 @@ bool pairQs1(int which) {
       if (ok) delay(3500);
     }
     verified = pairReceiveFinish(verifiedId, &pan, &source);
+    qs1CaptureResult(verified?0:-2,verified?source:0,nullptr,0);
   }
   uint16_t previousPan = 0, previousSource = 0;
   if (ok && !verified && apsRadioLoadPeer(Inv_Prop[which].invSerial, &previousPan, &previousSource) &&
@@ -59,27 +67,23 @@ bool pairQs1(int which) {
       if (ok) delay(3500);
     }
     verified = pairReceiveFinish(verifiedId, &pan, &source);
+    qs1CaptureResult(verified?0:-2,verified?source:0,nullptr,0);
   }
-  if (ok && !verified) {
-    // Observe unexpected PANs/headers after failure, without accepting a pairing.
-    qs1CaptureSetProbe(true);
-    pairReceiveStop();
-    bool observing = rawQs1Reception(zbOperationalPan, true);
-    const uint16_t destinations[] = {0xFFFF, zbOperationalPan};
-    for (uint8_t i = 0; i < 2 && observing; ++i) {
-      qs1CaptureStage(i ? "observe-operating" : "observe-broadcast", zbOperationalPan);
-      observing = apsSendQs1Pairing(zbOperationalPan, destinations[i], 0x020C, uid, 6, false);
-      if (observing) delay(3500);
-    }
-  }
+  if (ok) ok = qs1BatchAfter(which,uid,ecu,verified,verifiedId,pan,source);
+  pairTransportStop();
   radioTraceEnd();
+  qs1CaptureStage("restore",zbOperationalPan);
   bool restored = rawQs1Reception(zbOperationalPan, false);
   qs1CaptureSetProbe(false);
+  qs1CaptureResult(restored?0:-1,0,nullptr,0);
   pairAuditStep(PA_RESTORE, restored, 0, zbOperationalPan);
   bool saved = ok && verified && restored && saveVerifiedPairing(which, verifiedId, pan, source);
   if (ok && verified && restored) pairAuditStep(PA_STORAGE, saved, 0, pan);
   pairTraceResult(saved, apsStoredTransportMode(Inv_Prop[which].transportMode, Inv_Prop[which].transportTag), restored);
   pairReceiveStop(); empty_serial2();
+  // Finish the journal before the bundle snapshots it. The outer handler's
+  // completion call is ignored once the audit has closed.
+  pairAuditStep(PA_DONE,saved,0,pan);
   qs1CaptureEnd(saved, restored);
   consoleOut(saved ? "QS1 pairing verified and saved" : "QS1 pairing not verified; download QS1 pairing capture");
   if (saved) { sendNO(); checkCoordinator(); }

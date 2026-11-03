@@ -152,6 +152,7 @@ static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
   }
 
   if (passiveCaptureOwnsRadio()) { xSemaphoreGive(rawTxMutex); return false; }
+  uint32_t qs1SentAt = millis();
   static uint8_t txFrame[128];
   memset(txFrame, 0, sizeof(txFrame));
   txFrame[0] = (uint8_t)(bytes + 2);  // PHY length includes hardware FCS.
@@ -192,6 +193,7 @@ static bool radioTransmit(const uint8_t *frame, size_t bytes, bool cca,
              reason ? reason : "frame", attempts);
     diagnosticsAppend(String(line));
   }
+  qs1CaptureTx(frame, bytes, qs1SentAt, ok, ok ? 0 : (rawTxFailure ? rawTxFailure : -1));
   xSemaphoreGive(rawTxMutex);
   return ok;
 }
@@ -726,6 +728,7 @@ bool rawQs1Reception(uint16_t pan, bool unfiltered) {
       xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) return false;
   bool ok = esp_ieee802154_sleep() == ESP_OK;
   ok = ok && rawRadioSetPan(pan) && rawRadioSetPromiscuous(unfiltered);
+  ok = ok && esp_ieee802154_set_channel(APS_CHANNEL) == ESP_OK;
   ok = ok && esp_ieee802154_get_panid() == pan &&
        esp_ieee802154_get_promiscuous() == unfiltered &&
        esp_ieee802154_get_channel() == APS_CHANNEL;
@@ -735,6 +738,7 @@ bool rawQs1Reception(uint16_t pan, bool unfiltered) {
     diagnosticsAppend("QS1 radio setup/restore failed; restart required");
   }
   xSemaphoreGive(rawTxMutex);
+  if (ok) qs1CaptureFilter(unfiltered);
   return ok;
 }
 
@@ -750,12 +754,41 @@ bool apsSendQs1Pairing(uint16_t sourcePan, uint16_t destPan, uint16_t cluster,
     rawTxFailure = 0;
     bool ok = radioTransmit(frame, n, true, "QS1 pairing");
     int error = ok ? 0 : (rawTxFailure ? rawTxFailure : -1);
-    qs1CaptureTx(frame, n, at, ok, error);
     pairTraceTx(cluster, data, length, at, ok, error);
     if (!ok) return false;
     if (repeatOnOperating && !copy) delay(20);
   }
   return true;
+}
+
+// Diagnostic channel scan is receive-only and runs inside the QS1 transaction.
+bool rawQs1Channel(uint8_t channel) {
+  if (channel < 11 || channel > 26 || !rawRadioStarted || !rawPromiscuous ||
+      xSemaphoreTake(rawTxMutex, pdMS_TO_TICKS(500)) != pdTRUE) return false;
+  bool ok = esp_ieee802154_sleep() == ESP_OK &&
+      esp_ieee802154_set_channel(channel) == ESP_OK &&
+      esp_ieee802154_get_channel() == channel && esp_ieee802154_receive() == ESP_OK;
+  if (!ok) { esp_ieee802154_sleep(); rawRadioStarted = false; zigbeeUp = 0; }
+  xSemaphoreGive(rawTxMutex); return ok;
+}
+
+// Read-only DC/BB requests, with the short NWK header seen in the older capture.
+bool apsSendQs1Read(uint16_t pan, uint16_t destination, const uint8_t ecu[6], uint8_t command, bool extended) {
+  if (!pairReceiveActive() || (!pairValidAddress(destination) && destination != 0xFFFF) || !ecu ||
+      (command != 0xDC && command != 0xBB)) return false;
+  bool broadcast=destination==0xFFFF;
+  uint8_t frame[64] = {}; size_t p = 0;
+  putLe16(frame,p,broadcast?0x8841:0x8861); frame[p++]=++rawMacSequence;
+  putLe16(frame,p,pan); putLe16(frame,p,destination); putLe16(frame,p,0);
+  putLe16(frame,p,extended?0x1008:broadcast?0x0008:0x0048); putLe16(frame,p,destination); putLe16(frame,p,0);
+  frame[p++]=15; frame[p++]=++rawNwkSequence;
+  if (extended) { memcpy(frame+p,rawExtendedAddress,8); p+=8; }
+  frame[p++]=broadcast?0x08:0; frame[p++]=0x14; putLe16(frame,p,0x0006);
+  putLe16(frame,p,0x0F05); frame[p++]=0x14; frame[p++]=++rawApsCounter;
+  memcpy(frame+p,ecu,6); p+=6;
+  const uint8_t body[]={0xFB,0xFB,6,command,0,0,0,0,0,0,uint8_t(6+command),0xFE,0xFE};
+  memcpy(frame+p,body,sizeof(body)); p+=sizeof(body);
+  return radioTransmit(frame,p,true,"QS1 diagnostic read");
 }
 
 bool sendZB(char command[]) {
