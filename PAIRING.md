@@ -122,35 +122,38 @@ the PCAP; a successful local transmission does not prove inverter reception.
 
 ## Passive capture in the Issue 39 diagnostic build
 
-`ESP32C6-ECU_v1_4_20-qs1-diag2` can listen while the older controller pairs a
-QS1. This is an optional diagnostic mode, not a pairing fix. The existing
-pairing sequence and saved ECU/radio identities are unchanged.
+`ESP32C6-ECU_v1_4_20-qs1-passive5` listens from startup. It sends no Zigbee
+requests or acknowledgements, including after a restart. It preserves the saved
+ECU/radio identity and pairing records. Normal ECU operation requires installing
+the normal firmware again. Wi-Fi remains active for the capture page.
 
 1. Install the diagnostic application for your board's flash size using the
    [same-layout USB upgrade procedure](README.md#usb-update-either-board-size-while-keeping-its-data).
    Compare partition tables first. Keep the ECU ID and inverter list.
-2. Leave the old controller off initially. On the XIAO, confirm the external
-   antenna preset, save it and restart. Open **Diagnostic snapshot**.
-3. Choose **Start passive capture**. Wait until the status says `recording`.
-   If it stays queued, an existing controller transaction is still finishing.
-4. Turn on the old controller and pair one QS1 with that controller. Keep the
-   ESP32 close to it and the inverter. Do not select **Pair inverter** on the
-   listening ESP32. Note whether the old controller reports success.
-5. After that attempt, choose **Stop passive capture**. Wait for the stopped
-   status, then choose **Download passive capture**. Attach the downloaded
-   `aps-passive-capture.csv` and the old controller's serial log, if available.
-   Report which inverter was tested and whether the old controller paired it.
-6. Download before restarting or starting another capture. Turn the old
-   controller off, then press the ESP32's reset button or power-cycle it to
-   resume normal operation.
+2. During daylight, leave the working older controller running. Confirm that
+   it is getting fresh readings from the QS1s. There is no need to pair them again.
+3. Put the ESP32 near the inverters, where it can also hear the old controller.
+   Attach the antenna. On a XIAO using its external antenna, check the external
+   antenna preset, save it and restart if you changed it.
+4. Open **Diagnostic snapshot** on a computer and choose **Start 15-minute
+   capture**. Keep this page open in the foreground and keep the computer awake.
+   Leave the old controller polling normally throughout the recording.
+5. When the page says the capture stopped, choose **Download captured packets**.
+   Send `aps-passive-15min.csv`, the old controller's log for the same period if
+   available, and the serial numbers of the inverters that had fresh readings.
+   Include the approximate start time and any connection/drop warnings.
+6. Save the file before closing this page or starting another capture. **Stop
+   capture** ends a recording early. **Download captured packets** also works
+   during recording if you need to save a partial file.
 
 Recording needs no flight-recorder setting and writes no capture data to flash.
-It stores the first 256 packets or 120 seconds, whichever comes first. A full
-buffer is reported explicitly. If it fills before pairing starts, stop other
-traffic if practical and start another capture immediately before pairing.
-The ESP32 remains passive after recording stops: polling and controller work
-stay paused, and hardware and software acknowledgements remain disabled until
-restart. The web interface stays available for downloads.
+The browser receives packets throughout the 15 minutes and holds the file until
+download. The board's 256-packet queue is reused as packets are acknowledged by
+the browser; it is not a total capture limit. Interrupted web transfers retry
+the same packets. A long interruption can fill the queue; further packets are
+counted as dropped, and recording continues. Drop counts appear in the page and
+file. Closing or refreshing the page loses its unsaved recording. A board restart
+ends the capture; save the partial file from the open page before starting again.
 
 The capture includes complete driver-provided frames, receive times, channel,
 RSSI and LQI, without filtering by inverter identity, PAN or packet format.
@@ -162,7 +165,7 @@ cannot listen passively and run its own pairing attempt at the same time.
 For Wireshark, from the repository root run:
 
 ```powershell
-py tools/passive_capture_to_pcap.py aps-passive-capture.csv qs1-pairing.pcap
+py tools/passive_capture_to_pcap.py aps-passive-15min.csv qs1-traffic.pcap
 ```
 
 The PCAP timestamps are board uptime, not wall time. The converter removes the

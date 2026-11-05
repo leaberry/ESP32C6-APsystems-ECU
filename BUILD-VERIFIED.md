@@ -1,5 +1,42 @@
 # Build and hardware verification
 
+## Issue #39 receive-only recording (2026-11-04)
+
+The diag4 field bundles contain 49 successful local transmissions per QS1 and
+no identifiable target reply. Both whole-handshake unfiltered stages are silent.
+All stages finish without capture queue drops. A separate listener beside the
+working older controller is needed to observe normal replies and link behavior.
+
+`qs1-passive5` sets `APS_PASSIVE_ONLY=1`. Radio ownership blocks software sends
+from startup, and promiscuous reception is checked before the first receive
+call, disabling automatic acknowledgements. Startup skips ECU ID generation
+and health-check/poll requests. Normal controller work remains paused, including
+after capture completion and restart. Existing identity and pairing data remain
+available for returning to the normal application.
+
+The capture records every delivered raw frame on channel 16 for 900 seconds.
+A 256-frame queue transfers batches to the browser using a session and an
+acknowledged cursor. Failed HTTP responses can be retried. Unacknowledged frames
+are never overwritten; a full queue counts additional frames as dropped and
+continues. The browser exports the accumulated CSV with final counters and a
+complete/partial transfer marker. Capture bytes are never written to flash.
+
+Host tests exercise 10,000 frames through the production HTTP handler, repeated
+responses, invalid and expired cursors, session replacement, buffer overflow
+and recovery, exact timeout, clock wrap, setup failures and PCAP conversion.
+Browser tests cover disconnects, truncated transfers, complete/partial exports
+and unsaved-page warnings. These tests do not establish lossless radio reception
+or a working QS1 exchange. Wi-Fi coexistence, distance and collisions can lose
+packets without incrementing either software drop counter. No local hardware
+capture has been performed with this image.
+
+Both named layouts build with ESP32 core 3.3.8 / ESP-IDF 5.5.4: 1,675,220 bytes
+of program storage, 110,600 bytes of static globals and a 1,675,328-byte
+application image. Flash headers, partition maps/checksums, image bounds and
+staged source hashes pass verification. Both application-only ZIPs pass their
+content and checksum checks. Eight affected Python suites and two browser-script
+suites pass, including identity preservation, pairing and fragment reassembly.
+
 ## Issue #39 combined diagnostic and Issue #25 comparison (2026-11-03)
 
 The [diag3 field report](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6605945272)

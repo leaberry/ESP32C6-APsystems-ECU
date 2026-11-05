@@ -683,11 +683,24 @@ bool rawRadioStart() {
   esp_err_t enabled = esp_ieee802154_enable();
   if (enabled != ESP_OK) return false;
   esp_err_t coexist = esp_coex_wifi_i154_enable();
-  esp_ieee802154_set_channel(APS_CHANNEL);
-  esp_ieee802154_set_coordinator(true);
-  esp_ieee802154_set_rx_when_idle(true);
-  rawRadioSetPan(zbOperationalPan);
-  rawRadioSetPromiscuous(false);
+  if (APS_PASSIVE_ONLY) {
+    // Configure promiscuous reception before the first receive call. Failure
+    // leaves the radio asleep, with no chance to acknowledge a nearby ECU.
+    bool ok = esp_ieee802154_sleep() == ESP_OK;
+    ok = ok && esp_ieee802154_set_promiscuous(true) == ESP_OK;
+    ok = ok && esp_ieee802154_get_promiscuous();
+    ok = ok && esp_ieee802154_set_channel(APS_CHANNEL) == ESP_OK;
+    ok = ok && esp_ieee802154_set_coordinator(false) == ESP_OK;
+    ok = ok && esp_ieee802154_set_rx_when_idle(true) == ESP_OK;
+    if (!ok) { esp_ieee802154_sleep(); return false; }
+    rawPromiscuous = true;
+  } else {
+    esp_ieee802154_set_channel(APS_CHANNEL);
+    esp_ieee802154_set_coordinator(true);
+    esp_ieee802154_set_rx_when_idle(true);
+    rawRadioSetPan(zbOperationalPan);
+    rawRadioSetPromiscuous(false);
+  }
 
   if (!settingsRadioAddress(rawExtendedAddress) ||
       esp_ieee802154_set_extended_address(rawExtendedAddress) != ESP_OK) return false;

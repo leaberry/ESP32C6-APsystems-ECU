@@ -198,17 +198,74 @@ void handleAbout(AsyncWebServerRequest *request) {
 void handleDiagnosticsPage(AsyncWebServerRequest *request) {
   String page = ecuPageStart(F("Diagnostic snapshot"),
       F("A bounded support report with firmware, network, radio, inverter and recent trace information. Passwords are never included."));
-  page += F("<section class=\"card section\"><h2>QS1 pairing test</h2><p>With the older controller off, choose Pair inverter for one QS1 and allow up to six minutes. It runs the checks automatically. Afterward, download the test bundle before restarting or pairing again. This single file includes the packets, test results, radio settings and pairing log. The flight recorder switch is not required.</p><a class=\"button\" href=\"/diagnostics/qs1-capture\">Download QS1 test bundle</a></section>");
-  page += F(R"rawliteral(<section class="card section"><h2>Passive radio capture</h2><p>Listen on channel 16 while another controller pairs the inverter. This ECU stops polling and control work and sends no Zigbee packets or acknowledgements. Recording stops after 120 seconds or 256 packets. Download before restarting or starting another capture. Restart the board to resume normal operation. The flight recorder switch is not required.</p><div class="actions"><button id="passiveStart" type="button">Start passive capture</button><button id="passiveStop" type="button">Stop passive capture</button><a class="button secondary" href="/diagnostics/passive/download">Download passive capture</a></div><p id="passiveStatus" role="status">Loading status...</p></section><script>
+  if (!APS_PASSIVE_ONLY) page += F("<section class=\"card section\"><h2>QS1 pairing test</h2><p>With the older controller off, choose Pair inverter for one QS1 and allow up to six minutes. Afterward, download the test bundle before restarting.</p><a class=\"button\" href=\"/diagnostics/qs1-capture\">Download QS1 test bundle</a></section>");
+  if (APS_PASSIVE_ONLY) page += F("<div class=\"alert info\">This image only listens to Zigbee, including after a restart. Install the normal firmware to resume ECU operation. Saved identity and pairing records are kept.</div>");
+  page += F(R"rawliteral(<section class="card section"><h2>Passive radio capture</h2><p>Leave the working older controller running and confirm it is reading the inverters. Put this board near the inverters with its antenna attached. Capture all received traffic on channel 16 for 15 minutes. Keep this page open and the computer awake. Packets are transferred to this page as they arrive; download the file here when finished. No capture data is saved on the board's flash. The flight recorder switch is not required.</p><div class="actions"><button id="passiveStart" type="button">Start 15-minute capture</button><button id="passiveStop" type="button" disabled>Stop capture</button><button id="passiveSave" type="button" disabled>Download captured packets</button></div><p id="passiveStatus" role="status">Loading status...</p></section><script>
+let passiveBusy=false, passiveComplete=false, passiveChunks=[], passiveHeader='', passiveFinal='', passiveNext=0, passiveSession=0, passiveSaved=true;
+const passiveElement=id=>document.getElementById(id);
+const passiveWait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function passiveFetch(url,options={}){
+  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),8000);
+  try{const response=await fetch(url,{...options,signal:controller.signal,cache:'no-store'});const text=await response.text();return {ok:response.ok,status:response.status,text};}
+  finally{clearTimeout(timer);}
+}
 async function passiveStatus(){
-  try{const r=await fetch('/diagnostics/passive/status',{cache:'no-store'});document.getElementById('passiveStatus').textContent=r.ok?await r.text():'Could not read capture status.';}catch(e){document.getElementById('passiveStatus').textContent='Could not read capture status.';}
+  if(passiveBusy||passiveHeader)return;
+  try{const r=await passiveFetch('/diagnostics/passive/status');passiveElement('passiveStatus').textContent=r.ok?r.text:'Could not read capture status.';}catch(e){passiveElement('passiveStatus').textContent='Could not read capture status.';}
 }
 async function passiveControl(start){
-  const status=document.getElementById('passiveStatus');
-  try{const r=await fetch('/diagnostics/passive',{method:'POST',headers:{'X-ECU-Diagnostics':'1','Content-Type':'application/x-www-form-urlencoded'},body:start?'start=1':'stop=1'});status.textContent=await r.text();}catch(e){status.textContent='Capture request failed.';}
+  const status=passiveElement('passiveStatus');
+  if(start&&passiveBusy)return;
+  if(start&&!passiveSaved&&!confirm('Start a new capture and discard the file held by this page?'))return;
+  if(start){passiveElement('passiveStart').disabled=true;passiveElement('passiveStop').disabled=false;}
+  try{
+    const r=await passiveFetch('/diagnostics/passive',{method:'POST',headers:{'X-ECU-Diagnostics':'1','Content-Type':'application/x-www-form-urlencoded'},body:start?'start=1':'stop=1'});
+    if(!r.ok)throw Error(r.text);
+    if(!start){status.textContent='Stopping; finishing the transfer...';return;}
+    if(!/^\d+$/.test(r.text.trim()))throw Error('Invalid capture session.');
+    passiveSession=Number(r.text);passiveNext=0;passiveChunks=[];passiveHeader='';passiveFinal='';passiveSaved=false;passiveBusy=true;passiveComplete=false;
+    passiveElement('passiveSave').disabled=true;passiveElement('passiveStop').disabled=false;
+    await passiveReceive();
+  }catch(e){status.textContent='Capture request failed: '+e.message;}
+  finally{if(!passiveBusy)passiveElement('passiveStart').disabled=false;}
 }
-document.getElementById('passiveStart').onclick=()=>passiveControl(true);
-document.getElementById('passiveStop').onclick=()=>passiveControl(false);
+async function passiveReceive(){
+  while(passiveBusy){
+    try{
+      const r=await passiveFetch('/diagnostics/passive/download?session='+passiveSession+'&after='+passiveNext);
+      if(r.status===409||r.status===401){passiveBusy=false;throw Error('Capture ended or sign-in expired. Download the partial file.');}
+      if(!r.ok)throw Error(r.text);
+      const split=r.text.indexOf('\n'), header=r.text.slice(0,split), rows=r.text.slice(split+1);
+      const fields=Object.fromEntries([...header.matchAll(/(\w+)=([^ ]+)/g)].map(m=>[m[1],m[2]]));
+      const next=Number(fields.next), count=rows?rows.trimEnd().split('\n').length:0;
+      if(split<0||!header.startsWith('# aps-passive-v1 ')||Number(fields.session)!==passiveSession||!Number.isSafeInteger(next)||next!==passiveNext+count||(rows&&!rows.endsWith('\n')))throw Error('Incomplete transfer; retrying the same packets.');
+      if(!passiveHeader)passiveHeader=header+'\n# raw_hex includes PHY length and driver FCS slots; timestamps are board uptime milliseconds\nuptime_ms,channel,rssi_dbm,lqi,raw_hex\n';
+      if(rows)passiveChunks.push(rows);
+      passiveNext=next;passiveFinal=header;passiveSaved=false;
+      passiveElement('passiveSave').disabled=false;
+      const finished=fields.running==='0'&&fields.pending==='0'&&next===Number(fields.packets);
+      const loss=Number(fields.buffer_drops)+Number(fields.queue_drops);
+      passiveElement('passiveStatus').textContent=(finished?'Capture stopped. Download the file. ':'Recording: ')+Math.floor(Number(fields.elapsed_ms)/1000)+' seconds, '+next+' packets received by this page. '+(loss?'WARNING: '+loss+' packets dropped. ':'No reported queue or buffer drops. ')+(finished?header.slice(header.indexOf('reason=')):'Keep this page open.');
+      if(finished){passiveBusy=false;passiveComplete=true;break;}
+      await passiveWait(next<Number(fields.packets)?0:250);
+    }catch(e){
+      passiveElement('passiveStatus').textContent=e.message+' '+(passiveBusy?'Connection interrupted. Retrying; keep this page open.':'');
+      if(passiveBusy)await passiveWait(1000);
+    }
+  }
+  passiveElement('passiveStart').disabled=false;passiveElement('passiveStop').disabled=true;
+}
+function passiveSave(){
+  if(!passiveHeader)return;
+  const footer='\n# browser_download packets='+passiveNext+' complete='+(passiveComplete?1:0)+'\n';
+  const header=passiveFinal+passiveHeader.slice(passiveHeader.indexOf('\n'));
+  const url=URL.createObjectURL(new Blob([header,...passiveChunks,footer],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download='aps-passive-15min.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);passiveSaved=true;
+}
+passiveElement('passiveStart').onclick=()=>passiveControl(true);
+passiveElement('passiveStop').onclick=()=>passiveControl(false);
+passiveElement('passiveSave').onclick=passiveSave;
+window.addEventListener('beforeunload',event=>{if(passiveBusy||!passiveSaved){event.preventDefault();event.returnValue='';}});
 passiveStatus();setInterval(passiveStatus,2000);
 </script>)rawliteral");
   page += F("<div class=\"alert info\"><strong>Persistent flight recorder: "); page += flightRecorderIsEnabled() ? F("enabled") : F("disabled"); page += F("</strong><br>It is an opt-in, fixed-size 12-hour circular flash log for diagnosing lockups without a panic. Configure it under Polling and access. The companion poll log saves completed attempts in batches with this recorder. Existing records remain downloadable when recording is disabled. Enable recording before pairing to capture a detailed pairing trace; download it before restarting or pairing again.</div><div class=\"actions\"><a class=\"button\" href=\"/diagnostics/download\">Download report</a><a class=\"button secondary\" href=\"/diagnostics/qt2\">Download QT2 capture</a><a class=\"button secondary\" href=\"/diagnostics/flight-recorder\">Download flight recorder</a><a class=\"button secondary\" href=\"/diagnostics/poll-log\">Download poll log</a><a class=\"button secondary\" href=\"/diagnostics/pairing-log\">Download pairing log</a><a class=\"button secondary\" href=\"/diagnostics/pairing-trace\">Download pairing trace</a><a class=\"button secondary\" href=\"/diagnostics/coredump\">Download crash dump</a><button class=\"secondary\" onclick=\"location.reload()\">Refresh</button><a class=\"button secondary\" href=\"/console\">Open live console</a></div>");

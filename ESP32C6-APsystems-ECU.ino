@@ -34,7 +34,7 @@ void setup() {
     Serial.println(F("Configuration unavailable or restore incomplete; reset to retry. Radios remain off."));
     while (true) delay(1000);
   }
-  if (!settingsHasRestoredIdentity()) ecuIdentityBegin(); // Persist a default/unpaired ID before any radio or web startup.
+  if (!APS_PASSIVE_ONLY && !settingsHasRestoredIdentity()) ecuIdentityBegin(); // Keep installation identity in the listening image.
   pollDiagnosticsBegin();
   flightRecorderBegin();
   pairAuditBeginStorage();
@@ -102,11 +102,12 @@ void setup() {
   ledblink(3,500);
 
   Update_Log(1,"healthcheck");
-  healthCheck(); // check the state of the zigbee system and if oke then poll the inverters
+  if (APS_PASSIVE_ONLY) coordinator(false);
+  else healthCheck(); // Normal images check the coordinator before polling.
   if(zigbeeUp == 1) {
         Update_Log(2,"running");
           // we poll our inverters immediatly
-          if(Polling)
+          if(Polling && !APS_PASSIVE_ONLY)
           {
             pollSchedulerRequest(false);
           }
@@ -123,7 +124,7 @@ void setup() {
 //*****************************************************************************
 void loop() {
   if (passiveCaptureLoop()) {
-    // HTTP downloads remain available. Reboot releases the radio and resumes work.
+    // The web capture stays available while controller work is paused.
     delay(1);
     return;
   }

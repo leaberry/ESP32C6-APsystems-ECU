@@ -4,12 +4,13 @@
 #include <new>
 
 static portMUX_TYPE passiveMux = portMUX_INITIALIZER_UNLOCKED;
-static std::atomic<bool> passiveOwned{false};
+static std::atomic<bool> passiveOwned{APS_PASSIVE_ONLY != 0};
 static std::unique_ptr<PassiveCapture> passiveStore;
 static bool passivePending = false, passiveStarting = false, passiveStop = false;
 static uint16_t passiveReaders = 0;
 static const char *passiveState = "idle";
 static uint32_t passiveDropStart = 0, passiveDropEnd = 0;
+static uint32_t passiveSession = 0;
 
 bool rawRadioBeginPassive();
 uint32_t rawRadioDroppedFrames();
@@ -17,14 +18,23 @@ uint32_t rawRadioDroppedFrames();
 bool passiveCaptureOwnsRadio() { return passiveOwned.load(); }
 
 bool passiveCaptureRequest() {
-  // Allocate outside the critical section; a failed request keeps the old capture.
-  std::unique_ptr<PassiveCapture> fresh(new (std::nothrow) PassiveCapture);
-  if (!fresh) return false;
+  portENTER_CRITICAL(&passiveMux);
+  bool needsStore = !passiveStore;
+  portEXIT_CRITICAL(&passiveMux);
+  std::unique_ptr<PassiveCapture> fresh;
+  if (needsStore) {
+    fresh.reset(new (std::nothrow) PassiveCapture);
+    if (!fresh) return false;
+  }
   portENTER_CRITICAL(&passiveMux);
   bool ok = !passivePending && !passiveStarting && !passiveReaders && (!passiveStore || !passiveStore->running);
   if (ok) {
-    passiveStore.swap(fresh); passivePending = true; passiveStop = false;
-    passiveState = "queued; wait for recording before starting the old controller";
+    if (!passiveStore) passiveStore.swap(fresh);
+    passiveStore->begin(0); passiveStore->stop(0, "queued");
+    passivePending = true; passiveStop = false;
+    passiveSession = esp_random();
+    if (!passiveSession) passiveSession = 1;
+    passiveState = "queued; waiting for the radio";
   }
   portEXIT_CRITICAL(&passiveMux);
   return ok;
@@ -37,7 +47,7 @@ bool passiveCaptureLoop() {
   passiveStarting = start;
   portEXIT_CRITICAL(&passiveMux);
   if (start) {
-    // loop() owns radio transactions. Once claimed, only reboot resumes them.
+    // The dedicated passive image never releases ownership, even on reboot.
     passiveOwned.store(true);
     bool ok = rawRadioBeginPassive();
     portENTER_CRITICAL(&passiveMux);
@@ -76,39 +86,19 @@ bool passiveCaptureObserve(const uint8_t *data, size_t n, uint32_t at,
   return true; // Never pass sniffed traffic to pairing, telemetry or software ACKs.
 }
 
-// HTTP handlers only queue work or read a stopped capture.
+// Each browser request acknowledges only packets delivered by a prior request.
 String passiveCaptureStatus() {
-  char status[200];
+  char status[256];
   portENTER_CRITICAL(&passiveMux);
-  snprintf(status, sizeof(status), "%s; packets=%u/256; queue_drops=%lu; restart required to resume normal operation=%u",
+  snprintf(status, sizeof(status), "%s; channel=16; packets=%u; buffer_drops=%lu; queue_drops=%lu; receive-only=%u; passive_image=%u",
            passiveState, unsigned(passiveStore ? passiveStore->count : 0),
-           (unsigned long)(passiveDropEnd - passiveDropStart), passiveOwned.load());
+           (unsigned long)(passiveStore ? passiveStore->dropped : 0),
+           (unsigned long)(passiveDropEnd - passiveDropStart), passiveOwned.load(), APS_PASSIVE_ONLY);
   portEXIT_CRITICAL(&passiveMux);
   return String(status);
 }
 
-// A reader lease prevents a new capture from replacing its backing store.
-struct PassiveDownload {
-  bool leased = false;
-  size_t index = 0, used = 0, offset = 0;
-  char line[512];
-  ~PassiveDownload() {
-    if (leased) {
-      portENTER_CRITICAL(&passiveMux); --passiveReaders; portEXIT_CRITICAL(&passiveMux);
-    }
-  }
-};
-
-static size_t passiveCaptureLine(size_t index, char *line, size_t cap) {
-  const auto &s = *passiveStore;
-  if (index == 0) return snprintf(line, cap,
-      "# aps-passive-v1 firmware=%s channel=16 started_ms=%lu ended_ms=%lu packets=%u reason=%s queue_drops=%lu\n"
-      "# raw_hex includes PHY length byte and driver-provided FCS bytes; timestamps are receive-callback uptime milliseconds\n"
-      "uptime_ms,channel,rssi_dbm,lqi,raw_hex\n", VERSION,
-      (unsigned long)s.started, (unsigned long)s.ended, unsigned(s.count), s.reason,
-      (unsigned long)(passiveDropEnd - passiveDropStart));
-  if (index > s.count) return 0;
-  const auto &p = s.packets[index - 1];
+static size_t passiveCaptureLine(const PassivePacket &p, char *line, size_t cap) {
   size_t n = snprintf(line, cap, "%lu,%u,%d,%u,", (unsigned long)p.at, p.channel, p.rssi, p.lqi);
   for (size_t i = 0; i < p.length && n + 3 < cap; ++i)
     n += snprintf(line + n, cap - n, "%02X", p.bytes[i]);
@@ -117,30 +107,55 @@ static size_t passiveCaptureLine(size_t index, char *line, size_t cap) {
 }
 
 void passiveCaptureDownload(AsyncWebServerRequest *request) {
-  auto cursor = std::shared_ptr<PassiveDownload>(new (std::nothrow) PassiveDownload);
-  if (!cursor) { request->send(503, "text/plain", "Not enough memory."); return; }
+  if (!request->hasParam("session") || !request->hasParam("after")) {
+    request->send(400, "text/plain", "Use Start 15-minute capture on Diagnostic snapshot."); return;
+  }
+  String sessionText = request->getParam("session")->value();
+  String afterText = request->getParam("after")->value();
+  char *sessionEnd = nullptr, *afterEnd = nullptr;
+  unsigned long session = strtoul(sessionText.c_str(), &sessionEnd, 10);
+  unsigned long after = strtoul(afterText.c_str(), &afterEnd, 10);
+  if (!sessionText.length() || !afterText.length() || *sessionEnd || *afterEnd ||
+      session > UINT32_MAX || after > UINT32_MAX) {
+    request->send(400, "text/plain", "Invalid capture cursor."); return;
+  }
   portENTER_CRITICAL(&passiveMux);
-  bool ready = passiveStore && !passivePending && !passiveStarting && !passiveStore->running;
-  if (ready) { ++passiveReaders; cursor->leased = true; }
+  bool ready = passiveStore && session == passiveSession && !passiveReaders &&
+               passiveStore->acknowledge(uint32_t(after));
+  if (ready) ++passiveReaders;
   portEXIT_CRITICAL(&passiveMux);
-  if (!ready) { request->send(409, "text/plain", "Stop the capture before downloading."); return; }
-  auto response = request->beginChunkedResponse("text/csv; charset=utf-8",
-    [cursor](uint8_t *buffer, size_t room, size_t) -> size_t {
-      size_t written = 0;
-      while (written < room) {
-        if (cursor->offset == cursor->used) {
-          cursor->used = passiveCaptureLine(cursor->index++, cursor->line, sizeof(cursor->line));
-          cursor->offset = 0;
-          if (!cursor->used) break;
-        }
-        size_t take = min(room - written, cursor->used - cursor->offset);
-        memcpy(buffer + written, cursor->line + cursor->offset, take);
-        written += take; cursor->offset += take;
-      }
-      return written;
-    });
-  if (!response) { request->send(503, "text/plain", "Not enough memory."); return; }
-  response->addHeader("Content-Disposition", "attachment; filename=aps-passive-capture.csv");
+  if (!ready) { request->send(409, "text/plain", "Capture changed or cursor expired. Save the partial file and start again."); return; }
+  // Copy each frame under the lock, then format outside it. Lost HTTP responses
+  // can be retried without discarding or duplicating frames in the browser.
+  String body;
+  bool allocated = body.reserve(5500);
+  char line[320];
+  uint32_t next = after;
+  if (allocated) {
+    for (unsigned i = 0; i < 16; ++i) {
+      PassivePacket packet;
+      portENTER_CRITICAL(&passiveMux);
+      bool found = passiveStore->read(next, packet);
+      portEXIT_CRITICAL(&passiveMux);
+      if (!found) break;
+      size_t bytes = passiveCaptureLine(packet, line, sizeof(line));
+      body.concat(line, bytes); ++next;
+    }
+  }
+  char header[640];
+  portENTER_CRITICAL(&passiveMux);
+  const auto &s = *passiveStore;
+  snprintf(header, sizeof(header),
+      "# aps-passive-v1 firmware=%s session=%lu channel=16 started_ms=%lu ended_ms=%lu elapsed_ms=%lu packets=%lu next=%lu running=%u pending=%u buffer_drops=%lu queue_drops=%lu reason=%s\n",
+      VERSION, (unsigned long)passiveSession, (unsigned long)s.started,
+      (unsigned long)s.ended, (unsigned long)(s.running ? millis()-s.started : s.ended-s.started),
+      (unsigned long)s.count, (unsigned long)next, s.running, passivePending || passiveStarting,
+      (unsigned long)s.dropped, (unsigned long)(passiveDropEnd-passiveDropStart), passiveState);
+  --passiveReaders;
+  portEXIT_CRITICAL(&passiveMux);
+  if (!allocated) { request->send(503, "text/plain", "Not enough memory; retry this batch."); return; }
+  auto response = request->beginResponse(200, "text/plain; charset=utf-8", String(header) + body);
+  if (!response) { request->send(503, "text/plain", "Not enough memory; retry this batch."); return; }
   response->addHeader("Cache-Control", "no-store"); request->send(response);
 }
 
@@ -151,7 +166,8 @@ void passiveCaptureControl(AsyncWebServerRequest *request) {
   bool start = request->hasParam("start", true);
   if (start) {
     bool ok = passiveCaptureRequest();
-    request->send(ok ? 202 : 409, "text/plain", ok ? "Capture queued. Wait for recording status." : "Capture busy or insufficient memory. Stop recording and finish downloads first.");
+    if (ok) request->send(202, "text/plain", String(passiveSession));
+    else request->send(409, "text/plain", "Capture busy or insufficient memory. Stop the current capture first.");
   } else {
     portENTER_CRITICAL(&passiveMux); passiveStop = true; portEXIT_CRITICAL(&passiveMux);
     request->send(202, "text/plain", "Stop requested. Refresh status before downloading.");

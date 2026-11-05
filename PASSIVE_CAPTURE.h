@@ -2,6 +2,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#ifndef APS_PASSIVE_ONLY
+#define APS_PASSIVE_ONLY 0
+#endif
 
 struct PassivePacket {
   uint32_t at;
@@ -12,15 +15,16 @@ struct PassivePacket {
 
 struct PassiveCapture {
   static constexpr size_t capacity = 256;
-  static constexpr uint32_t duration = 120000;
+  static constexpr uint32_t duration = 900000;
   PassivePacket packets[capacity];
   uint32_t started = 0, ended = 0;
-  size_t count = 0;
+  uint32_t count = 0, acknowledged = 0, delivered = 0, dropped = 0;
   bool running = false;
   const char *reason = "not started";
 
   void begin(uint32_t now) {
-    started = now; ended = 0; count = 0; running = true; reason = "recording";
+    started = now; ended = 0; count = acknowledged = delivered = dropped = 0;
+    running = true; reason = "recording";
   }
   void stop(uint32_t now, const char *why) {
     if (running) { running = false; ended = now; reason = why; }
@@ -33,10 +37,21 @@ struct PassiveCapture {
     if (!running || int32_t(at - started) < 0) return;
     tick(at);
     if (!running || !data || n < 1 || n > 128) return;
-    auto &p = packets[count++];
+    if (count - acknowledged == capacity) { ++dropped; return; }
+    auto &p = packets[count++ % capacity];
     p.at = at; p.channel = channel; p.rssi = rssi; p.lqi = lqi; p.length = n;
     memcpy(p.bytes, data, n);
-    if (count == capacity) stop(at, "buffer full");
+  }
+  bool acknowledge(uint32_t next) {
+    if (next < acknowledged || next > delivered) return false;
+    acknowledged = next;
+    return true;
+  }
+  bool read(uint32_t index, PassivePacket &packet) {
+    if (index < acknowledged || index >= count) return false;
+    packet = packets[index % capacity];
+    if (index + 1 > delivered) delivered = index + 1;
+    return true;
   }
 };
 
