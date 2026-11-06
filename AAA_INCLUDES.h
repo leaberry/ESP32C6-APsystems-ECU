@@ -48,9 +48,11 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_20-qs1-passive5"
+#define VERSION  "ESP32C6-ECU_v1_4_20-qs1-usb6"
 // This diagnostic image stays receive-only, including after a restart.
 #define APS_PASSIVE_ONLY 1
+#define APS_USB_PASSIVE 1
+#include "USB_PASSIVE.h"
 #include "PASSIVE_CAPTURE.h"
 #include "QS1_PAIRING.h"
 #include "QS1_DIAGNOSTICS.h"

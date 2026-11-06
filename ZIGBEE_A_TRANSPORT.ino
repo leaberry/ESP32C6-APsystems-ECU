@@ -592,6 +592,11 @@ uint16_t rawRadioStackHighWaterWords() {
 
 extern "C" void IRAM_ATTR esp_ieee802154_receive_done(
     uint8_t *frame, esp_ieee802154_frame_info_t *info) {
+#if APS_USB_PASSIVE
+  if (frame && info) usbPassiveReceive(frame, info->channel, info->rssi, info->lqi);
+  if (frame) esp_ieee802154_receive_handle_done(frame);
+  return;
+#endif
   BaseType_t wake = pdFALSE;
   if (rawRxQueue && frame && info) {
     RawRxFrame copy = {};
@@ -615,6 +620,9 @@ extern "C" void IRAM_ATTR esp_ieee802154_receive_done(
 extern "C" void IRAM_ATTR esp_ieee802154_transmit_done(
     const uint8_t *frame, const uint8_t *ack,
     esp_ieee802154_frame_info_t *ackInfo) {
+#if APS_USB_PASSIVE
+  usbPassiveTransmitted();
+#endif
   (void)frame;
   (void)ackInfo;
   if (ack) esp_ieee802154_receive_handle_done(ack);
@@ -626,6 +634,9 @@ extern "C" void IRAM_ATTR esp_ieee802154_transmit_done(
 
 extern "C" void IRAM_ATTR esp_ieee802154_transmit_failed(
     const uint8_t *frame, esp_ieee802154_tx_error_t error) {
+#if APS_USB_PASSIVE
+  usbPassiveTransmitted();
+#endif
   (void)frame;
   rawTxSucceeded = false;
   rawTxFailure = (int)error;

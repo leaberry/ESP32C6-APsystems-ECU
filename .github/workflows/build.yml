@@ -40,6 +40,7 @@ jobs:
           python3 tools/test_pairing_fallback.py
           python3 tools/test_pairing_audit.py
           python3 tools/test_passive_capture.py
+          python3 tools/test_usb_passive.py
           python3 tools/test_qs1_pairing.py
           python3 tools/test_qs1_batch.py
           python3 tools/test_qs1_capture.py

@@ -1,5 +1,40 @@
 # Build and hardware verification
 
+## Issue #39 USB listener (2026-11-06)
+
+The older controller's console video contains successful 94-byte plaintext
+replies from both configured QS1s. Recovered UART packets match their visible
+checksums, and both application payloads pass the current QS1 validator.
+The reporter also says browser capture interrupts the older controller's
+readings. The cause has not been established.
+
+`qs1-usb6` adds an early USB-only setup/loop path. It skips filesystem loading,
+identity changes and every normal ECU service. Wi-Fi is stopped/deinitialized,
+Bluetooth must remain uninitialized, and capture startup checks promiscuous
+mode, channel 16 and the hardware ACK bits. The ISR copies raw frames into a
+bounded queue; USB writes run outside the ISR and preserve partial writes.
+The application reads saved antenna configuration without changing it. An
+explicit USB command can select the XIAO external antenna for this boot only.
+
+Host tests run the production listener loop with fake drivers. They cover short
+USB writes, queue overflow, malformed/wrong-channel frames, disconnection,
+stalls, timeout, unexpected TX callbacks, ACK-state failure, active Wi-Fi or
+Bluetooth, invalid antenna settings and radio sleep failure. The host reader
+checks firmware/radio state, packet lengths, sequence gaps and final counts;
+tests cover incomplete recordings and conversion to PCAP. No attached board
+has been flashed, and physical reception and interference remain unverified.
+
+Both named layouts compile with ESP32 core 3.3.8 / ESP-IDF 5.5.4. Each uses
+1,104,568 bytes of program storage and 52,220 bytes of static globals; each
+application binary is 1,104,672 bytes. The generated flash headers, partition
+maps/checksums and application bounds match their named layouts. Staged firmware
+sources match the working tree. Eight affected host suites pass, covering the
+new USB listener and existing passive capture, radio diagnostics, reassembly,
+telemetry collection, QS1 batch/capture and QT2 behavior.
+
+See [USB capture instructions](USB-CAPTURE.md). Normal DS3/QT2 protocol code
+is unchanged; this diagnostic image runs only the listener.
+
 ## Issue #39 receive-only recording (2026-11-04)
 
 The diag4 field bundles contain 49 successful local transmissions per QS1 and

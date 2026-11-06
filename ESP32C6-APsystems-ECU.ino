@@ -4,6 +4,10 @@
 // *****************************************************************************
 void setup() {
   Serial.begin(115200);
+#if APS_USB_PASSIVE
+  usbPassiveSetup();
+  return;
+#endif
   ecuTimeBegin();
   Serial.println(F("ESP32-C6 native APsystems radio (no ZBOSS/CC253x)"));
   Serial.println(apsCryptoSelfTest() ? F("APsystems AES self-test: PASS")
@@ -123,6 +127,10 @@ void setup() {
 //*                         LOOP
 //*****************************************************************************
 void loop() {
+#if APS_USB_PASSIVE
+  usbPassiveLoop();
+  return;
+#endif
   if (passiveCaptureLoop()) {
     // The web capture stays available while controller work is paused.
     delay(1);

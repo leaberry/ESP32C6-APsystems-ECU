@@ -1,5 +1,11 @@
 # Pairing and communication mode
 
+## USB-only QS1 recording, build 6
+
+Use the [USB capture instructions](USB-CAPTURE.md) for `qs1-usb6`. This diagnostic
+image keeps Wi-Fi and Bluetooth off and sends raw channel-16 packets to the
+computer through USB. It has no web page and remains a listener after reboot.
+
 ## Combined QS1 test in diagnostic build 4
 
 `ESP32C6-ECU_v1_4_20-qs1-diag4` runs the QS1 checks in one session and puts the
