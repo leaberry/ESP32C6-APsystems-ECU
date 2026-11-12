@@ -286,6 +286,7 @@ void energyHistoryLoop() {
 }
 
 void energyRecordTelemetry(uint8_t which) {
+  graphRecord(which);
   if (which >= YC600_MAX_NUMBER_OF_INVERTERS || !timeRetrieved ||
       energyLocalDateKey() != energyDateKey) return;
 

@@ -171,6 +171,60 @@ settings or change ECU_ID as a routine pairing fix.
 
 ## Back up settings and production data
 
+### Optional detailed power graphs
+
+Open **Menu > Energy history > Enable detailed history** while signed in as
+administrator. This feature is **off by default**. It starts collecting with
+successful inverter polls; it cannot reconstruct earlier readings.
+
+The **Power over time** graph offers the last 24 hours, 3 days, 10 days or
+30 days, for all inverters or one inverter. Point or touch the graph to inspect
+a reading. Times use your browser's time zone. Gaps mean no reading was recorded,
+including overnight when polling is stopped; they do not mean zero power.
+Combined power is shown only when all configured inverters have a reading in
+that interval. The graph shows watts; the original hourly chart below shows
+energy in Wh/kWh.
+
+| Age | Stored detail |
+|---|---|
+| Current UTC day and previous 3 UTC days | At least 1 minute, never faster than configured polling |
+| Older, through 10 days | At least 5 minutes; averages of available recorded samples |
+| Older, through 30 days | At least 1 hour; sample-weighted averages |
+| Beyond 30 days | Detailed power expires; existing daily energy totals remain separate |
+
+Samples come from successful polls and are spaced at least one minute apart.
+For example, a 45-second polling interval normally records about every 90
+seconds, while five-minute polling records about every five minutes. Enabling
+history does not increase polling frequency.
+
+Intervals round up to whole minutes. A slower polling setting is never expanded
+into invented readings. Changing the interval takes effect for the next day's
+bucket size; increasing it immediately slows recording. The previous three
+complete UTC days plus the current day cover a rolling 72-hour graph.
+
+**Durability:** polls only update RAM. At 00:00 UTC, one daily batch saves the
+completed day, reduces older detail, and expires old power files. A restart or
+power failure loses the current unsaved day. **Save today to flash now**, OTA's
+save option, and the existing settings/history backups do **not** save these
+new power graphs. They still have their existing daily-energy behavior.
+
+The archive is capped at **192 KiB including its temporary replacement file**.
+It also leaves a quarter of the filesystem plus 16 KiB unused before starting a
+write. A low-space or write failure produces a visible warning; the code does
+not delete settings or diagnostics to make room, and does not keep retrying
+writes during that day. With the maximum nine inverter slots, the worst normal
+archive is about 142.5 KiB (about 168 KiB during replacement), plus up to 38 KiB
+of RAM for the current day. At five-minute polling the archive is about 89 KiB
+and current-day RAM about 7.6 KiB. These sizes exclude filesystem overhead.
+
+Choose **Turn off & clear detailed history**, then **Turn off and clear** to
+stop collection and reclaim its saved files and RAM. **Cancel** or Escape
+closes the confirmation without changing history. Daily energy totals, hourly accounting,
+Modbus, and both MQTT integrations remain unchanged. The enable setting and
+optional graphs are local to this board and are not included in existing
+backups. After changing the inverter list/order, incompatible old power graphs
+are hidden and expire during the next daily batch.
+
 There are **two different ECU backups**. Save both before an upgrade, and save
 settings again after adding or pairing an inverter. Keep dated copies.
 

@@ -341,6 +341,23 @@ server.on("/network/save", HTTP_POST, [](AsyncWebServerRequest *request) {
   handleNetworkSave(request);
 });
 
+server.on("/api/graph/day", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  graphSendDay(request);
+});
+server.on("/api/graph", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  graphSendStatus(request);
+});
+server.on("/api/graph/settings", HTTP_POST, [](AsyncWebServerRequest *request) {
+  if (!request->authenticate("admin", pswd)) return request->requestAuthentication();
+  graphRequestSettings(request);
+});
+server.on("/graph.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "both")) return;
+  request->send_P(200, "application/javascript", GRAPH_SCRIPT);
+});
+
 // Register the GET child before /energy so it cannot be shadowed by the page.
 server.on("/energy/backup", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "admin")) return;
