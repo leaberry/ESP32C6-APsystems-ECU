@@ -1,5 +1,119 @@
 # Build and hardware verification
 
+## Optional power history validation (2026-11-12)
+
+This work is based on v1.4.20 (`15b48ae`) and addresses the detailed production
+graph requested in [Issue #40](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/40).
+Host C++ checks used g++ 11.4.0; firmware builds used ESP32 core 3.3.8.
+
+All 28 Python host suites and ten JavaScript suites pass, including clock,
+Home Assistant recovery, polling, pairing, settings and power-control checks.
+The day endpoint precedes the status endpoint to prevent parent-route
+shadowing; the route audit passes.
+
+The production history adapter passes its filesystem fault-injection suite
+with g++ and with AddressSanitizer and UndefinedBehaviorSanitizer. Coverage
+includes sampling cadence, retention tiers, weighted averages, missing data,
+CRC rejection, full storage, failed writes/renames, recovery, inverter identity
+changes, a 40-day retention run, disabling and low-memory refusal. These tests
+use a fake filesystem and do not establish physical flash durability.
+
+JavaScript checks pass for SVG rendering, gaps versus zero readings, range
+clipping, singleton points and the administrator-only settings route. The
+control suite runs the production script with a fake DOM and HTTP responses.
+It covers tap inspection, Cancel/Escape without a POST, explicit clearing,
+queued changes, duplicate-action refusal, 401/500 save errors, status failures,
+missing days, empty history, storage warnings, network failures, ten-second
+timeouts and recovery through Refresh.
+
+The full Energy history page was loaded in a browser against a loopback-only
+HTTP fixture using simulated readings. Desktop rendering and 320/390-pixel
+layouts fit; range/source selection and refresh work. Browser checks also
+verify initial 503 feedback, recovery, missing-day warnings, empty history,
+and a storage-failure message. Horizontal graph scrolling reached 337 pixels,
+and inspecting a point after scrolling updated its timestamp and reading.
+The graph now allows both touch-scroll directions and handles pointer-down
+events for taps. Physical touchscreen gestures remain untested.
+
+Clearing uses an on-page panel with Cancel and Turn off and clear buttons.
+Interactive browser checks pass for Cancel and Escape without a settings
+request, initial focus on Cancel, focus restoration, queued clearing,
+completion and re-enabling. The panel fits at 320 pixels. The fixture recorded
+exactly one successful disable request and one enable request; daily energy
+totals stayed visible throughout.
+
+Browser checks also pass for 401/500 settings failures, ten-second timeouts
+on both settings and status requests, connection loss and recovery through
+Refresh. Failed saves leave the graph visible and block further changes until
+status is refreshed. Refresh remains visible when history is off or unavailable.
+Mobile screenshots were saved locally. These checks use simulated HTTP data;
+they do not establish device-side authentication, flash writes or recovery.
+
+Both final firmware builds pass with pinned ESP32 core 3.3.8: 1,673,322 bytes
+of program storage and 110,232 bytes of static globals each, leaving 217,448
+bytes before runtime allocations. The 4 MB build was staged separately; the
+repository's default 8 MB partition map is unchanged. Both application images
+are 1,673,424 bytes. Their flash-size headers and generated partition tables
+match the named layouts, and each image fits every application slot in its
+layout. The staged firmware source matches the final working tree.
+
+The builds and browser checks above preceded the authorized production OTA
+test below. Physical flash wear, interrupted writes, filesystem GC latency
+and low-heap behavior remain hardware tests.
+MQTT, Home Assistant accounting, Modbus, decode/publish code and partition maps
+have no source changes; the graph hook only observes accepted telemetry.
+
+## Optional power history production deployment (2026-11-12)
+
+The user authorized an application-only OTA upgrade of the production 8 MB
+ESP32-C6. The installed candidate reports `ESP32C6-ECU_v1_4_20`, build
+`Nov 12 2026 14:59:38`; application SHA-256 is
+`4ae2d77c713f635ee4fbe2857c1d994092b5ec0d55bca4fd33a63173bb50d343`.
+Its partition table matches the prior official v1.4.20 image byte-for-byte.
+Settings, energy history and hourly snapshots were backed up privately, and
+the matching prior release application was retained for rollback.
+
+All exported settings, identity, slot order, learned peers and power limits
+were preserved. The 12,632 Wh current-day checkpoint restored exactly across
+the controlled restart. Finalized history and the existing crash dump remain
+byte-for-byte unchanged. Hourly RAM statistics restarted as designed. Clock,
+hostname and web endpoints passed their checks.
+
+Three plaintext DS3 inverters passed a 394.4-second observation with ten
+distinct successful readings each. Polling remains at 45 seconds; maximum
+response gaps were 46 / 46 / 45 seconds. No unexpected restart occurred, and
+minimum free heap was 145,048 bytes. SunSpec units 1 through 4 passed 244 reads
+on one persistent TCP connection, alternating FC03 and FC04. Power and energy
+matched bracketing HTTP telemetry; energy counters never decreased. Address
+bases 0, 40000 and 40001 also passed before and after the update.
+
+Graph recording was left off for this initial test, matching the default.
+The recording-on test follows below. Overnight graph persistence, downstream
+dashboard behavior and power-loss recovery remain untested.
+
+### Production recording enabled (2026-11-12)
+
+The user subsequently authorized graph recording on the same ECU. The
+authenticated settings request completed without a restart. Today's graph
+allocated 38,880 bytes of RAM, used 60-second buckets and collected four
+complete points for each of the three DS3s and the aggregate. Populated
+aggregate points matched the inverter sums. The 45-second polling interval
+normally produces graph samples about 90 seconds apart because recording
+requires at least 60 seconds between samples.
+
+With recording enabled, a 307-second observation passed 120 Modbus reads
+over one persistent TCP connection, alternating FC03 and FC04. Each inverter
+supplied eight distinct successful readings; maximum response gaps were
+47 / 49 / 51 seconds. Modbus power and energy matched bracketing HTTP
+telemetry, and energy counters remained monotonic. No restart occurred.
+Minimum free heap was 106,364 bytes. Existing exported settings and finalized
+energy history were unchanged. Recording remains enabled without an error
+or pending operation.
+
+This establishes initial collection alongside production DS3 polling and
+Modbus reporting during the observation. Overnight graph persistence,
+power-loss recovery and downstream dashboard behavior remain untested.
+
 ## QT2 daytime reporter verification (2026-10-27)
 
 [TobiasTTM's report](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6454377987)

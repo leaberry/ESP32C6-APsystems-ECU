@@ -11,7 +11,9 @@ and Modbus integration; SUNSPEC.md owns the register map.
 Keep changes focused. Preserve existing Domoticz MQTT payloads, topics and
 command behavior unless the user explicitly requests a compatibility change.
 Use a separate client and namespace for Home Assistant. Do not add mDNS.
-Do not add automatic flash writes for telemetry, counters or discovery metadata.
+Do not add automatic flash writes for counters or discovery metadata. Optional
+power graph history is isolated from reporting, off by default, and may write
+only in its bounded nightly batch; never write history from polling callbacks.
 Home Assistant counter recovery uses retained broker messages and RAM.
 
 ## Identity and storage

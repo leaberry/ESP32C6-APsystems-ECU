@@ -71,6 +71,14 @@ static time_t ecuLocalNowLocked() {
   return localEpoch;
 }
 
+time_t ecuUtcNow() {
+  if (!ecuTimeMutex) return 0;
+  xSemaphoreTake(ecuTimeMutex, portMAX_DELAY);
+  const time_t value = ecuUtcNowLocked();
+  xSemaphoreGive(ecuTimeMutex);
+  return value;
+}
+
 time_t ecuNow() {
   if (!ecuTimeMutex) return 0;
   xSemaphoreTake(ecuTimeMutex, portMAX_DELAY);

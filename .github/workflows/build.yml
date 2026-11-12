@@ -20,6 +20,11 @@ jobs:
             artifact_base: ESP32C6_ECU-8MB-OTA
     steps:
       - uses: actions/checkout@v4
+      - name: Test optional power history and graph rendering
+        run: |
+          python3 tools/test_graph_history.py
+          node tools/test_graph_ui.js
+          node tools/test_graph_controls.js
       - name: Test Wi-Fi hostname and save failures
         run: python3 tools/test_wifi_hostname.py
       - name: Test polling collection, reassembly and event log bounds
