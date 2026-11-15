@@ -98,6 +98,7 @@ static void pollSchedulerStartRound(bool manual) {
   pollNextInverter = 0;
   pollNextSendMs = millis();
   pollLastRoundStartedMs = millis();
+  graphPollRoundBegin();
   pollingRoundBegin();
   consoleOut("starting inverter poll round (interval " + String(pollIntervalSeconds) + " s)");
 }

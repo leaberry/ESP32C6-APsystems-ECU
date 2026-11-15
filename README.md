@@ -187,15 +187,19 @@ energy in Wh/kWh.
 
 | Age | Stored detail |
 |---|---|
-| Current UTC day and previous 3 UTC days | At least 1 minute, never faster than configured polling |
+| Current UTC day and previous 3 UTC days | Latest successful reading per time bucket; bucket size is the polling interval rounded up to whole minutes, minimum 1 minute |
 | Older, through 10 days | At least 5 minutes; averages of available recorded samples |
 | Older, through 30 days | At least 1 hour; sample-weighted averages |
 | Beyond 30 days | Detailed power expires; existing daily energy totals remain separate |
 
-Samples come from successful polls and are spaced at least one minute apart.
-For example, a 45-second polling interval normally records about every 90
-seconds, while five-minute polling records about every five minutes. Enabling
-history does not increase polling frequency.
+Samples come only from successful polls. Later readings in the same bucket
+replace its earlier value without consuming more storage. For example,
+45-second polling uses one-minute buckets, 90-second polling uses two-minute
+buckets, and five-minute polling uses five-minute buckets. Fleet-poll replies
+share the round's start timestamp so responses either side of a bucket boundary
+stay together. Buckets with no successful reading stay empty; readings are
+never copied into later buckets. Enabling history does not increase polling
+frequency.
 
 Intervals round up to whole minutes. A slower polling setting is never expanded
 into invented readings. Changing the interval takes effect for the next day's
@@ -224,6 +228,19 @@ Modbus, and both MQTT integrations remain unchanged. The enable setting and
 optional graphs are local to this board and are not included in existing
 backups. After changing the inverter list/order, incompatible old power graphs
 are hidden and expire during the next daily batch.
+
+If a saved day cannot be read, keep its files for diagnosis before using
+**Turn off & clear detailed history**. While signed in, save the response from
+`http://<ECU-IP>/api/graph` together with **Menu > Diagnostic snapshot > Download
+report**. The graph status includes the last validation failure's
+filename, reason, byte count, day, interval and CRC values. It distinguishes
+read/open failures from a checksum mismatch; the warning alone does not prove
+flash damage. `skipped_busy` counts readings skipped while the history lock was
+occupied. Missing days before collection began are not validation failures.
+An administrator can download the original bytes of a suspect graph file:
+for `/graph-7.bin`, use `http://<ECU-IP>/api/graph/file?slot=7`. Only slots
+0 through 30 are accepted. This diagnostic download preserves the file
+unchanged, including invalid data; it is not a restorable energy backup.
 
 There are **two different ECU backups**. Save both before an upgrade, and save
 settings again after adding or pairing an inverter. Keep dated copies.

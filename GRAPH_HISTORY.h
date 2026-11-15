@@ -42,15 +42,18 @@ inline Cell average(uint32_t sum, uint32_t weight) {
   return weight ? Cell{static_cast<uint16_t>((sum + weight / 2) / weight),
                        static_cast<uint8_t>(weight)} : Cell{missing, 0};
 }
-inline bool accept(uint32_t now, uint32_t previous, uint32_t polling, uint32_t step) {
-  const uint32_t spacing = polling > step ? polling : step;
-  return !previous || (now >= previous && now - previous >= spacing);
+inline bool accept(uint32_t now, uint32_t previous) {
+  // A bucket holds the latest successful reading. An elapsed-time gate drops
+  // healthy polls when replies arrive slightly earlier than the previous round.
+  return !previous || now > previous;
 }
 }
 
 void graphBegin();
 void graphLoop();
+void graphPollRoundBegin();
 void graphRecord(uint8_t inverter);
 void graphRequestSettings(AsyncWebServerRequest *request);
 void graphSendStatus(AsyncWebServerRequest *request);
 void graphSendDay(AsyncWebServerRequest *request);
+void graphSendFile(AsyncWebServerRequest *request);

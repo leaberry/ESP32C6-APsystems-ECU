@@ -68,7 +68,7 @@ const PowerHistory = (() => {
       <div id="ph-enabled" hidden><div class="ph-controls"><label>Time range<select id="ph-range"><option value="1">Last 24 hours</option><option value="3" selected>Last 3 days</option><option value="10">Last 10 days</option><option value="30">Last 30 days</option></select></label><label>Production source<select id="ph-source"><option value="-1">All inverters</option></select></label></div>
       <div id="ph-tip" class="ph-tip" aria-live="polite"></div><div id="ph-plot" class="ph-plot"></div><div class="ph-foot"><span id="ph-resolution"></span><span id="ph-storage"></span></div>
       <p class="ph-note">Gaps mean no recorded reading, not zero production. Combined power requires readings from every inverter. Times use your browser's time zone.</p></div>
-      <p class="ph-note">Optional local history: recent 3 days at polling resolution (minimum 1 minute), then at least 5 minutes through day 10 and 1 hour through day 30. Saved daily at 00:00 UTC; an unexpected restart loses the current unsaved day. Daily energy totals below are separate.</p>`;
+      <p class="ph-note">Optional local history: recent 3 days keep the latest reading per time bucket (minimum 1 minute), then at least 5 minutes through day 10 and 1 hour through day 30. Saved daily at 00:00 UTC; an unexpected restart loses the current unsaved day. Daily energy totals below are separate.</p>`;
     const find = id => root.querySelector('#ph-'+id);
     let enabled = false, busy = false, saving = false, confirming = false, timer, status, stopped = false;
     async function request(url, options, decode) {

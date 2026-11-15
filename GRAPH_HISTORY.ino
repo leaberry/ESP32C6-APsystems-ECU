@@ -8,8 +8,16 @@ static graphHistory::Header graphRamHeader = {};
 static graphHistory::Cell *graphRam = nullptr;
 static bool graphRamHasSamples = false;
 static uint32_t graphLastSample[9] = {};
+static uint32_t graphRoundUtc = 0;
+static uint32_t graphSkippedBusy = 0;
 static uint32_t graphAttemptDay = 0;
 static const char *graphProblem = "";
+struct GraphValidationFailure {
+  char file[32];
+  const char *reason;
+  uint32_t utc, bytes, day, step, expectedCrc, actualCrc, count;
+};
+static GraphValidationFailure graphValidationFailure = {};
 static const char GRAPH_TEMP[] = "/graph.tmp";
 static const char GRAPH_PREVIOUS[] = "/graph.previous";
 static const char GRAPH_SETTING[] = "/graph.enabled";
@@ -45,17 +53,45 @@ static bool graphReadRow(File &file, uint32_t step, graphHistory::Cell *row) {
   return true;
 }
 
-static bool graphValidate(File &file, graphHistory::Header &h) {
-  if (!file.seek(0, SeekSet) || !graphReadHeader(file, h)) return false;
+static bool graphInspect(File &file, graphHistory::Header &h, const char *&reason, uint32_t &actualCrc) {
+  reason = ""; actualCrc = 0; h = {};
+  if (!file) { reason = "open_failed"; return false; }
+  if (!file.seek(0, SeekSet)) { reason = "seek_failed"; return false; }
+  if (file.read(reinterpret_cast<uint8_t *>(&h), sizeof(h)) != sizeof(h)) {
+    reason = "header_read_failed"; return false;
+  }
+  if (!graphHistory::validHeader(h, file.size())) { reason = "invalid_header_or_size"; return false; }
   uint32_t crc = graphHistory::crcUpdate(UINT32_MAX, &h, offsetof(graphHistory::Header, crc));
   uint8_t buffer[256];
-  while (file.available()) {
-    const size_t n = file.read(buffer, sizeof(buffer));
-    if (!n) return false;
+  size_t remaining = file.size() - sizeof(h);
+  while (remaining) {
+    const size_t n = file.read(buffer, remaining < sizeof(buffer) ? remaining : sizeof(buffer));
+    if (!n) { reason = "data_read_failed"; return false; }
+    remaining -= n;
     crc = graphHistory::crcUpdate(crc, buffer, n);
     yield();
   }
-  return ~crc == h.crc && file.seek(sizeof(h), SeekSet);
+  actualCrc = ~crc;
+  if (actualCrc != h.crc) { reason = "crc_mismatch"; return false; }
+  if (!file.seek(sizeof(h), SeekSet)) { reason = "seek_failed"; return false; }
+  return true;
+}
+
+static bool graphValidate(File &file, graphHistory::Header &h) {
+  const char *reason; uint32_t crc;
+  return graphInspect(file, h, reason, crc);
+}
+
+static void graphRememberFailure(const String &path, File &file, const graphHistory::Header &h,
+                                 const char *reason, uint32_t actualCrc) {
+  snprintf(graphValidationFailure.file, sizeof(graphValidationFailure.file), "%s", path.c_str());
+  graphValidationFailure.reason = reason;
+  graphValidationFailure.utc = static_cast<uint32_t>(ecuUtcNow());
+  graphValidationFailure.bytes = file ? file.size() : 0;
+  graphValidationFailure.day = h.day; graphValidationFailure.step = h.step;
+  graphValidationFailure.expectedCrc = h.crc; graphValidationFailure.actualCrc = actualCrc;
+  ++graphValidationFailure.count;
+  graphProblem = "A saved history day could not be read. Other days are still available.";
 }
 
 static size_t graphDiskBytes() {
@@ -87,7 +123,10 @@ static bool graphRecover() {
   if (SPIFFS.exists(GRAPH_PREVIOUS)) {
     File previous = SPIFFS.open(GRAPH_PREVIOUS, "r");
     graphHistory::Header h = {};
-    if (!graphValidate(previous, h)) { graphProblem = "Invalid recovery file; disable history to clear it."; return false; }
+    const char *reason; uint32_t crc;
+    if (!graphInspect(previous, h, reason, crc)) {
+      graphRememberFailure(GRAPH_PREVIOUS, previous, h, reason, crc); return false;
+    }
     previous.close();
     const String path = graphPath(h.day);
     File current = SPIFFS.open(path, "r");
@@ -235,6 +274,7 @@ void graphLoop() {
       graphEnabled = wanted; graphProblem = "";
       if (!wanted) {
         free(graphRam); graphRam = nullptr; graphRamHeader = {}; graphAttemptDay = 0;
+        graphValidationFailure = {}; graphSkippedBusy = 0;
         if (!graphRemoveFiles()) graphProblem = "Disabled, but some history files could not be removed.";
       }
     } else graphProblem = "Could not save the history setting.";
@@ -253,10 +293,11 @@ void graphLoop() {
           for (uint8_t slot = 0; slot < 31; ++slot) {
             const String path = graphPath(slot);
             File input = SPIFFS.open(path, "r");
-            if (!input) continue;
+            if (!input && !SPIFFS.exists(path)) continue;
             graphHistory::Header h = {};
-            if (!graphValidate(input, h)) {
-              input.close(); graphProblem = "A damaged history day was skipped."; continue;
+            const char *reason; uint32_t crc;
+            if (!graphInspect(input, h, reason, crc)) {
+              graphRememberFailure(path, input, h, reason, crc); input.close(); continue;
             }
             if (h.day > day) continue; // clock moved back: never overwrite future days
             const uint32_t age = day - h.day;
@@ -287,13 +328,20 @@ void graphLoop() {
   xSemaphoreGive(graphMutex);
 }
 
+void graphPollRoundBegin() {
+  graphRoundUtc = timeRetrieved ? static_cast<uint32_t>(ecuUtcNow()) : 0;
+}
+
 void graphRecord(uint8_t inverter) {
   // Do not wait on HTTP, allocate, write flash, change counters or publish here.
-  if (!graphMutex || xSemaphoreTake(graphMutex, 0) != pdTRUE) return;
-  const uint32_t utc = static_cast<uint32_t>(ecuUtcNow());
+  if (!graphMutex) return;
+  if (xSemaphoreTake(graphMutex, 0) != pdTRUE) { ++graphSkippedBusy; return; }
+  // Responses within a fleet poll share a bucket even across its boundary.
+  // A round crossing UTC midnight is never assigned to a different day's RAM.
+  const uint32_t utc = pollingRoundInProgress() && graphRoundUtc ? graphRoundUtc : static_cast<uint32_t>(ecuUtcNow());
   if (graphEnabled && graphRam && timeRetrieved && inverter < inverterCount &&
       graphRamHeader.identity == graphIdentity() && utc / 86400 == graphRamHeader.day &&
-      graphHistory::accept(utc, graphLastSample[inverter], pollIntervalSeconds, graphRamHeader.step)) {
+      graphHistory::accept(utc, graphLastSample[inverter])) {
     const float power = Inv_Data[inverter].pw_total;
     if (isfinite(power) && power >= 0 && power < 10000.0f) {
       const uint32_t bucket = (utc % 86400) / graphRamHeader.step;
@@ -321,11 +369,12 @@ void graphSendStatus(AsyncWebServerRequest *request) {
   xSemaphoreTake(graphMutex, portMAX_DELAY);
   JsonDocument doc;
   doc["enabled"] = graphEnabled; doc["pending"] = graphPending != -1;
-  doc["problem"] = graphProblem; doc["bytes"] = graphDiskBytes();
+  doc["bytes"] = graphDiskBytes();
   doc["budget"] = graphHistory::budget;
   doc["ram_bytes"] = graphRam ? graphRamHeader.count * 9 * sizeof(graphHistory::Cell) : 0;
   doc["poll_seconds"] = pollIntervalSeconds;
   doc["utc"] = static_cast<uint32_t>(ecuUtcNow());
+  doc["skipped_busy"] = graphSkippedBusy;
   JsonArray names = doc["inverters"].to<JsonArray>();
   for (uint8_t i = 0; i < inverterCount; ++i) names.add(String("Inverter ") + String(i + 1));
   JsonArray days = doc["days"].to<JsonArray>();
@@ -334,9 +383,27 @@ void graphSendStatus(AsyncWebServerRequest *request) {
     const uint32_t day = today - age;
     graphHistory::Header h = {};
     if (graphRam && graphRamHeader.day == day) h = graphRamHeader;
-    else { File file = SPIFFS.open(graphPath(day), "r"); if (!graphReadHeader(file, h)) continue; }
+    else {
+      File file = SPIFFS.open(graphPath(day), "r");
+      if (!file && !SPIFFS.exists(graphPath(day))) continue;
+      if (!graphReadHeader(file, h)) {
+        const char *reason; uint32_t crc;
+        if (!graphInspect(file, h, reason, crc)) {
+          graphRememberFailure(graphPath(day), file, h, reason, crc); continue;
+        }
+      }
+    }
     if (h.day != day || h.identity != graphIdentity()) continue;
     JsonObject entry = days.add<JsonObject>(); entry["day"] = day; entry["step"] = h.step;
+  }
+  doc["problem"] = graphProblem;
+  if (graphValidationFailure.count) {
+    JsonObject failure = doc["validation_failure"].to<JsonObject>();
+    failure["file"] = graphValidationFailure.file; failure["reason"] = graphValidationFailure.reason;
+    failure["utc"] = graphValidationFailure.utc; failure["bytes"] = graphValidationFailure.bytes;
+    failure["day"] = graphValidationFailure.day; failure["step"] = graphValidationFailure.step;
+    failure["expected_crc"] = graphValidationFailure.expectedCrc;
+    failure["actual_crc"] = graphValidationFailure.actualCrc; failure["count"] = graphValidationFailure.count;
   }
   String body; serializeJson(doc, body);
   xSemaphoreGive(graphMutex);
@@ -356,7 +423,14 @@ void graphSendDay(AsyncWebServerRequest *request) {
   graphHistory::Header h = graphRamHeader;
   File file;
   if (!ram) file = SPIFFS.open(graphPath(day), "r");
-  if ((!ram && !graphValidate(file, h)) || h.day != day || h.identity != graphIdentity()) {
+  if (!ram) {
+    const char *reason; uint32_t crc;
+    if (!graphInspect(file, h, reason, crc)) {
+      if (file || SPIFFS.exists(graphPath(day))) graphRememberFailure(graphPath(day), file, h, reason, crc);
+      xSemaphoreGive(graphMutex); request->send(404, "text/plain", "History day missing or unreadable"); return;
+    }
+  }
+  if (h.day != day || h.identity != graphIdentity()) {
     xSemaphoreGive(graphMutex); request->send(404, "text/plain", "History day missing or damaged"); return;
   }
   // At most 1440 values for one source. No giant all-inverter JSON document.
@@ -377,6 +451,30 @@ void graphSendDay(AsyncWebServerRequest *request) {
     if (valid && end > begin) response->print(watts); else response->print("null");
   }
   response->print("]}"); response->addHeader("Cache-Control", "no-store");
+  xSemaphoreGive(graphMutex);
+  request->send(response);
+}
+
+void graphSendFile(AsyncWebServerRequest *request) {
+  if (!graphMutex) { request->send(503, "text/plain", "History is starting."); return; }
+  const String slot = request->hasParam("slot") ? request->getParam("slot")->value() : String("");
+  const char *text = slot.c_str();
+  if (!slot.length() || slot.length() > 2 || text[0] < '0' || text[0] > '9' ||
+      (slot.length() == 2 && (text[1] < '0' || text[1] > '9')) || slot.toInt() > 30) {
+    request->send(400, "text/plain", "Expected history slot 0 through 30"); return;
+  }
+  // Export the original bytes, including a damaged header or CRC, for diagnosis.
+  // The fixed slot map cannot expose settings or other filesystem paths.
+  xSemaphoreTake(graphMutex, portMAX_DELAY);
+  const String path = graphPath(static_cast<uint32_t>(slot.toInt()));
+  if (!SPIFFS.exists(path)) {
+    xSemaphoreGive(graphMutex); request->send(404, "text/plain", "History file missing"); return;
+  }
+  AsyncWebServerResponse *response = request->beginResponse(SPIFFS, path, "application/octet-stream", true);
+  if (!response) {
+    xSemaphoreGive(graphMutex); request->send(500, "text/plain", "Unable to open history file"); return;
+  }
+  response->addHeader("Cache-Control", "no-store");
   xSemaphoreGive(graphMutex);
   request->send(response);
 }

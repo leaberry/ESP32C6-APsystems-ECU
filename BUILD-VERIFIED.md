@@ -1,5 +1,53 @@
 # Build and hardware verification
 
+## Graph sampling and saved-file diagnostics (2026-11-15)
+
+The reporter's PR #41 screenshot shows two-minute buckets, gaps in combined
+power, and a saved-history validation warning. The previous elapsed-time
+sampling gate reproduced five recorded samples from ten successful two-minute
+polls with one second of arrival-time variation. Ninety-second polling also
+left avoidable holes in two-minute buckets.
+
+The graph now retains the latest successful value in each fixed bucket and
+uses one UTC start timestamp for each fleet poll. Host tests cover 45-, 90-,
+120- and 300-second polling, timing jitter, replies crossing bucket boundaries,
+missing inverter responses, backward clock changes and a round crossing UTC
+midnight. Empty buckets stay empty; values are never copied into later buckets.
+The scheduler's cadence and radio commands are unchanged, and graph sampling
+still performs no filesystem writes.
+
+The saved-file failure has not been reproduced from the screenshot alone.
+The actual storage adapter passes a 40-day two-minute-history simulation,
+including nightly saves, reopening each retained file, compaction, expiry and
+restart with files intact. Injected read failures, CRC corruption and truncated
+files produce distinct diagnostics; valid neighboring files remain readable.
+Existing file encoding and the 192 KiB archive limit are unchanged.
+
+`/api/graph` now reports the last validation failure's file, reason, byte count,
+UTC time, header day/step and expected/computed CRC. Read failures are no longer
+described as proof of damaged data. Existing invalid headers can be diagnosed
+on status refresh; CRC failures are recorded when the day is read or during
+the nightly scan. A skipped-busy counter exposes telemetry omitted during lock
+contention. The administrator-only `/api/graph/file?slot=N` endpoint exports
+the original archive bytes without validating away the evidence. Tests cover
+invalid slots/path traversal, missing files, response-creation failure and
+route authorization/order. This export has not been exercised on hardware.
+
+All 28 Python and ten JavaScript suites pass. The extended adapter tests also
+pass AddressSanitizer and UndefinedBehaviorSanitizer. Graph rendering, explicit
+confirmation, failure handling and recovery checks remain passing. The graph
+script URL is versioned again so existing browsers load the updated text.
+
+Both final local layouts compile with ESP32 core 3.3.8: 1,676,184 bytes of
+program storage and 110,304 bytes of static globals, leaving 217,376 bytes
+before runtime allocations. Flash-size headers, partition maps, application
+slot capacity and the staged firmware source were verified for both layouts.
+
+These follow-up changes were tested locally; the production ECU was
+not updated. The reporter's file and diagnostics are still needed to identify
+their warning's cause. The November 12 hardware results below apply to the
+earlier build, not this revision.
+
 ## Optional power history validation (2026-11-12)
 
 This work is based on v1.4.20 (`15b48ae`) and addresses the detailed production

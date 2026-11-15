@@ -24,6 +24,8 @@ assert(graph.chartSvg([{time:start,value:10,step:60}],start,start+300).includes(
 assert(!graph.chartSvg([{time:start,value:null,step:60}],start,start+300).includes('NaN'));
 const routes = fs.readFileSync(path.join(root,'ASYSERVER.ino'),'utf8');
 assert(routes.match(/server\.on\("\/api\/graph\/settings", HTTP_POST,[\s\S]*?authenticate\("admin", pswd\)/));
+assert(routes.match(/server\.on\("\/api\/graph\/file", HTTP_GET,[\s\S]*?loginBoth\(request, "admin"\)/));
+assert(routes.indexOf('server.on("/api/graph/file"')<routes.indexOf('server.on("/api/graph"'),'file export must precede the parent route');
 assert(source.includes('aria-label="Confirm clearing detailed history"'),'clearing requires an explicit confirmation panel');
 assert(source.includes('for (const day of status.days.filter'),'fetch days sequentially');
 assert(!source.includes('localStorage'),'disabled feature must not leave browser history storage');

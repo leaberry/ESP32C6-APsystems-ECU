@@ -345,6 +345,10 @@ server.on("/api/graph/day", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   graphSendDay(request);
 });
+server.on("/api/graph/file", HTTP_GET, [](AsyncWebServerRequest *request) {
+  if (!loginBoth(request, "admin")) return;
+  graphSendFile(request);
+});
 server.on("/api/graph", HTTP_GET, [](AsyncWebServerRequest *request) {
   if (!loginBoth(request, "both")) return;
   graphSendStatus(request);
