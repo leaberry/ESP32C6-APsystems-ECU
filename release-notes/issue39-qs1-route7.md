@@ -11,8 +11,8 @@ restores normal reception before verifying pairing. A route request alone does
 not save a pairing. DS3 and QT2 retain their existing pairing and polling paths.
 
 Changing the ECU ID through Settings now applies the ID and its PAN together
-after a restart. Existing IDs are kept, including an explicitly selected default
-ID. Keep your current ECU ID for this test.
+after a restart. A default ID explicitly selected in Settings is also preserved
+on reboot. Keep your current ECU ID for this test.
 
 This is an active ECU build with Wi-Fi, replacing the USB-only listener. It runs
 one focused QS1 pairing attempt and collects the result in the existing
