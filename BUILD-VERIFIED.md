@@ -1,5 +1,44 @@
 # Build and hardware verification
 
+## Issue #39 QS1 route replies (2026-11-16)
+
+The reporter's [external radio captures](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/39#issuecomment-6912909246)
+contain six route requests originating from the two configured QS1s and relayed
+by neighboring devices. The older controller sends 15 route reply transmissions,
+including retries. Neither capture contains a directly received target MAC frame
+or a target application reply. These files identify missing routing support but
+do not prove that routing is the only cause of the failure.
+
+`qs1-route7` returns to normal ECU operation with Wi-Fi. Its QS1 pairing path
+listens across PANs during the four handshake commands and answers matching
+route requests on the operating PAN. Requests supply candidate short addresses;
+they cannot confirm pairing. Verification runs with normal filtering and MAC
+acknowledgements restored. Saving requires a fresh matching status response or
+two valid serial-matched QS1 power responses, followed by successful radio
+restoration and storage. Normal routing responses require an already saved QS1
+on the selected PAN. DS3 and QT2 keep their existing pairing and polling paths.
+
+Changing the ECU identifier through Settings now saves it for a restart. Live
+commands retain the old identifier until startup derives the new PAN. A failed
+save leaves the live identity unchanged. An explicitly selected default ID is
+preserved on reboot. This addresses a code defect; the new external capture's
+ECU ID and PAN already match.
+
+All 34 Python host suites and nine JavaScript suites pass. The routing suite
+also replays all six captured requests and compares generated replies byte for
+byte with all 15 captured replies, excluding the radio-generated FCS. It checks
+model isolation, stale requests, conflicting addresses, rate/time limits,
+unverified replies, failed transmission, reception failure and failed storage.
+Identity tests exercise the actual settings handler and interrupted-save path.
+The capture replay accepts the local decoded capture directory as an optional
+argument; private capture files are not required by CI or included in the repo.
+
+The diagnostic bundle retains sampled RX/TX frames, per-stage results, assembled
+verification responses, radio identity and before/after reports. It reports
+omitted samples and queue drops; it is not a lossless radio capture. An external
+sniffer remains useful if the board still cannot hear the replies. No local
+hardware test or board flashing has been performed with this version.
+
 ## Issue #39 USB listener (2026-11-06)
 
 The older controller's console video contains successful 94-byte plaintext

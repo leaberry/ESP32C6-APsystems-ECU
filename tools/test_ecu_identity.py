@@ -13,6 +13,8 @@ include = Path(os.environ.get('ARDUINOJSON_INCLUDE',
 source = (root / 'ECU_IDENTITY.ino').read_text().replace('#include <nvs.h>', '')
 harness = r'''
 #include <ArduinoJson.h>
+#include "ECU_IDENTITY.h"
+#include <cctype>
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -84,6 +86,7 @@ harness += storage[storage.index('void basisConfigDocument('):storage.index('voi
 harness += source
 harness += r'''
 void reset() {
+  ecuIdentityPending=ecuIdentityExplicit=false;
   files.clear();failOpen.clear();shortWrite=false;renameCalls=failRenameAt=0;
   nvsResult=ESP_ERR_NVS_NOT_FOUND;strcpy(ECU_ID,ECU_DEFAULT_ID);randomCalls=0;
 }
@@ -141,6 +144,22 @@ int main() {
   assert(ecuIdentityRecoverConfig() && files[ECU_CONFIG_PATH]==original);
   reset();files[ECU_CONFIG_OLD]=original;failRenameAt=1;
   assert(!ecuIdentityRecoverConfig());
+  reset();strcpy(ECU_ID,"ABCDEF123456");basisConfigsave();
+  assert(ecuIdentitySelect("D8A3011B9780"));
+  assert(ecuIdentityRestartPending() && !strcmp(ECU_ID,"ABCDEF123456"));
+  basisConfigsave();assert(!deserializeJson(saved,files[ECU_CONFIG_PATH]));
+  assert(saved["ECU_ID"]=="D8A3011B9780" && saved["ECU_ID_explicit"]==true);
+  assert(!ecuIdentitySelect("123456789ABC"));
+  ecuIdentityPending=false;strcpy(ECU_ID,"D8A3011B9780");ecuIdentityBegin();
+  assert(!randomCalls && ecuIdentityExplicitChoice());
+  basisConfigsave();assert(!deserializeJson(saved,files[ECU_CONFIG_PATH]));
+  assert(saved["ECU_ID_explicit"]==true);
+  for(const char *invalid:{"", "000011223344", "FFFF11223344", "not-hex-here"}) {
+    reset();assert(!ecuIdentitySelect(invalid) && !ecuIdentityRestartPending());
+  }
+  reset();files[ECU_CONFIG_PATH]=original;shortWrite=true;
+  assert(!ecuIdentitySelect("123456789ABC") && !ecuIdentityRestartPending());
+  assert(files[ECU_CONFIG_PATH]==original);
   std::cout<<"PASS ECU identity: generation, reboot, custom IDs, pairing guards, config preservation, write failures and interrupted-save recovery\n";
 }
 '''
@@ -148,5 +167,5 @@ with tempfile.TemporaryDirectory() as directory:
     cpp, binary = Path(directory) / 'test.cpp', Path(directory) / 'test'
     cpp.write_text(harness)
     subprocess.run([os.environ.get('CXX','g++'), '-std=c++11', '-Wall', '-Wextra',
-                    '-Werror', '-I', str(include), str(cpp), '-o', str(binary)], check=True)
+                    '-Werror', '-I', str(root), '-I', str(include), str(cpp), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

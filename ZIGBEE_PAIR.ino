@@ -14,7 +14,7 @@ void handlePair(AsyncWebServerRequest *request) {
   String page = FPSTR(WAIT_PAIR);
   if (Inv_Prop[iKeuze].invType == 1)
     page.replace("Allow up to three minutes for pairing and verification.",
-                 "Allow up to six minutes for the QS1 test. After it finishes, open Diagnostic snapshot and download the QS1 test bundle before restarting.");
+                 "Wait for the QS1 test result. After it finishes, open Diagnostic snapshot and download the QS1 test bundle before restarting.");
   page.replace("{#}", String(iKeuze));
   request->send(200, "text/html", page);
 }

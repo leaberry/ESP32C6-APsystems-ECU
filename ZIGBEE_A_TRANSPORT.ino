@@ -8,6 +8,7 @@
  */
 
 #include "POLL_TELEMETRY.h"
+#include "QS1_ROUTING.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
@@ -83,6 +84,9 @@ uint8_t rawNwkSequence = 0;
 uint8_t rawApsCounter = 0;
 uint8_t rawExtendedAddress[8] = {};
 uint32_t rawRxDropped = 0;
+SemaphoreHandle_t qs1RouteGate = nullptr;
+Qs1RouteWindow qs1RouteWindow;
+uint32_t qs1NormalRouteAt[YC600_MAX_NUMBER_OF_INVERTERS] = {};
 
 static uint8_t hexNibble(char c) {
   if (c >= '0' && c <= '9') return c - '0';
@@ -431,6 +435,44 @@ static void processApsFrame(const RawRxFrame &rx) {
   if ((session->receivedMask & wantedMask) == wantedMask) deliverAsdu(session);
 }
 
+static bool processQs1Route(const RawRxFrame &frame) {
+  Qs1RouteRequest request;
+  if (frame.channel != APS_CHANNEL || !qs1RouteRequest(frame.bytes, frame.captured, request) ||
+      !qs1RouteGate || xSemaphoreTake(qs1RouteGate, 0) != pdTRUE) return false;
+  bool allowed=false;
+  uint16_t pan=rawCurrentPan;
+  uint8_t ecu[6]={};
+  if (qs1RouteWindow.active) {
+    allowed=qs1RouteWindow.accept(request,frame.receivedAt,millis());
+    pan=qs1RouteWindow.pan; memcpy(ecu,qs1RouteWindow.ecu,6);
+  } else if (!pairReceiveActive() && !rawPromiscuous) {
+    // Normal operation may answer only a saved QS1 on the currently selected PAN.
+    for (int i=0;i<inverterCount;++i) {
+      uint8_t uid[6]; uint16_t savedPan=0,savedSource=0;
+      if (Inv_Prop[i].invType!=1 || !pairSerialBytes(Inv_Prop[i].invSerial,uid) ||
+          memcmp(uid,request.serial,6) || request.pan!=pan ||
+          !apsRadioLoadPeer(Inv_Prop[i].invSerial,&savedPan,&savedSource) ||
+          savedPan!=pan || savedSource!=request.source) continue;
+      if (qs1NormalRouteAt[i] && millis()-qs1NormalRouteAt[i]<500) break;
+      char text[13]; ECU_REVERSE().toCharArray(text,sizeof(text));
+      allowed=apsSerialToBcd(text,ecu);
+      if (allowed) qs1NormalRouteAt[i]=millis();
+      break;
+    }
+  }
+  if (allowed && pan==rawCurrentPan && !passiveCaptureOwnsRadio()) {
+    uint8_t reply[64];
+    size_t n=qs1RouteReply(reply,sizeof(reply),request,pan,ecu,++rawMacSequence,++rawNwkSequence);
+    bool sent=n && radioTransmit(reply,n,true,"QS1 route reply");
+    char line[176];
+    snprintf(line,sizeof(line),"QS1 route src=%04X relay=%04X rx_pan=%04X reply_pan=%04X request=%u result=%s",
+             request.source,request.sender,request.pan,pan,request.request,sent?"sent":"TX-failed");
+    diagnosticsAppend(String(line));
+  }
+  xSemaphoreGive(qs1RouteGate);
+  return true;
+}
+
 static void rawWorker(void *) {
   RawRxFrame frame;
   for (;;) {
@@ -439,6 +481,7 @@ static void rawWorker(void *) {
                                 frame.channel, frame.rssi, frame.lqi)) continue;
       if (qs1CaptureObserve(frame.bytes, frame.captured, frame.receivedAt,
                             frame.channel, frame.rssi, frame.lqi)) continue;
+      if (processQs1Route(frame)) continue;
       pollDiagnosticsCount(PD_RX);
       pairTransportObserve(frame.bytes,frame.captured,frame.receivedAt);
       radioTraceObserve(frame.bytes, frame.captured, frame.channel,
@@ -690,6 +733,8 @@ bool rawRadioStart() {
   rawTxMutex = xSemaphoreCreateMutex();
   rawTxDone = xSemaphoreCreateBinary();
   if (!apsRxQueue || !rawRxQueue || !rawTxMutex || !rawTxDone) return false;
+  for (int i=0;i<inverterCount;++i)
+    if (Inv_Prop[i].invType==1 && !qs1RouteGate) qs1RouteGate=xSemaphoreCreateMutex();
 
   esp_err_t enabled = esp_ieee802154_enable();
   if (enabled != ESP_OK) return false;
@@ -729,6 +774,27 @@ bool rawRadioStart() {
 }
 
 uint32_t rawRadioDroppedFrames() { return rawRxDropped; }
+
+bool qs1RoutingBegin(const uint8_t *uid,const uint8_t *ecu,uint16_t pan) {
+  if (!qs1RouteGate) qs1RouteGate=xSemaphoreCreateMutex();
+  if (!qs1RouteGate || xSemaphoreTake(qs1RouteGate,pdMS_TO_TICKS(1000))!=pdTRUE) return false;
+  qs1RouteWindow.begin(uid,ecu,pan,millis());
+  xSemaphoreGive(qs1RouteGate); return true;
+}
+
+uint16_t qs1RoutingSource() {
+  if (!qs1RouteGate || xSemaphoreTake(qs1RouteGate,pdMS_TO_TICKS(1000))!=pdTRUE) return 0;
+  uint16_t source=qs1RouteWindow.conflict?0:qs1RouteWindow.source;
+  xSemaphoreGive(qs1RouteGate); return source;
+}
+
+void qs1RoutingEnd() {
+  if (!qs1RouteGate) return;
+  // Wait for the worker's last reply before restoring filters or another PAN.
+  xSemaphoreTake(qs1RouteGate,portMAX_DELAY);
+  qs1RouteWindow.active=false;
+  xSemaphoreGive(qs1RouteGate);
+}
 
 bool rawRadioBeginPassive() {
   if (!rawRadioStarted || !rawTxMutex ||

@@ -1,5 +1,6 @@
 #include "POWER_LIMIT_STORAGE.h"
 #include "DEVICE_SETTINGS.h"
+#include "ECU_IDENTITY.h"
 #include "PAIRING_PROTOCOL.h"
 #include "APS_TRANSPORT_MODE.h"
 #include "PAIRING_SESSION.h"
@@ -48,10 +49,11 @@
 #include <esp_system.h>
 //#include <Hash.h>
 #include "PSACrypto.h"
-#define VERSION  "ESP32C6-ECU_v1_4_20-qs1-usb6"
-// This diagnostic image stays receive-only, including after a restart.
-#define APS_PASSIVE_ONLY 1
-#define APS_USB_PASSIVE 1
+#define VERSION  "ESP32C6-ECU_v1_4_20-qs1-route7"
+#define APS_QS1_ROUTE_DIAG 1
+#define APS_PASSIVE_ONLY 0
+#define APS_USB_PASSIVE 0
+#include "QS1_ROUTING.h"
 #include "USB_PASSIVE.h"
 #include "PASSIVE_CAPTURE.h"
 #include "QS1_PAIRING.h"

@@ -1,4 +1,9 @@
 #include <nvs.h>
+#include "ECU_IDENTITY.h"
+
+static bool ecuIdentityPending = false, ecuIdentityExplicit = false;
+bool ecuIdentityRestartPending() { return ecuIdentityPending; }
+bool ecuIdentityExplicitChoice() { return ecuIdentityExplicit; }
 
 static const char ECU_DEFAULT_ID[] = "D8A3011B9780";
 static const char ECU_CONFIG_PATH[] = "/basisconfig.json";
@@ -44,7 +49,7 @@ void ecuIdentityGenerate(char id[13]) {
   if (!strcmp(id, ECU_DEFAULT_ID)) id[11] = '1';
 }
 
-bool ecuIdentitySave(const char *id) {
+static bool ecuIdentityWrite(const char *id, bool selected) {
   if (!ecuIdentityRecoverConfig()) return false;
   JsonDocument doc;
   bool hadFile = SPIFFS.exists(ECU_CONFIG_PATH);
@@ -57,7 +62,15 @@ bool ecuIdentitySave(const char *id) {
   } else {
     basisConfigDocument(doc);
   }
+  if (selected) {
+    // Include the submitted settings in the same atomic write as the new ID.
+    // Merge known fields so older or newer configuration keys survive.
+    JsonDocument current;
+    basisConfigDocument(current);
+    for (JsonPair field : current.as<JsonObject>()) doc[field.key()] = field.value();
+  }
   doc["ECU_ID"] = id; // Preserve all other settings, including unknown keys.
+  doc["ECU_ID_explicit"] = selected;
   File staged = SPIFFS.open(ECU_CONFIG_TEMP, "w");
   if (!staged) return false;
   bool written = serializeJson(doc, staged) == measureJson(doc);
@@ -81,7 +94,25 @@ bool ecuIdentitySave(const char *id) {
   return true;
 }
 
+bool ecuIdentitySave(const char *id) { return ecuIdentityWrite(id, false); }
+
+bool ecuIdentitySelect(const char *id) {
+  if (ecuIdentityPending || !id || strlen(id)!=12) return false;
+  for (size_t i=0;i<12;++i) if (!isxdigit((unsigned char)id[i])) return false;
+  if (!strncmp(id,"0000",4) || !strncasecmp(id,"FFFF",4)) return false;
+  if (!ecuIdentityWrite(id,true)) return false;
+  // Keep every live consumer on the old identity until startup derives the
+  // matching PAN. Block ordinary config writes from overwriting the saved ID.
+  ecuIdentityPending=true;
+  return true;
+}
+
 void ecuIdentityBegin() {
+  File config=SPIFFS.open(ECU_CONFIG_PATH,"r");
+  JsonDocument doc;
+  ecuIdentityExplicit=config && !deserializeJson(doc,config) && (doc["ECU_ID_explicit"] | false);
+  config.close();
+  if (ecuIdentityExplicit) return;
   if (strcasecmp(ECU_ID, ECU_DEFAULT_ID)) return;
   if (ecuIdentityHasPairing()) {
     Serial.println(F("ECU ID: keeping default because pairing data exists or could not be checked"));

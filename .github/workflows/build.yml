@@ -42,6 +42,7 @@ jobs:
           python3 tools/test_passive_capture.py
           python3 tools/test_usb_passive.py
           python3 tools/test_qs1_pairing.py
+          python3 tools/test_qs1_routing.py
           python3 tools/test_qs1_batch.py
           python3 tools/test_qs1_capture.py
           node tools/test_passive_capture_ui.js
@@ -93,7 +94,9 @@ jobs:
           python3 tools/test_mqtt_connection.py
           node tools/test_mqtt_connection_ui.js
       - name: Test ECU identity initialization
-        run: python3 tools/test_ecu_identity.py
+        run: |
+          python3 tools/test_ecu_identity.py
+          python3 tools/test_ecu_identity_update.py
       - name: Select ${{ matrix.name }} layout
         run: cp "${{ matrix.partitions }}" partitions.csv
       - name: Compile ${{ matrix.name }}

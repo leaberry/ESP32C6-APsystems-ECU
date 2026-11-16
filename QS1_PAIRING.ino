@@ -1,4 +1,7 @@
 bool pairQs1(int which) {
+#if defined(APS_QS1_ROUTE_DIAG) && APS_QS1_ROUTE_DIAG
+  return pairQs1Routed(which);
+#endif
   uint8_t uid[6], ecu[6]; char ecuText[13];
   if (which < 0 || which >= inverterCount || Inv_Prop[which].invType != 1 ||
       !pairSerialBytes(Inv_Prop[which].invSerial, uid)) return false;

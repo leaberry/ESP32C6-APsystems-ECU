@@ -41,6 +41,10 @@ void zendPageBasis(AsyncWebServerRequest *request) {
 }
 
 void handleBasisSave(AsyncWebServerRequest *request) {
+  if (ecuIdentityRestartPending()) {
+    request->send(409,"text/plain","The ECU is restarting to apply its new identifier. Please wait.");
+    return;
+  }
   if (!request->hasParam("ecuid", true) || !request->hasParam("pollsec", true)) {
     request->send(400, "text/plain", "Missing required settings");
     return;
@@ -98,7 +102,20 @@ void handleBasisSave(AsyncWebServerRequest *request) {
   }
 
   id.toUpperCase();
-  strlcpy(ECU_ID, id.c_str(), sizeof(ECU_ID));
+  bool identityChanged=strcmp(ECU_ID,id.c_str())!=0;
+  if (identityChanged && (pairReceiveActive() || actionFlag!=0)) {
+    request->send(409,"text/plain","Wait for the current operation to finish before changing the ECU identifier.");
+    return;
+  }
+  if (identityChanged && (id.startsWith("0000") || id.startsWith("FFFF"))) {
+    request->send(400,"text/plain","The ECU identifier cannot start with 0000 or FFFF.");
+    return;
+  }
+  char previousUserPassword[sizeof(userPwd)],previousAdminPassword[sizeof(pswd)];
+  memcpy(previousUserPassword,userPwd,sizeof(userPwd));
+  memcpy(previousAdminPassword,pswd,sizeof(pswd));
+  auto previousInterval=pollIntervalSeconds;
+  bool previousPolling=Polling,previousSunspec=sunspecEnabled,previousRecorder=flightRecorderEnabled;
   if (!newUserPassword.isEmpty()) strlcpy(userPwd, newUserPassword.c_str(), sizeof(userPwd));
   bool administratorChanged = !newAdminPassword.isEmpty();
   if (administratorChanged) strlcpy(pswd, newAdminPassword.c_str(), sizeof(pswd));
@@ -107,6 +124,24 @@ void handleBasisSave(AsyncWebServerRequest *request) {
   Polling = request->hasParam("polling", true);
   sunspecEnabled = request->hasParam("sunspec", true);
   flightRecorderSetEnabled(request->hasParam("flightrecorder", true));
+  if (identityChanged) {
+    if (!ecuIdentitySelect(id.c_str())) {
+      memcpy(userPwd,previousUserPassword,sizeof(userPwd));
+      memcpy(pswd,previousAdminPassword,sizeof(pswd));
+      pollIntervalSeconds=previousInterval;Polling=previousPolling;sunspecEnabled=previousSunspec;
+      flightRecorderSetEnabled(previousRecorder);
+      request->send(500,"text/plain","Could not save the new ECU identifier. The current identifier and radio network are unchanged.");
+      return;
+    }
+    if (administratorChanged) {
+      wifiConfigsave();
+      ws.closeAll();
+      ws.setAuthentication("admin",pswd,AsyncAuthType::AUTH_BASIC);
+    }
+    actionFlag=10;
+    request->send(200,"text/html","<h2>ECU identifier saved</h2><p>The ECU is restarting to apply the identifier and matching radio network together.</p><a href='/menu'>Return to menu after restart</a>");
+    return;
+  }
   basisConfigsave();
   if (administratorChanged) {
     wifiConfigsave();

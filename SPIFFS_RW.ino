@@ -116,6 +116,7 @@ void wifiConfigsave() {
 void basisConfigDocument(JsonDocument &doc) {
     JsonObject json = doc.to<JsonObject>();
     json["ECU_ID"] = ECU_ID;
+    json["ECU_ID_explicit"] = ecuIdentityExplicitChoice();
     json["fleetName"] = fleetName;
     json["userPwd"] = userPwd;
     json["inverterCount"] = inverterCount;
@@ -128,6 +129,7 @@ void basisConfigDocument(JsonDocument &doc) {
 }
 
 void basisConfigsave() {
+    if (ecuIdentityRestartPending()) return;
     Serial.println("saving basis config");
     JsonDocument doc;
     basisConfigDocument(doc);
