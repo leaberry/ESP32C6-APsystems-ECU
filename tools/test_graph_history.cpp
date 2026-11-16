@@ -52,19 +52,22 @@ static size_t externalBytes=0;
 static constexpr int SeekSet=0;
 struct File {
   int index=-1;size_t offset=0;
-  operator bool()const{return index>=0&&entries[index].exists;}
-  size_t size()const{return *this?entries[index].size:0;}
+  bool isDirectory()const{return index==-2;}
+  operator bool()const{return isDirectory()||(index>=0&&entries[index].exists);}
+  size_t size()const{return index>=0&&*this?entries[index].size:0;}
   size_t available()const{return size()>offset?size()-offset:0;}
-  size_t read(uint8_t*dst,size_t n){if(!*this||readLimit==0)return 0;if(readLimit>0)--readLimit;if(n>available())n=available();memcpy(dst,entries[index].data+offset,n);offset+=n;return n;}
+  size_t read(uint8_t*dst,size_t n){if(index<0||!*this||readLimit==0)return 0;if(readLimit>0)--readLimit;if(n>available())n=available();memcpy(dst,entries[index].data+offset,n);offset+=n;return n;}
   int read(){uint8_t c=0;return read(&c,1)?c:-1;}
-  size_t write(const uint8_t*src,size_t n){++writeCalls;if(!*this||writeLimit==0||offset+n>40000)return 0;if(writeLimit>0)--writeLimit;memcpy(entries[index].data+offset,src,n);offset+=n;if(offset>entries[index].size)entries[index].size=offset;return n;}
-  bool seek(size_t p,int){if(!*this||p>size())return false;offset=p;return true;}
+  size_t write(const uint8_t*src,size_t n){++writeCalls;if(index<0||!*this||writeLimit==0||offset+n>40000)return 0;if(writeLimit>0)--writeLimit;memcpy(entries[index].data+offset,src,n);offset+=n;if(offset>entries[index].size)entries[index].size=offset;return n;}
+  bool seek(size_t p,int){if(index<0||!*this||p>size())return false;offset=p;return true;}
   void flush(){} void close(){index=-1;}
 };
 struct FakeFS {
   int find(const String&name){for(int i=0;i<35;i++)if(entries[i].exists&&entries[i].name==name.c_str())return i;return -1;}
   bool exists(const String&name){return find(name)>=0;}
-  File open(const String&name,const char*mode){int i=find(name);if(*mode=='w'){if(i<0)for(int j=0;j<35;j++)if(!entries[j].exists){i=j;break;}if(i>=0){entries[i].exists=true;entries[i].name=name;entries[i].size=0;}}File f;f.index=i;return f;}
+  // Arduino SPIFFS opens an absent read path as a directory handle. exists()
+  // excludes those handles; their reads return zero and seeks fail.
+  File open(const String&name,const char*mode){int i=find(name);if(*mode=='w'){if(i<0)for(int j=0;j<35;j++)if(!entries[j].exists){i=j;break;}if(i>=0){entries[i].exists=true;entries[i].name=name;entries[i].size=0;}}File f;f.index=i<0&&*mode=='r'?-2:i;return f;}
   bool remove(const String&name){int i=find(name);if(i<0)return false;entries[i].exists=false;return true;}
   bool rename(const String&a,const String&b){++renameCalls;if(renameFailure==renameCalls)return false;int i=find(a);if(i<0||exists(b))return false;entries[i].name=b;return true;}
   size_t totalBytes(){return 488*1024;}
@@ -253,6 +256,38 @@ extern "C" int testGraphHistory() {
   CHECK(graphEnabled&&graphRam&&graphDiskBytes()==savedBytes&&!graphProblem[0]);
   f=SPIFFS.open(graphPath(24039),"r");CHECK(graphValidate(f,h)&&h.step==120);f.close();
   graphPending=0;graphLoop();
+  // Match the reported layout: one minute-resolution day, two two-minute
+  // days, and today's RAM. Eleven status scans used to report 297 failures.
+  clockUtc=20770*86400U;pollIntervalSeconds=60;graphPending=1;graphLoop();
+  for(uint32_t day=20770;day<20773;++day) {
+    graphRecord(0);pollIntervalSeconds=120;clockUtc=(day+1)*86400U;graphLoop();
+    CHECK(!graphProblem[0]&&!graphValidationFailure.count);
+  }
+  CHECK(graphDiskBytes()==51912);
+  f=SPIFFS.open(graphPath(20743),"r");
+  CHECK(f&&f.isDirectory()&&!SPIFFS.exists(graphPath(20743))&&!f.seek(0,SeekSet));f.close();
+  writes=writeCalls;
+  for(int scan=0;scan<11;++scan) graphSendStatus(&status);
+  CHECK(status.status==200&&!graphProblem[0]&&!graphValidationFailure.count&&writeCalls==writes);
+  AsyncWebServerRequest dayRequest;dayRequest.key="day";dayRequest.param.text=String(20743);
+  graphSendDay(&dayRequest);CHECK(dayRequest.status==404&&!graphValidationFailure.count);
+  download.param.text="4";graphSendFile(&download);
+  CHECK(download.status==404&&!graphValidationFailure.count&&writeCalls==writes);
+  dayRequest.param.text=String(20770);graphSendDay(&dayRequest);CHECK(dayRequest.status==200);
+  // Existing corrupt and empty files must still warn and remain exportable.
+  index=SPIFFS.find(graphPath(20771));entries[index].data[sizeof(Header)]^=1;
+  dayRequest.param.text=String(20771);graphSendDay(&dayRequest);
+  CHECK(dayRequest.status==404&&equal(graphValidationFailure.reason,"crc_mismatch"));
+  CHECK(graphValidationFailure.count==1&&graphValidationFailure.day==20771);
+  for(int scan=0;scan<11;++scan) graphSendStatus(&status);
+  CHECK(graphValidationFailure.count==1&&graphValidationFailure.day==20771);
+  f=SPIFFS.open(graphPath(20743),"w");f.close();writes=writeCalls;
+  graphSendStatus(&status);
+  CHECK(equal(graphValidationFailure.reason,"header_read_failed")&&graphValidationFailure.bytes==0);
+  CHECK(equal(graphValidationFailure.file,"/graph-4.bin")&&graphValidationFailure.count==2);
+  graphSendFile(&download);CHECK(download.status==200&&SPIFFS.exists(graphPath(20743))&&writeCalls==writes);
+  CHECK(graphDiskBytes()==51912);
+  graphPending=0;graphLoop();CHECK(graphDiskBytes()==0&&!graphValidationFailure.count);
   return 0;
 }
 #ifndef GRAPH_FREESTANDING_TEST

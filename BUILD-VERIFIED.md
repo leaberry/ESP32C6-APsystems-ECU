@@ -1,5 +1,41 @@
 # Build and hardware verification
 
+## Missing graph files and SPIFFS directory fallback (2026-11-16)
+
+The reporter's follow-up supplied a status response with `seek_failed`, zero
+bytes, `/graph-4.bin` and a failure count of 297. The attachment named
+`graph-4.bin` contained that JSON response, not a raw archive. The diagnostic
+trace was from the November 12 build, while the newer status included the
+November 15 diagnostic fields. These attachments do not establish whether the
+sampling fix resolved gaps in newly collected readings.
+
+Arduino's SPIFFS reader can return a valid directory handle for an absent
+path. That handle has size zero and rejects seeks. The graph adapter previously
+treated it as a saved file. Modeling that behavior reproduced the reported
+51,912-byte layout and 297 false failures after eleven scans of 27 missing
+slots. The test filesystem previously returned an invalid handle for every
+missing path, so it missed this behavior.
+
+All graph file reads now close directory handles and treat them as absent.
+The regression exercises status refresh, missing-day requests, raw downloads
+and nightly maintenance with the SPIFFS fallback enabled. Missing days do not
+raise warnings; genuinely empty or corrupt files still raise diagnostics and
+remain available for export. The tests also check that reading status or
+requesting a missing day performs no writes. Existing retention, recovery,
+sampling and storage-failure tests run against the corrected filesystem model.
+
+All 28 Python and ten JavaScript suites pass, and the graph adapter passes
+AddressSanitizer and UndefinedBehaviorSanitizer. The regression fails against
+the previous firmware code. No reporter logs or device identifiers are included
+in the tests. The file format, storage budget, polling, energy accounting and
+Modbus/MQTT reporting code are unchanged. This revision has not been installed
+on production or verified on physical SPIFFS storage.
+
+Both local layouts compile with ESP32 core 3.3.8: 1,676,316 bytes of program
+storage and 110,304 bytes of static globals, leaving 217,376 bytes before
+runtime allocations. Both images pass flash-header, partition-map, application
+slot capacity and staged-source checks.
+
 ## Graph sampling and saved-file diagnostics (2026-11-15)
 
 The reporter's PR #41 screenshot shows two-minute buckets, gaps in combined

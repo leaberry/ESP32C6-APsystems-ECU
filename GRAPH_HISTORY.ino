@@ -25,6 +25,14 @@ static const char *const graphScratchFiles[] = {GRAPH_TEMP, GRAPH_PREVIOUS};
 
 static String graphPath(uint32_t day) { return "/graph-" + String(day % 31) + ".bin"; }
 
+static File graphOpenRead(const String &path) {
+  File file = SPIFFS.open(path, "r");
+  // SPIFFS can return a directory handle for an absent path. It is truthy,
+  // but cannot be read or sought; treat it as missing, not damaged history.
+  if (file && file.isDirectory()) file.close();
+  return file;
+}
+
 static uint32_t graphIdentity() {
   uint32_t crc = graphHistory::crcUpdate(UINT32_MAX, &inverterCount, sizeof(inverterCount));
   for (uint8_t i = 0; i < inverterCount; ++i)
@@ -97,11 +105,11 @@ static void graphRememberFailure(const String &path, File &file, const graphHist
 static size_t graphDiskBytes() {
   size_t bytes = 0;
   for (uint8_t i = 0; i < 31; ++i) {
-    File file = SPIFFS.open(graphPath(i), "r");
+    File file = graphOpenRead(graphPath(i));
     if (file) bytes += file.size();
   }
   for (const char *name : graphScratchFiles) {
-    File file = SPIFFS.open(name, "r");
+    File file = graphOpenRead(name);
     if (file) bytes += file.size();
   }
   return bytes;
@@ -121,7 +129,7 @@ static bool graphRemoveFiles() {
 // Recover the previous complete file if power failed between the two renames.
 static bool graphRecover() {
   if (SPIFFS.exists(GRAPH_PREVIOUS)) {
-    File previous = SPIFFS.open(GRAPH_PREVIOUS, "r");
+    File previous = graphOpenRead(GRAPH_PREVIOUS);
     graphHistory::Header h = {};
     const char *reason; uint32_t crc;
     if (!graphInspect(previous, h, reason, crc)) {
@@ -129,7 +137,7 @@ static bool graphRecover() {
     }
     previous.close();
     const String path = graphPath(h.day);
-    File current = SPIFFS.open(path, "r");
+    File current = graphOpenRead(path);
     graphHistory::Header active = {};
     const bool valid = graphValidate(current, active) && active.day == h.day;
     current.close();
@@ -167,7 +175,7 @@ static bool graphWriteRow(File &file, uint32_t step, const graphHistory::Cell *r
 // and one aggregate are on the stack; the whole archive is never loaded in RAM.
 static bool graphSaveDay(graphHistory::Header source, File *input, uint32_t step) {
   if (!input) {
-    File existing = SPIFFS.open(graphPath(source.day), "r");
+    File existing = graphOpenRead(graphPath(source.day));
     graphHistory::Header h = {};
     if (graphValidate(existing, h) && h.day >= source.day) {
       // A backward clock adjustment/reboot must not replace an already saved
@@ -208,7 +216,7 @@ static bool graphSaveDay(graphHistory::Header source, File *input, uint32_t step
   ok = ok && file.seek(0, SeekSet) &&
       file.write(reinterpret_cast<const uint8_t *>(&output), sizeof(output)) == sizeof(output);
   file.flush(); file.close();
-  File check = SPIFFS.open(GRAPH_TEMP, "r");
+  File check = graphOpenRead(GRAPH_TEMP);
   graphHistory::Header checked = {};
   ok = ok && graphValidate(check, checked);
   check.close();
@@ -250,7 +258,7 @@ void graphBegin() {
   graphMutex = xSemaphoreCreateMutex();
   if (!graphMutex) return;
   xSemaphoreTake(graphMutex, portMAX_DELAY);
-  File setting = SPIFFS.open(GRAPH_SETTING, "r");
+  File setting = graphOpenRead(GRAPH_SETTING);
   graphEnabled = setting && setting.size() == 1 && setting.read() == 1;
   setting.close();
   if (graphEnabled) { if (!graphRecover()) graphProblem = "History recovery needs attention; disable to clear."; }
@@ -292,7 +300,7 @@ void graphLoop() {
           // Expire files first, before allocating any temporary replacement.
           for (uint8_t slot = 0; slot < 31; ++slot) {
             const String path = graphPath(slot);
-            File input = SPIFFS.open(path, "r");
+            File input = graphOpenRead(path);
             if (!input && !SPIFFS.exists(path)) continue;
             graphHistory::Header h = {};
             const char *reason; uint32_t crc;
@@ -308,7 +316,7 @@ void graphLoop() {
             }
           }
           for (uint8_t age = 30; age > 0; --age) {
-            File input = SPIFFS.open(graphPath(day - age), "r");
+            File input = graphOpenRead(graphPath(day - age));
             graphHistory::Header h = {};
             if (!graphValidate(input, h) || h.day != day - age || h.identity != graphIdentity()) continue;
             const uint32_t step = graphHistory::retentionStep(age, h.step);
@@ -384,7 +392,7 @@ void graphSendStatus(AsyncWebServerRequest *request) {
     graphHistory::Header h = {};
     if (graphRam && graphRamHeader.day == day) h = graphRamHeader;
     else {
-      File file = SPIFFS.open(graphPath(day), "r");
+      File file = graphOpenRead(graphPath(day));
       if (!file && !SPIFFS.exists(graphPath(day))) continue;
       if (!graphReadHeader(file, h)) {
         const char *reason; uint32_t crc;
@@ -422,7 +430,7 @@ void graphSendDay(AsyncWebServerRequest *request) {
   const bool ram = graphRam && graphRamHeader.day == day;
   graphHistory::Header h = graphRamHeader;
   File file;
-  if (!ram) file = SPIFFS.open(graphPath(day), "r");
+  if (!ram) file = graphOpenRead(graphPath(day));
   if (!ram) {
     const char *reason; uint32_t crc;
     if (!graphInspect(file, h, reason, crc)) {
