@@ -24,16 +24,31 @@ String haDiscoveryTopic(int which){return String(haDiscoveryPrefix)+"/device/"+h
 struct HaPublishWriter {
   PubSubClient &client;uint8_t buffer[256];size_t used=0;bool good=true;
   void flush(){if(used){good=good&&client.write(buffer,used)==used;used=0;}}
-  size_t write(uint8_t c){buffer[used++]=c;if(used==sizeof(buffer))flush();return good?1:0;}
+  size_t write(uint8_t c){if(!good)return 0;buffer[used++]=c;if(used==sizeof(buffer))flush();return good?1:0;}
   size_t write(const uint8_t *p,size_t n){for(size_t i=0;i<n;++i)if(!write(p[i]))return i;return n;}
 };
+
+static bool haAbortPublish() {
+  // A partial MQTT packet cannot be followed by another packet, including
+  // DISCONNECT. Close TCP first; the next session recovers retained counters.
+  haNetwork.stop();
+  haClient.disconnect();
+  return false;
+}
+
+bool haPublishText(const String &topic,const char *payload,bool retained) {
+  if(!haClient.connected())return false;
+  return haClient.publish(topic.c_str(),payload,retained)||haAbortPublish();
+}
 
 bool haPublishJson(const String &topic,JsonDocument &doc,bool retained=true) {
   if(doc.overflowed()||!haClient.connected())return false;
   size_t length=measureJson(doc);
-  if(length>16384||!haClient.beginPublish(topic.c_str(),length,retained))return false;
+  if(length>16384)return false;
+  if(!haClient.beginPublish(topic.c_str(),length,retained))return haAbortPublish();
   HaPublishWriter writer{haClient};size_t sent=serializeJson(doc,writer);writer.flush();
-  return haClient.endPublish()&&writer.good&&sent==length;
+  if(!writer.good||sent!=length||!haClient.endPublish())return haAbortPublish();
+  return true;
 }
 
 bool haFresh(int which) {
@@ -226,7 +241,7 @@ bool haCleanupOne() {
     String topic=topics[i].as<String>();bool keep=false;
     if(haEnabled)for(int unit=-1;unit<inverterCount;++unit)keep|=topic==haDiscoveryTopic(unit);
     if(keep)continue;
-    if(!haClient.publish(topic.c_str(),"",true))return false;
+    if(!haPublishText(topic,"",true))return false;
     topics.remove(i);haRegistrySave(haRegistry);return false; // Pace one deletion per pass.
   }
   return true;
@@ -271,7 +286,7 @@ void haLoop() {
   if((!haEnabled&&!haConfigured)||haDisabledDone)return;
   uint32_t now=millis();
   if(haClient.connected()&&haConnectedBroker!=haBrokerKey()) {
-    haClient.publish((haBase+"/status").c_str(),"offline",true);haClient.disconnect();
+    haPublishText(haBase+"/status","offline",true);haClient.disconnect();
   }
   if(!haClient.connected()) {
     if(WiFi.status()!=WL_CONNECTED||((int32_t)(now-haNextConnect)<0))return;
@@ -283,15 +298,16 @@ void haLoop() {
     haDiscoveryPending=true;haDiscoveryCursor=-1;haStateCursor=-1;
     haInventoryBootstrap=false;haInventoryCorrupt=false;haInventoryAwaited=0;
     haRegistry.clear();haRegistry["topics"].to<JsonArray>();haEnergyReconnect();
-    haClient.subscribe((haBase+"/inventory").c_str());
-    if(haEnabled)haClient.subscribe((haBase+"/energy").c_str());
+    if(!haClient.subscribe((haBase+"/inventory").c_str())||
+       (haEnabled&&!haClient.subscribe((haBase+"/energy").c_str()))) {haAbortPublish();return;}
     // Non-retained same-topic probes establish a receive barrier after retained
     // recovery. They never replace the broker's stored checkpoints.
     JsonDocument probe;probe["probe"]=haSession;
-    haPublishJson(haBase+"/inventory",probe,false);
-    if(haEnabled)haPublishJson(haBase+"/energy",probe,false);
-    if(haEnabled){haClient.subscribe((String(haDiscoveryPrefix)+"/status").c_str());haClient.subscribe((haBase+"/inverter/+/limit/set").c_str());}
-    haClient.publish(status.c_str(),haEnabled?"online":"offline",true);
+    if(!haPublishJson(haBase+"/inventory",probe,false)||
+       (haEnabled&&!haPublishJson(haBase+"/energy",probe,false)))return;
+    if(haEnabled&&(!haClient.subscribe((String(haDiscoveryPrefix)+"/status").c_str())||
+       !haClient.subscribe((haBase+"/inverter/+/limit/set").c_str()))) {haAbortPublish();return;}
+    if(!haPublishText(status,haEnabled?"online":"offline",true))return;
   }
   haClient.loop();
   haEnergyCommit();

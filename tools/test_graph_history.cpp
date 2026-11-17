@@ -216,6 +216,14 @@ extern "C" int testGraphHistory() {
   graphRememberFailure(graphPath(23000),f,h,reason,actual);readLimit=-1;f.close();
   CHECK(equal(graphValidationFailure.reason,"data_read_failed")&&graphValidationFailure.day==23000);
   f=SPIFFS.open(graphPath(23000),"r");CHECK(graphValidate(f,h));f.close();
+  // The warning records the last failure; a successful retry does not mean
+  // it was never observed or clear its metadata on a status refresh.
+  AsyncWebServerRequest recoveredDay;recoveredDay.key="day";recoveredDay.param.text=String(23000);
+  const uint32_t failuresBeforeRetry=graphValidationFailure.count;
+  graphSendDay(&recoveredDay);CHECK(recoveredDay.status==200);
+  AsyncWebServerRequest recoveredStatus;graphSendStatus(&recoveredStatus);
+  CHECK(graphProblem[0]&&graphValidationFailure.count==failuresBeforeRetry);
+  CHECK(equal(graphValidationFailure.reason,"data_read_failed"));
   index=SPIFFS.find(graphPath(23000));entries[index].data[sizeof(Header)]^=1;
   graphRecord(0);clockUtc=23002*86400U;graphLoop();
   CHECK(equal(graphValidationFailure.reason,"crc_mismatch"));

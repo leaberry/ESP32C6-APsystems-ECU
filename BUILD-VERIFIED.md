@@ -1,5 +1,64 @@
 # Build and hardware verification
 
+## MQTT partial writes, service status and remaining warning (2026-11-17)
+
+The reporter confirmed that new graph readings no longer have gaps. Their
+Home Assistant log contains a 610-byte malformed state payload with another
+MQTT PUBLISH header at payload byte 512. A local short-write reproduction
+matched the logged payload byte for byte. This establishes a sender failure
+path; the network condition that triggered the reporter's failure is unknown.
+
+Home Assistant publishing now closes TCP before resetting the MQTT client if
+a packet header or body cannot be written completely. No MQTT DISCONNECT or
+subsequent publish is appended to an unfinished packet. The same handling
+covers text publishes and failed subscription/probe setup. Existing reconnect
+backoff and retained-counter recovery remain in use; pending energy is not
+reset. Domoticz publishing and Modbus are unchanged.
+
+The packet regression compiles the installed PubSubClient publishing methods
+with the production HA writer and a transport that injects short writes at
+every byte position. It checks exact packet bytes, TCP-close order, blocked
+publishes until reconnect, successful reconnect, text publishes and size
+limits. Counter tests preserve the previous retained checkpoint after a failed
+write and recover the pending increment exactly once. System information now
+shows separate Home Assistant and Domoticz MQTT rows, tested across enabled,
+disabled, connected and disconnected combinations. The previous single row
+reported only the Domoticz client.
+
+All 30 Python and ten JavaScript suites pass. The packet and retained-counter
+tests also pass AddressSanitizer and UndefinedBehaviorSanitizer; the packet
+test fails against the previous sender. Both local layouts compile with
+ESP32 core 3.3.8, using 1,676,948 bytes of program storage and 110,304 bytes of
+static globals, leaving 217,376 bytes before runtime allocations.
+
+### History-warning analysis
+
+The latest comment has no fresh graph status, raw archive or firmware build
+timestamp. The screenshot shows about 22 hours of uptime; the November 16
+missing-file build was packaged at 20:59 UTC, less than 16 hours before the
+screenshot's stated time on November 17. This suggests an older installed
+image, although a stale retained uptime value could also explain it. The
+unchanged v1.4.20 version label alone cannot identify the build.
+
+The missing-file regression still passes with the SPIFFS directory fallback.
+A further test confirms that a single injected read failure leaves the last
+warning visible after a successful day read and status refresh, with no new
+failure counted. The warning is historical until it is reset by the existing
+settings/day-rollover behavior; it is not a live assertion that every retry
+failed. Actual empty/truncated files and CRC failures remain possible and are
+still reported. No warning is suppressed and no archive is erased by this
+revision. A current diagnostic report and two graph status responses around a
+refresh of the affected range are needed to distinguish an older build, an
+earlier transient failure and an ongoing saved-file error. Compare the last
+failure's reason, filename, timestamp and count, then export the named file if
+the error recurs on the current build.
+
+The attached MQTT log covers November 15-16 and shows `energy_valid:false`.
+It does not include the retained energy checkpoint or establish the counter's
+current recovery state. The sender fix prevents this malformed-packet path;
+it does not certify that Solar energy is now available on the reporter's ECU.
+No production update or physical network-failure test was performed.
+
 ## Missing graph files and SPIFFS directory fallback (2026-11-16)
 
 The reporter's follow-up supplied a status response with `seek_failed`, zero

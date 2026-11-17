@@ -35,7 +35,7 @@ uint32_t tick=1000,randomValue=0;
 uint32_t millis(){return tick;}
 uint32_t esp_random(){return ++randomValue;}
 size_t strlcpy(char *d,const char *s,size_t n){snprintf(d,n,"%s",s);return strlen(s);}
-struct WiFiClient{};
+struct WiFiClient{bool stopped=false;void stop(){stopped=true;}};
 struct IPAddress{String toString(){return "192.0.2.1";}};
 const int WL_CONNECTED=3;
 struct {int status(){return WL_CONNECTED;} int RSSI(){return -50;} IPAddress localIP(){return {};}}WiFi;
@@ -46,22 +46,23 @@ struct PubSubClient {
  std::vector<Message> published;std::deque<Message> incoming;
  std::vector<std::string> subscriptions;
  void (*callback)(char*,uint8_t*,unsigned int)=nullptr;
- PubSubClient(WiFiClient&){}
- bool connected(){return up;}
+ WiFiClient &network;int writeLimit=-1;bool failSubscribe=false;
+ PubSubClient(WiFiClient&n):network(n){}
+ bool connected(){return up&&!network.stopped;}
  void disconnect(){up=false;incoming.clear();subscriptions.clear();}
  void setCallback(decltype(callback) f){callback=f;}
  void setKeepAlive(int){} void setSocketTimeout(int){} bool setBufferSize(int){return true;}
  void setServer(const char*,int){}
- bool connect(const char*,const char*,const char*,const char*,int,bool,const char*){up=true;return true;}
- bool subscribe(const char *t){subscriptions.push_back(t);if(retained.count(t))incoming.push_back({t,retained[t],true});return true;}
+ bool connect(const char*,const char*,const char*,const char*,int,bool,const char*){up=true;network.stopped=false;return true;}
+ bool subscribe(const char *t){if(failSubscribe)return false;subscriptions.push_back(t);if(retained.count(t))incoming.push_back({t,retained[t],true});return true;}
  bool publish(const char *t,const char *p,bool r=false){
-  if(!up||failPublish)return false;
+  if(!connected()||failPublish)return false;
   published.push_back({t,p,r});if(r){if(*p)retained[t]=p;else retained.erase(t);}
   if(!dropEcho&&std::find(subscriptions.begin(),subscriptions.end(),t)!=subscriptions.end())incoming.push_back({t,p,r});
   return true;
  }
- bool beginPublish(const char *t,size_t,bool r){current=t;data.clear();retain=r;return up&&!failPublish;}
- size_t write(const uint8_t *p,size_t n){data.append((const char*)p,n);return n;}
+ bool beginPublish(const char *t,size_t,bool r){current=t;data.clear();retain=r;return connected()&&!failPublish;}
+ size_t write(const uint8_t *p,size_t n){if(!connected())return 0;if(writeLimit>=0)n=std::min(n,(size_t)writeLimit);data.append((const char*)p,n);if(writeLimit>=0)writeLimit-=n;return n;}
  bool endPublish(){return publish(current.c_str(),data.c_str(),retain);}
  void loop(){if(!incoming.empty()){auto m=incoming.front();incoming.pop_front();callback(m.topic.data(),(uint8_t*)m.payload.data(),m.payload.size());}}
 };
@@ -101,7 +102,7 @@ harness+=(root/'HOME_ASSISTANT.ino').read_text(encoding='utf-8')
 harness+=r'''
 void drain(){while(!haClient.incoming.empty())haClient.loop();}
 void probe(){JsonDocument d;d["probe"]=haSession;haPublishJson(haBase+"/energy",d,false);drain();}
-void energyReconnect(){haEnergyReconnect();haClient.incoming.clear();haClient.subscriptions.clear();haSession=String(++randomValue);haClient.subscribe((haBase+"/energy").c_str());probe();}
+void energyReconnect(){haClient.connect("test","","","",0,false,"");haEnergyReconnect();haClient.incoming.clear();haClient.subscriptions.clear();haSession=String(++randomValue);haClient.subscribe((haBase+"/energy").c_str());probe();}
 void ack(){haEnergyCommit();drain();}
 void command(const std::string &body){String t=haBase+"/inverter/"+Inv_Prop[0].invSerial+"/limit/set";haReceive(t.data(),(uint8_t*)body.data(),body.size());}
 int main(){
@@ -205,7 +206,26 @@ int main(){
  // Disable removes only our registered discovery and never the retained energy.
  haEnabled=false;while(!haDiscoverOne())drain();assert(!haClient.retained.count(haDiscoveryTopic(-1)));assert(haClient.retained.count(haBase+"/energy"));
  assert(haPrefixValid("homeassistant")&&haPrefixValid("test/ha")&&!haPrefixValid("bad/+")&&!haPrefixValid("bad//ha"));
- std::cout<<"HA retained recovery, lost echo, reboot, failures, discovery, cleanup and control tests passed\n";
+ // An interrupted checkpoint must leave the last retained counter intact.
+ haEnabled=true;haEnergyBegin();haClient.retained.clear();energyReconnect();ack();
+ haEnergyCredit(0,10);ack();assert(haMeterReady&&haMeter.aggregate==10000);
+ const auto checkpoint=haClient.retained[haBase+"/energy"];
+ haEnergyCredit(0,1);haClient.writeLimit=1;haEnergyCommit();
+ assert(haNetwork.stopped&&!haClient.connected());
+ assert(haClient.retained[haBase+"/energy"]==checkpoint&&haMeter.aggregate==10000);
+ haClient.writeLimit=-1;energyReconnect();ack();
+ assert(haMeterReady&&haMeter.aggregate==11000);ack();assert(haMeter.aggregate==11000);
+ // Failed initialization packets must stop the session before online/state
+ // publishing, then permit a later connection to restart recovery.
+ for(bool failSubscription:{true,false}) {
+  haClient.disconnect();haNextConnect=0;
+  haClient.failSubscribe=failSubscription;haClient.failPublish=!failSubscription;
+  const auto publishedBefore=haClient.published.size();haLoop();
+  assert(haNetwork.stopped&&!haClient.connected()&&haClient.published.size()==publishedBefore);
+  haClient.failSubscribe=false;haClient.failPublish=false;
+ }
+ haNextConnect=0;haLoop();assert(haClient.connected());drain();ack();assert(haMeter.aggregate==11000);
+ std::cout<<"HA retained recovery, lost echo, reboot, partial checkpoint, failures, discovery, cleanup and control tests passed\n";
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:

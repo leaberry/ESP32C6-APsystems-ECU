@@ -53,6 +53,11 @@ Only one running ECU may use an ECU_ID. Both modes can share a broker without
 using the same MQTT client ID. On-device load with both active still needs
 hardware testing; HA sends a paced state cycle every 15 seconds.
 
+**Menu > System information > Radio and services** shows separate connection
+states for Home Assistant MQTT and Domoticz MQTT. Home Assistant can be
+connected while Domoticz is disabled. A connected client does not by itself
+confirm that the energy counter has finished recovering from the broker.
+
 Discovery follows Home Assistant's
 [device discovery format](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
 It supplies a fleet device and one device per inverter serial number. It
