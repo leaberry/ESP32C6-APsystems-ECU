@@ -1,5 +1,50 @@
 # Build and hardware verification
 
+## Retained MQTT checkpoint recovery and diagnostics (2026-11-18)
+
+The reporter confirms that the history warning disappeared on the latest
+build. Their attached warning report identifies the November 15 firmware;
+its missing-file failures increase in multiples of the 25 unused graph slots.
+That matches the SPIFFS missing-path bug fixed on November 16. No further
+graph change is indicated by these attachments.
+
+The MQTT energy attachment contains 257 bytes with a retained PUBLISH header
+byte (`0x31`) replacing the final JSON brace at offset 256. This matches the
+previous sender's partial-write corruption. The fixed sender prevents that
+packet failure, but the broker can still retain an older malformed checkpoint.
+The ECU rejects it, blocks energy updates and reports energy unavailable.
+Restarting Home Assistant or clearing its statistics cannot change that
+checkpoint.
+
+The regression uses synthetic identifiers and counters with the same packet
+length and damaged byte. It runs the production recovery functions against an
+in-memory broker, checks that repeated reconnects remain blocked without
+overwriting the bad checkpoint, and verifies both recovery paths:
+
+- Restoring a valid checkpoint and reconnecting preserves the counters and
+  credits subsequent production exactly once.
+- An explicit empty retained publish followed by an ECU restart creates a new
+  baseline and resumes increments. Deletion alone leaves the session blocked;
+  reconnecting without a restart preserves the old RAM baseline. Other topics
+  remain intact.
+
+MQTT fleet/inverter state now includes `energy_status` and `energy_error`.
+The diagnostic report includes the recovery status, checkpoint topic, failure
+reason, last non-probe payload size and whether a checkpoint was recovered.
+Tests cover malformed JSON, invalid checkpoint contents, oversized input and
+the status transitions through recovery and acknowledgement. Payload contents
+and credentials are not copied into these diagnostics. Existing failure guards
+remain in place; the firmware never clears a checkpoint automatically.
+
+All 30 Python and ten JavaScript suites pass. MQTT packet and retained-counter
+tests pass AddressSanitizer and UndefinedBehaviorSanitizer. Both firmware
+layouts compile with ESP32 core 3.3.8, using 1,678,412 bytes of program storage
+and 110,320 bytes of static globals. Flash headers, partition maps, application
+slot capacity and staged firmware sources pass local checks. The recovery procedure is in
+[HomeAssistant.md](HomeAssistant.md#reset-a-corrupt-mqtt-energy-checkpoint).
+No production ECU or real broker was changed. Physical broker recovery and
+network-failure behavior remain unverified for this revision.
+
 ## MQTT partial writes, service status and remaining warning (2026-11-17)
 
 The reporter confirmed that new graph readings no longer have gaps. Their

@@ -142,6 +142,7 @@ void haDiscoveryDocument(JsonDocument &doc,int which) {
 void haStateDocument(JsonDocument &doc,int which) {
   doc.clear();bool night=pollingNightModeActive();
   doc["ecu_valid"]=true;doc["energy_valid"]=haMeterReady;doc["today_valid"]=timeRetrieved;
+  doc["energy_status"]=haEnergyStatus();doc["energy_error"]=haEnergyError;
   if(which<0) {
     float watts=0;uint64_t today=0;bool valid=inverterCount>0;
     for(int i=0;i<inverterCount;++i){watts+=Inv_Data[i].pw_total;today+=energyTodayWhFor(i);valid=valid&&haFresh(i)&&polled[i];}

@@ -14,6 +14,8 @@ harness=r'''
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <cstdint>
+#include <utility>
 #include "HA_MODEL.h"
 using std::max;
 struct String:std::string {
@@ -225,6 +227,59 @@ int main(){
   haClient.failSubscribe=false;haClient.failPublish=false;
  }
  haNextConnect=0;haLoop();assert(haClient.connected());drain();ack();assert(haMeter.aggregate==11000);
+ // An old sender could replace the final brace at byte 256 with the next
+ // retained PUBLISH header (0x31). Use synthetic identities and counters.
+ const std::string good=R"({"producer":"0000000000000001","version":1,"ecu":"123456789ABC","session":"0000000000000002","sequence":6,"meters":[{"serial":"408000000001","mwh":1000000},{"serial":"408000000002","mwh":2000000},{"serial":"408000000003","mwh":3000000}],"total_mwh":6000000})";
+ assert(good.size()==257);std::string damaged=good;damaged[256]=0x31;
+ const std::string energyTopic=haBase+"/energy";
+ for(const auto &failure:std::vector<std::pair<std::string,std::string>>{
+     {damaged,"invalid_json"},{"{}","invalid_checkpoint"},{std::string(8193,'x'),"checkpoint_too_large"}}) {
+  haEnergyBegin();haClient.retained[energyTopic]=failure.first;energyReconnect();
+  assert(haEnergyCorrupt&&!haMeterReady&&!haEnergyBootstrap);
+  assert(haEnergyError==failure.second&&haEnergyReceivedBytes==failure.first.size());
+  haStateDocument(state,-1);
+  assert(state["energy_status"]=="blocked"&&state["energy_error"]==failure.second);
+  assert(!state["energy_valid"].as<bool>()&&state["energy_kwh"]=="None");
+  const auto diagnostic=haEnergyDiagnostics();
+  assert(diagnostic.find("Energy updates are blocked")!=std::string::npos);
+  assert(diagnostic.find(energyTopic)!=std::string::npos&&diagnostic.find(failure.second)!=std::string::npos);
+  assert(diagnostic.find("Last energy payload bytes: "+std::to_string(failure.first.size()))!=std::string::npos);
+  const auto before=haClient.published.size();haEnergyCredit(0,10);ack();
+  assert(haClient.published.size()==before&&haMeter.aggregate==0);
+  assert(haClient.retained[energyTopic]==failure.first);
+  energyReconnect();assert(haEnergyCorrupt&&haEnergyError==failure.second);
+ }
+ // Restoring a valid retained checkpoint and reconnecting preserves totals.
+ haClient.retained[energyTopic]=good;energyReconnect();ack();
+ assert(haMeterReady&&!haEnergyCorrupt&&haMeter.aggregate==6000000);
+ haEnergyCredit(0,1);ack();assert(haMeter.aggregate==6001000);
+ energyReconnect();ack();assert(haMeter.aggregate==6001000);
+ assert(std::string(haEnergyStatus())=="ready"&&!haEnergyError[0]);
+ // Explicit reset: delete only the energy topic, then reboot the ECU.
+ // Reconnecting alone retains RAM counters; deleting alone retains the fault.
+ haClient.retained[energyTopic]=damaged;energyReconnect();
+ haClient.retained[haBase+"/inventory"]="inventory sentinel";
+ haClient.retained["other/device/energy"]="other ECU sentinel";
+ assert(haClient.publish(energyTopic.c_str(),"",true));drain();
+ assert(!haClient.retained.count(energyTopic)&&haEnergyCorrupt&&!haMeterReady);
+ energyReconnect();ack();assert(haMeterReady&&haMeter.aggregate==6001000);
+ haClient.retained[energyTopic]=damaged;energyReconnect();
+ assert(haClient.publish(energyTopic.c_str(),"",true));drain();
+ assert(haEnergyCorrupt&&!haClient.retained.count(energyTopic));
+ haEnergyBegin();energyReconnect();
+ assert(!haEnergyCorrupt&&!haMeterReady&&std::string(haEnergyStatus())=="awaiting_checkpoint");
+ haEnergyCommit();assert(std::string(haEnergyStatus())=="awaiting_echo");drain();
+ assert(haMeterReady&&haMeter.aggregate==0);
+ assert(haClient.retained[haBase+"/inventory"]=="inventory sentinel");
+ assert(haClient.retained["other/device/energy"]=="other ECU sentinel");
+ haEnergyCredit(0,2.5);ack();assert(haMeter.aggregate==2500);
+ energyReconnect();ack();assert(haMeterReady&&haMeter.aggregate==2500);
+ haStateDocument(state,-1);
+ assert(state["energy_valid"].as<bool>()&&state["energy_status"]=="ready"&&state["energy_error"]=="");
+ haEnabled=false;assert(std::string(haEnergyStatus())=="disabled");haEnabled=true;
+ haClient.disconnect();assert(std::string(haEnergyStatus())=="disconnected");
+ haClient.connect("test","","","",0,false,"");haEnergyReconnect();
+ assert(std::string(haEnergyStatus())=="recovering");
  std::cout<<"HA retained recovery, lost echo, reboot, partial checkpoint, failures, discovery, cleanup and control tests passed\n";
 }
 '''
