@@ -1,5 +1,307 @@
 # Build and hardware verification
 
+## Retained MQTT checkpoint recovery and diagnostics (2026-11-18)
+
+The reporter confirms that the history warning disappeared on the latest
+build. Their attached warning report identifies the November 15 firmware;
+its missing-file failures increase in multiples of the 25 unused graph slots.
+That matches the SPIFFS missing-path bug fixed on November 16. No further
+graph change is indicated by these attachments.
+
+The MQTT energy attachment contains 257 bytes with a retained PUBLISH header
+byte (`0x31`) replacing the final JSON brace at offset 256. This matches the
+previous sender's partial-write corruption. The fixed sender prevents that
+packet failure, but the broker can still retain an older malformed checkpoint.
+The ECU rejects it, blocks energy updates and reports energy unavailable.
+Restarting Home Assistant or clearing its statistics cannot change that
+checkpoint.
+
+The regression uses synthetic identifiers and counters with the same packet
+length and damaged byte. It runs the production recovery functions against an
+in-memory broker, checks that repeated reconnects remain blocked without
+overwriting the bad checkpoint, and verifies both recovery paths:
+
+- Restoring a valid checkpoint and reconnecting preserves the counters and
+  credits subsequent production exactly once.
+- An explicit empty retained publish followed by an ECU restart creates a new
+  baseline and resumes increments. Deletion alone leaves the session blocked;
+  reconnecting without a restart preserves the old RAM baseline. Other topics
+  remain intact.
+
+MQTT fleet/inverter state now includes `energy_status` and `energy_error`.
+The diagnostic report includes the recovery status, checkpoint topic, failure
+reason, last non-probe payload size and whether a checkpoint was recovered.
+Tests cover malformed JSON, invalid checkpoint contents, oversized input and
+the status transitions through recovery and acknowledgement. Payload contents
+and credentials are not copied into these diagnostics. Existing failure guards
+remain in place; the firmware never clears a checkpoint automatically.
+
+All 30 Python and ten JavaScript suites pass. MQTT packet and retained-counter
+tests pass AddressSanitizer and UndefinedBehaviorSanitizer. Both firmware
+layouts compile with ESP32 core 3.3.8, using 1,678,412 bytes of program storage
+and 110,320 bytes of static globals. Flash headers, partition maps, application
+slot capacity and staged firmware sources pass local checks. The recovery procedure is in
+[HomeAssistant.md](HomeAssistant.md#reset-a-corrupt-mqtt-energy-checkpoint).
+No production ECU or real broker was changed. Physical broker recovery and
+network-failure behavior remain unverified for this revision.
+
+## MQTT partial writes, service status and remaining warning (2026-11-17)
+
+The reporter confirmed that new graph readings no longer have gaps. Their
+Home Assistant log contains a 610-byte malformed state payload with another
+MQTT PUBLISH header at payload byte 512. A local short-write reproduction
+matched the logged payload byte for byte. This establishes a sender failure
+path; the network condition that triggered the reporter's failure is unknown.
+
+Home Assistant publishing now closes TCP before resetting the MQTT client if
+a packet header or body cannot be written completely. No MQTT DISCONNECT or
+subsequent publish is appended to an unfinished packet. The same handling
+covers text publishes and failed subscription/probe setup. Existing reconnect
+backoff and retained-counter recovery remain in use; pending energy is not
+reset. Domoticz publishing and Modbus are unchanged.
+
+The packet regression compiles the installed PubSubClient publishing methods
+with the production HA writer and a transport that injects short writes at
+every byte position. It checks exact packet bytes, TCP-close order, blocked
+publishes until reconnect, successful reconnect, text publishes and size
+limits. Counter tests preserve the previous retained checkpoint after a failed
+write and recover the pending increment exactly once. System information now
+shows separate Home Assistant and Domoticz MQTT rows, tested across enabled,
+disabled, connected and disconnected combinations. The previous single row
+reported only the Domoticz client.
+
+All 30 Python and ten JavaScript suites pass. The packet and retained-counter
+tests also pass AddressSanitizer and UndefinedBehaviorSanitizer; the packet
+test fails against the previous sender. Both local layouts compile with
+ESP32 core 3.3.8, using 1,676,948 bytes of program storage and 110,304 bytes of
+static globals, leaving 217,376 bytes before runtime allocations.
+
+### History-warning analysis
+
+The latest comment has no fresh graph status, raw archive or firmware build
+timestamp. The screenshot shows about 22 hours of uptime; the November 16
+missing-file build was packaged at 20:59 UTC, less than 16 hours before the
+screenshot's stated time on November 17. This suggests an older installed
+image, although a stale retained uptime value could also explain it. The
+unchanged v1.4.20 version label alone cannot identify the build.
+
+The missing-file regression still passes with the SPIFFS directory fallback.
+A further test confirms that a single injected read failure leaves the last
+warning visible after a successful day read and status refresh, with no new
+failure counted. The warning is historical until it is reset by the existing
+settings/day-rollover behavior; it is not a live assertion that every retry
+failed. Actual empty/truncated files and CRC failures remain possible and are
+still reported. No warning is suppressed and no archive is erased by this
+revision. A current diagnostic report and two graph status responses around a
+refresh of the affected range are needed to distinguish an older build, an
+earlier transient failure and an ongoing saved-file error. Compare the last
+failure's reason, filename, timestamp and count, then export the named file if
+the error recurs on the current build.
+
+The attached MQTT log covers November 15-16 and shows `energy_valid:false`.
+It does not include the retained energy checkpoint or establish the counter's
+current recovery state. The sender fix prevents this malformed-packet path;
+it does not certify that Solar energy is now available on the reporter's ECU.
+No production update or physical network-failure test was performed.
+
+## Missing graph files and SPIFFS directory fallback (2026-11-16)
+
+The reporter's follow-up supplied a status response with `seek_failed`, zero
+bytes, `/graph-4.bin` and a failure count of 297. The attachment named
+`graph-4.bin` contained that JSON response, not a raw archive. The diagnostic
+trace was from the November 12 build, while the newer status included the
+November 15 diagnostic fields. These attachments do not establish whether the
+sampling fix resolved gaps in newly collected readings.
+
+Arduino's SPIFFS reader can return a valid directory handle for an absent
+path. That handle has size zero and rejects seeks. The graph adapter previously
+treated it as a saved file. Modeling that behavior reproduced the reported
+51,912-byte layout and 297 false failures after eleven scans of 27 missing
+slots. The test filesystem previously returned an invalid handle for every
+missing path, so it missed this behavior.
+
+All graph file reads now close directory handles and treat them as absent.
+The regression exercises status refresh, missing-day requests, raw downloads
+and nightly maintenance with the SPIFFS fallback enabled. Missing days do not
+raise warnings; genuinely empty or corrupt files still raise diagnostics and
+remain available for export. The tests also check that reading status or
+requesting a missing day performs no writes. Existing retention, recovery,
+sampling and storage-failure tests run against the corrected filesystem model.
+
+All 28 Python and ten JavaScript suites pass, and the graph adapter passes
+AddressSanitizer and UndefinedBehaviorSanitizer. The regression fails against
+the previous firmware code. No reporter logs or device identifiers are included
+in the tests. The file format, storage budget, polling, energy accounting and
+Modbus/MQTT reporting code are unchanged. This revision has not been installed
+on production or verified on physical SPIFFS storage.
+
+Both local layouts compile with ESP32 core 3.3.8: 1,676,316 bytes of program
+storage and 110,304 bytes of static globals, leaving 217,376 bytes before
+runtime allocations. Both images pass flash-header, partition-map, application
+slot capacity and staged-source checks.
+
+## Graph sampling and saved-file diagnostics (2026-11-15)
+
+The reporter's PR #41 screenshot shows two-minute buckets, gaps in combined
+power, and a saved-history validation warning. The previous elapsed-time
+sampling gate reproduced five recorded samples from ten successful two-minute
+polls with one second of arrival-time variation. Ninety-second polling also
+left avoidable holes in two-minute buckets.
+
+The graph now retains the latest successful value in each fixed bucket and
+uses one UTC start timestamp for each fleet poll. Host tests cover 45-, 90-,
+120- and 300-second polling, timing jitter, replies crossing bucket boundaries,
+missing inverter responses, backward clock changes and a round crossing UTC
+midnight. Empty buckets stay empty; values are never copied into later buckets.
+The scheduler's cadence and radio commands are unchanged, and graph sampling
+still performs no filesystem writes.
+
+The saved-file failure has not been reproduced from the screenshot alone.
+The actual storage adapter passes a 40-day two-minute-history simulation,
+including nightly saves, reopening each retained file, compaction, expiry and
+restart with files intact. Injected read failures, CRC corruption and truncated
+files produce distinct diagnostics; valid neighboring files remain readable.
+Existing file encoding and the 192 KiB archive limit are unchanged.
+
+`/api/graph` now reports the last validation failure's file, reason, byte count,
+UTC time, header day/step and expected/computed CRC. Read failures are no longer
+described as proof of damaged data. Existing invalid headers can be diagnosed
+on status refresh; CRC failures are recorded when the day is read or during
+the nightly scan. A skipped-busy counter exposes telemetry omitted during lock
+contention. The administrator-only `/api/graph/file?slot=N` endpoint exports
+the original archive bytes without validating away the evidence. Tests cover
+invalid slots/path traversal, missing files, response-creation failure and
+route authorization/order. This export has not been exercised on hardware.
+
+All 28 Python and ten JavaScript suites pass. The extended adapter tests also
+pass AddressSanitizer and UndefinedBehaviorSanitizer. Graph rendering, explicit
+confirmation, failure handling and recovery checks remain passing. The graph
+script URL is versioned again so existing browsers load the updated text.
+
+Both final local layouts compile with ESP32 core 3.3.8: 1,676,184 bytes of
+program storage and 110,304 bytes of static globals, leaving 217,376 bytes
+before runtime allocations. Flash-size headers, partition maps, application
+slot capacity and the staged firmware source were verified for both layouts.
+
+These follow-up changes were tested locally; the production ECU was
+not updated. The reporter's file and diagnostics are still needed to identify
+their warning's cause. The November 12 hardware results below apply to the
+earlier build, not this revision.
+
+## Optional power history validation (2026-11-12)
+
+This work is based on v1.4.20 (`15b48ae`) and addresses the detailed production
+graph requested in [Issue #40](https://github.com/leaberry/ESP32C6-APsystems-ECU/issues/40).
+Host C++ checks used g++ 11.4.0; firmware builds used ESP32 core 3.3.8.
+
+All 28 Python host suites and ten JavaScript suites pass, including clock,
+Home Assistant recovery, polling, pairing, settings and power-control checks.
+The day endpoint precedes the status endpoint to prevent parent-route
+shadowing; the route audit passes.
+
+The production history adapter passes its filesystem fault-injection suite
+with g++ and with AddressSanitizer and UndefinedBehaviorSanitizer. Coverage
+includes sampling cadence, retention tiers, weighted averages, missing data,
+CRC rejection, full storage, failed writes/renames, recovery, inverter identity
+changes, a 40-day retention run, disabling and low-memory refusal. These tests
+use a fake filesystem and do not establish physical flash durability.
+
+JavaScript checks pass for SVG rendering, gaps versus zero readings, range
+clipping, singleton points and the administrator-only settings route. The
+control suite runs the production script with a fake DOM and HTTP responses.
+It covers tap inspection, Cancel/Escape without a POST, explicit clearing,
+queued changes, duplicate-action refusal, 401/500 save errors, status failures,
+missing days, empty history, storage warnings, network failures, ten-second
+timeouts and recovery through Refresh.
+
+The full Energy history page was loaded in a browser against a loopback-only
+HTTP fixture using simulated readings. Desktop rendering and 320/390-pixel
+layouts fit; range/source selection and refresh work. Browser checks also
+verify initial 503 feedback, recovery, missing-day warnings, empty history,
+and a storage-failure message. Horizontal graph scrolling reached 337 pixels,
+and inspecting a point after scrolling updated its timestamp and reading.
+The graph now allows both touch-scroll directions and handles pointer-down
+events for taps. Physical touchscreen gestures remain untested.
+
+Clearing uses an on-page panel with Cancel and Turn off and clear buttons.
+Interactive browser checks pass for Cancel and Escape without a settings
+request, initial focus on Cancel, focus restoration, queued clearing,
+completion and re-enabling. The panel fits at 320 pixels. The fixture recorded
+exactly one successful disable request and one enable request; daily energy
+totals stayed visible throughout.
+
+Browser checks also pass for 401/500 settings failures, ten-second timeouts
+on both settings and status requests, connection loss and recovery through
+Refresh. Failed saves leave the graph visible and block further changes until
+status is refreshed. Refresh remains visible when history is off or unavailable.
+Mobile screenshots were saved locally. These checks use simulated HTTP data;
+they do not establish device-side authentication, flash writes or recovery.
+
+Both final firmware builds pass with pinned ESP32 core 3.3.8: 1,673,322 bytes
+of program storage and 110,232 bytes of static globals each, leaving 217,448
+bytes before runtime allocations. The 4 MB build was staged separately; the
+repository's default 8 MB partition map is unchanged. Both application images
+are 1,673,424 bytes. Their flash-size headers and generated partition tables
+match the named layouts, and each image fits every application slot in its
+layout. The staged firmware source matches the final working tree.
+
+The builds and browser checks above preceded the authorized production OTA
+test below. Physical flash wear, interrupted writes, filesystem GC latency
+and low-heap behavior remain hardware tests.
+MQTT, Home Assistant accounting, Modbus, decode/publish code and partition maps
+have no source changes; the graph hook only observes accepted telemetry.
+
+## Optional power history production deployment (2026-11-12)
+
+The user authorized an application-only OTA upgrade of the production 8 MB
+ESP32-C6. The installed candidate reports `ESP32C6-ECU_v1_4_20`, build
+`Nov 12 2026 14:59:38`; application SHA-256 is
+`4ae2d77c713f635ee4fbe2857c1d994092b5ec0d55bca4fd33a63173bb50d343`.
+Its partition table matches the prior official v1.4.20 image byte-for-byte.
+Settings, energy history and hourly snapshots were backed up privately, and
+the matching prior release application was retained for rollback.
+
+All exported settings, identity, slot order, learned peers and power limits
+were preserved. The 12,632 Wh current-day checkpoint restored exactly across
+the controlled restart. Finalized history and the existing crash dump remain
+byte-for-byte unchanged. Hourly RAM statistics restarted as designed. Clock,
+hostname and web endpoints passed their checks.
+
+Three plaintext DS3 inverters passed a 394.4-second observation with ten
+distinct successful readings each. Polling remains at 45 seconds; maximum
+response gaps were 46 / 46 / 45 seconds. No unexpected restart occurred, and
+minimum free heap was 145,048 bytes. SunSpec units 1 through 4 passed 244 reads
+on one persistent TCP connection, alternating FC03 and FC04. Power and energy
+matched bracketing HTTP telemetry; energy counters never decreased. Address
+bases 0, 40000 and 40001 also passed before and after the update.
+
+Graph recording was left off for this initial test, matching the default.
+The recording-on test follows below. Overnight graph persistence, downstream
+dashboard behavior and power-loss recovery remain untested.
+
+### Production recording enabled (2026-11-12)
+
+The user subsequently authorized graph recording on the same ECU. The
+authenticated settings request completed without a restart. Today's graph
+allocated 38,880 bytes of RAM, used 60-second buckets and collected four
+complete points for each of the three DS3s and the aggregate. Populated
+aggregate points matched the inverter sums. The 45-second polling interval
+normally produces graph samples about 90 seconds apart because recording
+requires at least 60 seconds between samples.
+
+With recording enabled, a 307-second observation passed 120 Modbus reads
+over one persistent TCP connection, alternating FC03 and FC04. Each inverter
+supplied eight distinct successful readings; maximum response gaps were
+47 / 49 / 51 seconds. Modbus power and energy matched bracketing HTTP
+telemetry, and energy counters remained monotonic. No restart occurred.
+Minimum free heap was 106,364 bytes. Existing exported settings and finalized
+energy history were unchanged. Recording remains enabled without an error
+or pending operation.
+
+This establishes initial collection alongside production DS3 polling and
+Modbus reporting during the observation. Overnight graph persistence,
+power-loss recovery and downstream dashboard behavior remain untested.
+
 ## QT2 daytime reporter verification (2026-10-27)
 
 [TobiasTTM's report](https://github.com/leaberry/ESP32C6-APsystems-ECU/pull/7#issuecomment-6454377987)

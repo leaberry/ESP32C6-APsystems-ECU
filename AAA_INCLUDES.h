@@ -12,6 +12,8 @@
 #include <ArduinoJson.h>
 
 #include <ESPAsyncWebServer.h>
+#include "GRAPH_HISTORY.h"
+#include "GRAPH_UI.h"
 #include <AsyncTCP.h>
 #include <AsyncEventSource.h>
 //#include "esp_heap_caps.h"
@@ -87,6 +89,7 @@ struct GridProtectionSnapshot;
 enum GridScale : uint8_t;
 void ecuTimeBegin();
 time_t ecuNow();
+time_t ecuUtcNow();
 bool ecuConfigureTime(const char *rule, int fixedMinutes, time_t utc);
 void ecuTimeLoop();
 int ecuSecond(time_t value);

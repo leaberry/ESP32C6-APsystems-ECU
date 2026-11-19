@@ -96,6 +96,7 @@ String diagnosticsReportText() {
   report += F("\nAutomatic polling: "); report += Polling ? F("enabled") : F("disabled");
   report += F("\nPoll interval seconds: "); report += pollIntervalSeconds;
   report += F("\nSunSpec/Modbus TCP: "); report += sunspecEnabled ? F("enabled on port 502") : F("disabled");
+  report += haEnergyDiagnostics();
   report += F("\nLocal time: "); report += ecuClockText();
   report += F("\nTimezone: "); report += timeZoneId;
   report += F("\nEffective UTC offset: "); report += ecuUtcOffsetText();

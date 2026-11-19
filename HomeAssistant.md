@@ -53,6 +53,11 @@ Only one running ECU may use an ECU_ID. Both modes can share a broker without
 using the same MQTT client ID. On-device load with both active still needs
 hardware testing; HA sends a paced state cycle every 15 seconds.
 
+**Menu > System information > Radio and services** shows separate connection
+states for Home Assistant MQTT and Domoticz MQTT. Home Assistant can be
+connected while Domoticz is disabled. A connected client does not by itself
+confirm that the energy counter has finished recovering from the broker.
+
 Discovery follows Home Assistant's
 [device discovery format](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery).
 It supplies a fleet device and one device per inverter serial number. It
@@ -164,8 +169,8 @@ power loss can lose pending production. Losing both broker checkpoints and ECU
 RAM loses the baseline. Keep the original broker data and restore the original
 ECU_ID when [replacing the ECU](README.md#replace-a-failed-ecu-board). An old broker
 backup may contain an older counter, so inspect HA statistics after recovering
-an older backup. Do not edit or publish a zero checkpoint to fix an unavailable
-sensor.
+an older backup. Diagnose an unavailable sensor before changing its checkpoint.
+The deliberate reset below discards the MQTT baseline when recovery is not needed.
 
 Disabling HA removes this ECU's registered discovery entries but keeps its
 energy checkpoint. Before changing brokers, disable HA while the **old** broker
@@ -175,6 +180,59 @@ topics on the current broker. Avoid deleting its inventory by hand.
 The retained counter archive holds 64 inverter serials, including removed ones,
 so removing an inverter does not reduce the fleet total. Invalid checkpoints or
 an exhausted archive make energy unavailable rather than silently resetting it.
+
+### Reset a corrupt MQTT energy checkpoint
+
+Use this when diagnostics report a corrupt checkpoint and you accept losing
+the MQTT cumulative baseline. Install the build containing the November 17,
+2026 MQTT partial-write fix first; resetting the checkpoint does not fix an
+older sender. The ECU's statistics reset, history wipe and Home Assistant
+statistics cleanup do not clear this broker message.
+
+1. Open **Menu > Diagnostic snapshot > Download report** on the ECU. New builds show
+   **Home Assistant MQTT energy**, **Energy checkpoint error** and the exact
+   **Energy checkpoint topic**. `blocked` with `invalid_json` means a malformed
+   message stopped counter recovery. `invalid_checkpoint` means JSON parsed but
+   its identity, counters or structure failed validation. Do not reset for
+   `disconnected`, `recovering` or `awaiting_echo`; check connectivity and broker
+   permissions instead.
+2. In Home Assistant, open **Developer tools > Actions**, switch to YAML mode,
+   and run this once. Replace `YOUR_ECU_ID` with this ECU's 12-character ECU_ID,
+   preserving its case. Use the exact topic from diagnostics when available.
+
+   ```yaml
+   action: mqtt.publish
+   data:
+     topic: "aps_ecu/YOUR_ECU_ID/energy"
+     payload: ""
+     retain: true
+     qos: 1
+   ```
+
+   An [empty retained publish](https://www.home-assistant.io/actions/mqtt.publish/)
+   removes just that topic's checkpoint. Leave `inventory`, discovery topics and
+   other devices alone. The payload must be empty, without spaces or `{}`.
+3. Select **Menu > Restart ECU** after the publish completes. Restarting Home Assistant
+   does not clear the ECU's blocked session. A full ECU restart also discards
+   the old in-memory MQTT baseline, so it cannot be republished.
+4. Allow MQTT to reconnect and receive its checkpoint echo. Solar energy should
+   become available with a new counter, and increase after successful daytime
+   polls. New builds report `energy_status: ready`, `energy_error: ""` and
+   `energy_valid: true` in the fleet state.
+
+This resets the MQTT cumulative counters for the fleet and all its inverters.
+It does not delete existing Home Assistant statistics, finalized ECU daily
+history, saved graphs, settings or discovery. Restarting still loses unsaved
+current-day graph data and RAM statistics. Use **Energy history > Save today to
+flash now** first if you want to keep today's local daily total; that save does
+not preserve MQTT counters or hourly buckets. Lost MQTT production is not
+reconstructed by this reset.
+
+The diagnostic report also distinguishes `checkpoint_too_large`,
+`meter_capacity`, `counter_overflow` and `counter_capacity_or_overflow`.
+It includes the last non-probe payload size without copying the payload or
+broker credentials. A valid restored checkpoint can instead recover the old
+baseline after an ECU MQTT reconnect.
 
 ## MQTT troubleshooting
 

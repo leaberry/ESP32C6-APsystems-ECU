@@ -70,6 +70,7 @@ void setup() {
 
   getTijd(); // retrieve time from the timeserver
   energyHistoryBegin();
+  graphBegin();
   haBegin();
   // Do not accept Modbus clients until inverter configuration and persistent
   // counters are loaded. Starting the listener earlier briefly exported a
@@ -212,6 +213,7 @@ void loop() {
   }
 
   energyHistoryLoop();
+  graphLoop();
   systemTemperatureLoop();
   flightRecorderLoop();
   qt2CaptureLoop();
